@@ -1,0 +1,2020 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#111827">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="manifest.json">
+    
+    <title>Pocket MU RPG</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #111827; color: #f3f4f6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; user-select: none; touch-action: manipulation; }
+        .h-dvh { height: 100dvh; }
+        .hidden-tab { display: none !important; }
+        .progress-bar { transition: width 0.3s ease; }
+        
+        .item-slot { 
+            background: #1f2937; 
+            border: 1px solid #eab30840; 
+            border-radius: 0.25rem; 
+            aspect-ratio: 1; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            font-size: 0.65rem; 
+            flex-direction: column; 
+            text-align: center; 
+            overflow: hidden; 
+            padding: 2px;
+            position: relative;
+        }
+        .item-slot.equipped { border-color: #3b82f6; background: #1e3a8a33; }
+        
+        .log-box::-webkit-scrollbar { width: 4px; }
+        .log-box::-webkit-scrollbar-thumb { background-color: #4b5563; border-radius: 4px; }
+        .blink-red { animation: blinker 1s linear infinite; }
+        @keyframes blinker { 50% { opacity: 0.3; color: red; } }
+        
+        .blink-pink { animation: blink-pink 1.5s linear infinite; }
+        @keyframes blink-pink {
+            0%, 100% { background-color: rgba(244,114,182,0.1); border-left: 2px solid #f472b6; }
+            50% { background-color: rgba(244,114,182,0.4); border-left: 2px solid #fbcfe8; }
+        }
+        
+        .rarity-common { color: #d1d5db; } 
+        .rarity-rare { color: #60a5fa; font-weight: bold; } 
+        .rarity-legendary { color: #fbbf24; font-weight: bold; text-shadow: 0 0 5px rgba(251,191,36,0.5); } 
+        .rarity-jewel { color: #f472b6; font-weight: bold; text-shadow: 0 0 5px rgba(244,114,182,0.5); } 
+    </style>
+</head>
+<body class="h-dvh w-full max-w-lg mx-auto flex flex-col overflow-hidden text-sm bg-gray-900 shadow-2xl relative">
+
+    <button id="btn-install-app" onclick="installApp()" class="hidden absolute top-4 right-4 z-[100] bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold text-white shadow-lg border border-blue-400 animate-pulse">📲 Instalar App</button>
+
+    <div id="screen-select" class="flex-1 flex flex-col items-center justify-center p-4 z-50 bg-gray-900 absolute inset-0">
+        <h1 class="text-4xl font-bold mb-2 text-blue-400 tracking-wider">Pocket MU</h1>
+        <p class="text-xs text-gray-400 mb-8">Selecione seu Herói</p>
+        
+        <div id="char-list" class="w-full max-w-sm mb-6 flex flex-col gap-3 overflow-y-auto max-h-60">
+            </div>
+        
+        <button onclick="showCreateForm()" class="w-full max-w-sm py-3 bg-green-600 hover:bg-green-500 rounded font-bold text-white shadow-lg border border-green-500 transition">Criar Novo Personagem</button>
+    </div>
+
+    <div id="screen-create" class="flex-1 flex flex-col items-center justify-center p-4 z-50 bg-gray-900 absolute inset-0 hidden">
+        <h1 class="text-3xl font-bold mb-8 text-blue-400">Novo Herói</h1>
+        <div class="w-full max-w-sm bg-gray-800 p-6 rounded-lg shadow-lg relative">
+            <input type="text" id="char-name" placeholder="Nome do Personagem" class="w-full p-2 mb-4 bg-gray-700 rounded border border-gray-600 text-white focus:outline-none focus:border-blue-500">
+            <div class="grid grid-cols-3 gap-2 mb-6">
+                <button onclick="selectClass('BK')" id="btn-cls-BK" class="p-2 bg-red-900 border-2 border-red-500 rounded text-xs font-bold transition">Blade Knight</button>
+                <button onclick="selectClass('SM')" id="btn-cls-SM" class="p-2 bg-blue-900 border-2 border-transparent rounded text-xs font-bold transition">Soul Master</button>
+                <button onclick="selectClass('ELF')" id="btn-cls-ELF" class="p-2 bg-green-900 border-2 border-transparent rounded text-xs font-bold transition">Muse Elf</button>
+            </div>
+            <p id="class-desc" class="text-xs text-gray-400 mb-6 text-center">BK: Focado em Força e Vitalidade. Combate corpo a corpo.</p>
+            <button onclick="startGame()" class="w-full py-3 bg-blue-600 hover:bg-blue-500 rounded font-bold text-white shadow-lg mb-2 transition">Entrar no Mundo</button>
+            <button onclick="cancelCreate()" class="w-full py-2 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 text-xs transition">Voltar</button>
+        </div>
+    </div>
+
+    <div id="screen-game" class="flex-1 flex flex-col hidden h-full overflow-hidden">
+        
+        <div class="bg-gray-800 border-b border-gray-700 p-2 flex flex-col gap-1 shadow-md z-10 shrink-0">
+            <div class="flex justify-between items-center font-bold text-xs sm:text-sm">
+                <div class="flex items-center gap-2">
+                    <span id="top-name" class="text-blue-400">Player</span>
+                    <span id="top-level" class="text-yellow-400">Lv: 1</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span id="top-zen" class="text-yellow-200">Zen: 0</span>
+                    <button onclick="logout()" class="bg-red-800 hover:bg-red-700 text-white px-2 py-1 rounded text-[10px] uppercase font-bold shadow-md transition">Sair</button>
+                </div>
+            </div>
+            <div class="flex gap-2 mt-1">
+                <div class="w-1/2 bg-gray-900 rounded h-3 relative">
+                    <div id="bar-hp" class="bg-red-600 h-full rounded progress-bar" style="width: 100%"></div>
+                    <span id="txt-hp" class="absolute inset-0 text-[10px] flex items-center justify-center text-white text-shadow">100/100</span>
+                </div>
+                <div class="w-1/2 bg-gray-900 rounded h-3 relative">
+                    <div id="bar-mp" class="bg-blue-600 h-full rounded progress-bar" style="width: 100%"></div>
+                    <span id="txt-mp" class="absolute inset-0 text-[10px] flex items-center justify-center text-white text-shadow">50/50</span>
+                </div>
+            </div>
+            <div class="flex flex-col gap-[2px] mt-1">
+                <div class="flex justify-between text-[9px] text-gray-400 px-1 font-bold">
+                    <span>EXP</span>
+                    <span id="txt-exp">0 / 100</span>
+                </div>
+                <div class="flex gap-[2px] bg-gray-900 rounded h-2 w-full p-[2px]">
+                    <div class="bg-gray-700 h-full flex-1 rounded-sm relative overflow-hidden"><div id="xp-seg-0" class="bg-yellow-500 h-full w-0 progress-bar"></div></div>
+                    <div class="bg-gray-700 h-full flex-1 rounded-sm relative overflow-hidden"><div id="xp-seg-1" class="bg-yellow-500 h-full w-0 progress-bar"></div></div>
+                    <div class="bg-gray-700 h-full flex-1 rounded-sm relative overflow-hidden"><div id="xp-seg-2" class="bg-yellow-500 h-full w-0 progress-bar"></div></div>
+                    <div class="bg-gray-700 h-full flex-1 rounded-sm relative overflow-hidden"><div id="xp-seg-3" class="bg-yellow-500 h-full w-0 progress-bar"></div></div>
+                    <div class="bg-gray-700 h-full flex-1 rounded-sm relative overflow-hidden"><div id="xp-seg-4" class="bg-yellow-500 h-full w-0 progress-bar"></div></div>
+                    <div class="bg-gray-700 h-full flex-1 rounded-sm relative overflow-hidden"><div id="xp-seg-5" class="bg-yellow-500 h-full w-0 progress-bar"></div></div>
+                    <div class="bg-gray-700 h-full flex-1 rounded-sm relative overflow-hidden"><div id="xp-seg-6" class="bg-yellow-500 h-full w-0 progress-bar"></div></div>
+                    <div class="bg-gray-700 h-full flex-1 rounded-sm relative overflow-hidden"><div id="xp-seg-7" class="bg-yellow-500 h-full w-0 progress-bar"></div></div>
+                    <div class="bg-gray-700 h-full flex-1 rounded-sm relative overflow-hidden"><div id="xp-seg-8" class="bg-yellow-500 h-full w-0 progress-bar"></div></div>
+                    <div class="bg-gray-700 h-full flex-1 rounded-sm relative overflow-hidden"><div id="xp-seg-9" class="bg-yellow-500 h-full w-0 progress-bar"></div></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="content-area" class="flex-1 overflow-y-auto p-2 min-h-0">
+            
+            <div id="tab-map" class="h-full flex flex-col hidden-tab">
+                <div id="current-location-label" class="text-center py-2 mb-2 bg-gray-800 border border-gray-600 rounded text-blue-400 font-bold uppercase tracking-wider shadow-inner text-xs shrink-0">
+                    📍 Você está em: Lorencia (Seguro)
+                </div>
+                
+                <div class="flex-1 mb-2 bg-black border border-gray-700 rounded p-2 overflow-y-auto log-box text-xs font-mono leading-relaxed" id="combat-log">
+                    <div class="text-gray-500">Você está na cidade. Seguro.</div>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-2 mb-2 shrink-0">
+                    <button onclick="moveTo('city')" class="col-span-2 bg-gray-700 p-3 rounded font-bold hover:bg-gray-600 border border-gray-500 transition">Retornar à Cidade</button>
+                    
+                    <button onclick="moveTo('lorencia')" class="bg-green-900 p-3 rounded font-bold hover:bg-green-800 border border-green-600 flex flex-col items-center transition"><span class="text-sm">Lorencia</span><span class="text-[10px] text-green-300">Lv 1-15</span></button>
+                    <button onclick="moveTo('devias')" class="bg-blue-900 p-3 rounded font-bold hover:bg-blue-800 border border-blue-600 flex flex-col items-center transition"><span class="text-sm">Devias</span><span class="text-[10px] text-blue-300">Lv 15-30</span></button>
+                    
+                    <button onclick="moveTo('losttower')" class="bg-red-900 p-3 rounded font-bold hover:bg-red-800 border border-red-600 flex flex-col items-center transition"><span class="text-sm">Lost Tower</span><span class="text-[10px] text-red-300">Lv 30-50</span></button>
+                    <button onclick="moveTo('atlans')" class="bg-teal-900 p-3 rounded font-bold hover:bg-teal-800 border border-teal-600 flex flex-col items-center transition"><span class="text-sm">Atlans</span><span class="text-[10px] text-teal-300">Lv 50-70</span></button>
+
+                    <button onclick="moveTo('tarkan')" class="bg-orange-900 p-3 rounded font-bold hover:bg-orange-800 border border-orange-600 flex flex-col items-center transition"><span class="text-sm">Tarkan</span><span class="text-[10px] text-orange-300">Lv 70-90</span></button>
+                    <button onclick="moveTo('icarus')" class="bg-fuchsia-900 p-3 rounded font-bold hover:bg-fuchsia-800 border border-fuchsia-600 flex flex-col items-center transition"><span class="text-sm">Icarus</span><span class="text-[10px] text-fuchsia-300">Lv 90+</span></button>
+                </div>
+                <div id="combat-status" class="text-center p-2 bg-gray-800 rounded border border-gray-600 text-yellow-400 font-bold shadow-inner shrink-0">
+                    Status: Descansando
+                </div>
+            </div>
+
+            <div id="tab-inv" class="h-full hidden-tab flex flex-col">
+                <div class="text-center font-bold mb-2 text-gray-400 text-xs shrink-0">Equipamentos</div>
+                <div class="grid grid-cols-4 gap-2 mb-4 bg-gray-800 p-2 rounded shrink-0">
+                    <div class="item-slot" id="eq-helm" onclick="openItemModal('equip', 'helm')">Elmo</div>
+                    <div class="item-slot" id="eq-armor" onclick="openItemModal('equip', 'armor')">Peito</div>
+                    <div class="item-slot" id="eq-pants" onclick="openItemModal('equip', 'pants')">Calça</div>
+                    <div class="item-slot" id="eq-gloves" onclick="openItemModal('equip', 'gloves')">Luva</div>
+                    <div class="item-slot" id="eq-boots" onclick="openItemModal('equip', 'boots')">Bota</div>
+                    <div class="item-slot" id="eq-weapon" onclick="openItemModal('equip', 'weapon')">Arma</div>
+                    <div class="item-slot" id="eq-shield" onclick="openItemModal('equip', 'shield')">Escudo</div>
+                    <div class="item-slot bg-gray-700 font-bold flex-col shadow-inner border-transparent opacity-50 pointer-events-none transition" id="eq-bank" onclick="openBankModal()">
+                        <span class="text-gray-400 text-xs">Baú Zen</span>
+                        <span id="stash-zen-display" class="text-yellow-300 text-sm mt-1">Fechado</span>
+                    </div>
+                </div>
+                <div class="text-center font-bold mb-2 text-gray-400 text-xs flex justify-between px-1 shrink-0">
+                    <span id="inv-title">Mochila (<span id="inv-count">0</span>/20)</span>
+                    <div>
+                        <button onclick="toggleStash()" id="btn-toggle-stash" class="text-yellow-400 underline mr-3">Baú</button>
+                        <button onclick="organizeInv()" class="text-blue-400 underline">Organizar</button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-5 gap-1 pb-2 overflow-y-auto" id="inv-grid">
+                    </div>
+            </div>
+
+            <div id="tab-stats" class="h-full hidden-tab overflow-y-auto pb-2">
+                <div class="bg-gray-800 p-4 rounded-lg shadow-lg border border-gray-700">
+                    <h2 class="text-xl font-bold text-center text-blue-400 mb-2 border-b border-gray-600 pb-2" id="stat-name">Nome - Classe</h2>
+                    
+                    <div id="pts-container" class="mb-4 text-center bg-green-900 text-green-200 p-2 rounded hidden font-bold">
+                        Pontos Livres: <span id="stat-points" class="text-white text-lg">0</span>
+                    </div>
+
+                    <div class="grid gap-3">
+                        <div class="flex items-center justify-between bg-gray-700 p-2 rounded shadow-inner">
+                            <span class="w-16 font-bold text-red-400">FOR</span>
+                            <span id="val-str" class="flex-1 text-center font-bold text-lg">10</span>
+                            <button onpointerdown="startHoldStat('str')" onpointerup="endHoldStat('str')" onpointerleave="cancelHoldStat()" class="bg-gray-600 px-4 py-1 rounded hover:bg-gray-500 font-bold hidden btn-add-stat">+</button>
+                        </div>
+                        <div class="flex items-center justify-between bg-gray-700 p-2 rounded shadow-inner">
+                            <span class="w-16 font-bold text-green-400">AGI</span>
+                            <span id="val-agi" class="flex-1 text-center font-bold text-lg">10</span>
+                            <button onpointerdown="startHoldStat('agi')" onpointerup="endHoldStat('agi')" onpointerleave="cancelHoldStat()" class="bg-gray-600 px-4 py-1 rounded hover:bg-gray-500 font-bold hidden btn-add-stat">+</button>
+                        </div>
+                        <div class="flex items-center justify-between bg-gray-700 p-2 rounded shadow-inner">
+                            <span class="w-16 font-bold text-yellow-400">VIT</span>
+                            <span id="val-vit" class="flex-1 text-center font-bold text-lg">10</span>
+                            <button onpointerdown="startHoldStat('vit')" onpointerup="endHoldStat('vit')" onpointerleave="cancelHoldStat()" class="bg-gray-600 px-4 py-1 rounded hover:bg-gray-500 font-bold hidden btn-add-stat">+</button>
+                        </div>
+                        <div class="flex items-center justify-between bg-gray-700 p-2 rounded shadow-inner">
+                            <span class="w-16 font-bold text-blue-400">ENE</span>
+                            <span id="val-ene" class="flex-1 text-center font-bold text-lg">10</span>
+                            <button onpointerdown="startHoldStat('ene')" onpointerup="endHoldStat('ene')" onpointerleave="cancelHoldStat()" class="bg-gray-600 px-4 py-1 rounded hover:bg-gray-500 font-bold hidden btn-add-stat">+</button>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 border-t border-gray-600 pt-4 grid grid-cols-2 gap-3 text-sm text-gray-300">
+                        <div class="bg-gray-900 p-2 rounded text-center">⚔️ Físico<br><span id="der-atk" class="text-white font-bold text-lg">10-15</span></div>
+                        <div class="bg-gray-900 p-2 rounded text-center">🔮 Mágico<br><span id="der-matk" class="text-white font-bold text-lg">0-0</span></div>
+                        <div class="bg-gray-900 p-2 rounded text-center">🛡️ Defesa<br><span id="der-def" class="text-white font-bold text-lg">5</span></div>
+                        <div class="bg-gray-900 p-2 rounded text-center">💨 Esquiva<br><span id="der-eva" class="text-white font-bold text-lg">1%</span></div>
+                        <div class="bg-gray-900 p-2 rounded text-center col-span-2 border border-gray-700 shadow-inner">⚡ Vel. Ataque: <span id="der-speed" class="text-yellow-400 font-bold text-lg ml-1">2.0s</span></div>
+                    </div>
+                    
+                    <div class="mt-4 pt-3 border-t border-gray-600 text-center">
+                        <p class="text-xs text-gray-400 mb-2">Resets Atuais: <span id="stat-resets" class="text-white font-bold text-lg">0</span></p>
+                        <button id="btn-reset" onclick="doReset()" class="hidden w-full bg-purple-700 hover:bg-purple-600 border border-purple-500 py-3 rounded font-bold text-white shadow-lg animate-pulse uppercase transition">Renascimento (Lv 100)</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-shops" class="h-full hidden-tab flex flex-col">
+                <div id="city-warning" class="text-center p-4 text-red-400 font-bold bg-gray-800 rounded shrink-0">
+                    Você precisa estar na Cidade para acessar as lojas. (Vá na aba Mapa)
+                </div>
+                <div id="shop-content" class="hidden flex-1 flex flex-col min-h-0">
+                    <div class="flex gap-1 mb-4 shrink-0">
+                        <button onclick="openShop('blacksmith')" id="btn-shop-bs" class="flex-1 bg-gray-700 py-2 rounded text-xs font-bold border-b-2 border-transparent transition">Ferreiro</button>
+                        <button onclick="openShop('potion')" id="btn-shop-pt" class="flex-1 bg-gray-700 py-2 rounded text-xs font-bold border-b-2 border-transparent transition">Poções</button>
+                        <button onclick="openShop('mage')" id="btn-shop-mg" class="flex-1 bg-gray-700 py-2 rounded text-xs font-bold border-b-2 border-transparent transition">Mago</button>
+                    </div>
+                    <div class="flex-1 bg-gray-800 rounded p-2 overflow-y-auto">
+                        <h3 id="shop-title" class="text-center font-bold mb-1 text-yellow-400 border-gray-600">Loja</h3>
+                        <p id="shop-subtitle" class="text-xs text-gray-400 text-center mb-3 border-b border-gray-600 pb-2">Itens fortes devem ser caçados!</p>
+                        <div id="shop-items" class="grid gap-2">
+                            </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-tactics" class="h-full hidden-tab overflow-y-auto pb-2">
+                <div class="bg-gray-800 p-4 rounded-lg">
+                    <h2 class="font-bold text-center text-blue-400 mb-4 border-b border-gray-600 pb-2">Auto-Combat & Táticas</h2>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-400 text-xs mb-1">Usar Poção de HP quando vida cair de <span id="val-tac-hp" class="text-white font-bold">50%</span></label>
+                        <input type="range" id="tac-hp" min="0" max="90" value="50" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" oninput="document.getElementById('val-tac-hp').innerText = this.value + '%'; saveTactics();">
+                    </div>
+                    
+                    <div class="mb-6">
+                        <label class="block text-gray-400 text-xs mb-1">Usar Poção de MP quando mana cair de <span id="val-tac-mp" class="text-white font-bold">20%</span></label>
+                        <input type="range" id="tac-mp" min="0" max="90" value="20" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" oninput="document.getElementById('val-tac-mp').innerText = this.value + '%'; saveTactics();">
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-gray-400 text-xs mb-1">Magia Ativa (Auto-Cast)</label>
+                        <select id="tac-skill" onchange="saveTactics()" class="w-full bg-gray-700 border border-gray-600 rounded p-3 text-white outline-none font-bold">
+                            <option value="none">Ataque Básico Físico</option>
+                            </select>
+                        <p class="text-[10px] text-gray-500 mt-1">* Magias em área só ativam contra grupos para poupar mana.</p>
+                    </div>
+                    
+                    <div class="mt-6 pt-4 border-t border-gray-600">
+                        <h3 class="text-sm font-bold text-yellow-400 mb-3">Auto-Retorno e Venda (Grind)</h3>
+                        <label class="flex items-center gap-2 text-xs text-gray-300 mb-4 cursor-pointer">
+                            <input type="checkbox" id="tac-auto-return" class="w-4 h-4 accent-blue-600" onchange="saveTactics()">
+                            Voltar p/ cidade ao encher mochila, vender lixo e retornar pro Spot.
+                        </label>
+                        
+                        <p class="text-xs text-gray-500 mb-2">Configuração de Lixo (O que vender):</p>
+                        <div class="grid grid-cols-2 gap-2 text-xs text-gray-300 mb-1">
+                            <label class="flex items-center gap-2 cursor-pointer bg-gray-900 p-2 rounded border border-gray-700"><input type="checkbox" id="tac-sell-common" class="accent-blue-600" onchange="saveTactics()"> Itens Comuns</label>
+                            <label class="flex items-center gap-2 cursor-pointer bg-gray-900 p-2 rounded border border-gray-700"><input type="checkbox" id="tac-sell-rare" class="accent-blue-600" onchange="saveTactics()"> Itens Raros</label>
+                            <label class="flex items-center gap-2 cursor-pointer bg-gray-900 p-2 rounded border border-gray-700 col-span-2"><input type="checkbox" id="tac-sell-pots" class="accent-blue-600" onchange="saveTactics()"> Poções (Consumíveis)</label>
+                        </div>
+                        <p class="text-[10px] text-pink-400 mt-2 italic text-center">* Mantém 1 stack de cada poção a salvo.</p>
+                        <p class="text-[10px] text-pink-400 italic text-center">* Joias e Lendários NUNCA são vendidos.</p>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+
+        <div class="bg-gray-900 border-t border-gray-700 flex justify-around w-full pb-safe shrink-0 z-20">
+            <button onclick="switchTab('map')" id="nav-map" class="nav-btn p-3 text-gray-400 hover:text-white flex-1 text-center font-bold flex flex-col items-center transition-colors">
+                <span class="text-xl mb-1">🗺️</span><span class="text-[10px]">Mapa</span>
+            </button>
+            <button onclick="switchTab('inv')" id="nav-inv" class="nav-btn p-3 text-gray-400 hover:text-white flex-1 text-center font-bold flex flex-col items-center transition-colors">
+                <span class="text-xl mb-1">🎒</span><span class="text-[10px]">Mochila</span>
+            </button>
+            <button onclick="switchTab('stats')" id="nav-stats" class="nav-btn p-3 text-gray-400 hover:text-white flex-1 text-center font-bold flex flex-col items-center transition-colors">
+                <span class="text-xl mb-1">👤</span><span class="text-[10px]">Status</span>
+            </button>
+            <button onclick="switchTab('shops')" id="nav-shops" class="nav-btn p-3 text-gray-400 hover:text-white flex-1 text-center font-bold flex flex-col items-center transition-colors">
+                <span class="text-xl mb-1">⚖️</span><span class="text-[10px]">Lojas</span>
+            </button>
+            <button onclick="switchTab('tactics')" id="nav-tactics" class="nav-btn p-3 text-gray-400 hover:text-white flex-1 text-center font-bold flex flex-col items-center transition-colors">
+                <span class="text-xl mb-1">⚙️</span><span class="text-[10px]">Táticas</span>
+            </button>
+        </div>
+    </div>
+
+    <div id="item-modal" class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-gray-800 border border-gray-600 rounded-lg max-w-sm w-full p-5 relative shadow-2xl">
+            <button onclick="closeModal()" class="absolute top-2 right-3 text-gray-400 hover:text-white font-bold text-2xl">&times;</button>
+            <div id="modal-content">
+                </div>
+        </div>
+    </div>
+    
+    <div id="stat-slider-modal" class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-gray-800 border border-gray-600 rounded-lg max-w-xs w-full p-5 relative shadow-2xl text-center">
+            <h3 class="text-xl font-bold mb-2 text-blue-400 uppercase" id="modal-stat-title">Força</h3>
+            <p class="text-xs text-gray-400 mb-4">Pontos disponíveis: <span id="modal-stat-avail" class="text-yellow-400 font-bold"></span></p>
+            <p class="text-3xl text-white font-bold mb-6" id="modal-stat-val">1</p>
+            
+            <input type="range" id="modal-stat-range" min="1" max="1" value="1" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer mb-6" oninput="document.getElementById('modal-stat-val').innerText = this.value;">
+            
+            <div class="flex gap-2">
+                <button onclick="closeStatSlider()" class="flex-1 bg-gray-600 hover:bg-gray-500 py-3 rounded font-bold text-white shadow-lg transition">Cancelar</button>
+                <button onclick="confirmStatSlider()" class="flex-1 bg-green-600 hover:bg-green-500 py-3 rounded font-bold text-white shadow-lg transition">Adicionar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-[100] flex flex-col gap-2 pointer-events-none w-full max-w-sm px-4 items-center text-center"></div>
+
+<script>
+// --- LÓGICA DO PWA (Botão de Instalação e Manifest Dinâmico) ---
+const manifestData = {
+    name: "Pocket MU RPG",
+    short_name: "Pocket MU",
+    start_url: window.location.href.split('?')[0],
+    display: "standalone",
+    background_color: "#111827",
+    theme_color: "#111827",
+    icons: [{
+        src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚔️</text></svg>",
+        sizes: "192x192",
+        type: "image/svg+xml"
+    }]
+};
+// O formato data URI costuma ser mais confiável pro Chrome engolir do que o Blob para manifestos
+const manifestString = JSON.stringify(manifestData);
+document.getElementById('dynamic-manifest').setAttribute('href', 'data:application/json;charset=utf-8,' + encodeURIComponent(manifestString));
+
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+    // Intercepta o evento nativo do Chrome
+    e.preventDefault();
+    deferredPrompt = e;
+    // Mostra o botãozão azul lá na tela inicial
+    document.getElementById('btn-install-app').classList.remove('hidden');
+});
+
+    <!-- Toast Container (Notificações Flutuantes) -->
+    <div id="toast-container" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-[100] flex flex-col gap-2 pointer-events-none w-full max-w-sm px-4 items-center text-center"></div>
+
+<script>
+// --- LÓGICA DO PWA (Botão de Instalação e Service Worker) ---
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+    // Intercepta o evento nativo do Chrome
+    e.preventDefault();
+    deferredPrompt = e;
+    // Mostra o botãozão azul lá na tela inicial
+    document.getElementById('btn-install-app').classList.remove('hidden');
+});
+
+function installApp() {
+    if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then((choiceResult) => {
+            if (choiceResult.outcome === 'accepted') {
+                document.getElementById('btn-install-app').classList.add('hidden');
+            }
+            deferredPrompt = null;
+        });
+    }
+}
+
+// Registra o Service Worker de verdade pra rodar offline e liberar instalação
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(e => console.log('SW falhou:', e));
+    });
+}
+
+// --- BANCOS DE POOLS E ITENS ---
+const POOLS = {
+    T1: [ 'short_sword', 'buckler', 'leather_helm', 'leather_armor', 'leather_pants', 'leather_gloves', 'leather_boots', 'skull_staff', 'pad_helm', 'pad_armor', 'pad_pants', 'pad_gloves', 'pad_boots', 'short_bow', 'vine_helm', 'vine_armor', 'vine_pants', 'vine_gloves', 'vine_boots' ],
+    T2: [ 'hand_axe', 'horn_shield', 'bronze_helm', 'bronze_armor', 'bronze_pants', 'bronze_gloves', 'bronze_boots', 'angelic_staff', 'bone_helm', 'bone_armor', 'bone_pants', 'bone_gloves', 'bone_boots', 'crossbow', 'silk_helm', 'silk_armor', 'silk_pants', 'silk_gloves', 'silk_boots' ],
+    T3: [ 'katana', 'kite_shield', 'brass_helm', 'brass_armor', 'brass_pants', 'brass_gloves', 'brass_boots', 'gorgon_staff', 'sphinx_helm', 'sphinx_armor', 'sphinx_pants', 'sphinx_gloves', 'sphinx_boots', 'elven_bow', 'wind_helm', 'wind_armor', 'wind_pants', 'wind_gloves', 'wind_boots' ],
+    RARE: [ 'double_blade', 'tower_shield', 'plate_helm', 'plate_armor', 'plate_pants', 'plate_gloves', 'plate_boots', 'resurrection_staff', 'legendary_helm', 'legendary_armor', 'legendary_pants', 'legendary_gloves', 'legendary_boots', 'battle_bow', 'guardian_helm', 'guardian_armor', 'guardian_pants', 'guardian_gloves', 'guardian_boots' ],
+    LEG: [ 'knight_blade', 'dragon_shield', 'dragon_helm', 'dragon_armor', 'dragon_pants', 'dragon_gloves', 'dragon_boots', 'grand_viper_staff', 'grand_soul_helm', 'grand_soul_armor', 'grand_soul_pants', 'grand_soul_gloves', 'grand_soul_boots', 'celestial_bow', 'divine_helm', 'divine_armor', 'divine_pants', 'divine_gloves', 'divine_boots' ]
+};
+
+const DB = {
+    classes: {
+        BK: { name: 'Blade Knight', str: 28, agi: 20, vit: 25, ene: 10 },
+        SM: { name: 'Soul Master', str: 18, agi: 18, vit: 15, ene: 30 },
+        ELF: { name: 'Muse Elf', str: 22, agi: 25, vit: 20, ene: 15 }
+    },
+    items: {
+        // --- WEAPONS ---
+        'short_sword': { id: 'short_sword', name: 'Short Sword', type: 'weapon', rarity: 'common', slot: 'weapon', atk: 15, reqStr: 30, price: 100, cls: ['BK'] },
+        'hand_axe': { id: 'hand_axe', name: 'Hand Axe', type: 'weapon', rarity: 'common', slot: 'weapon', atk: 35, reqStr: 60, price: 1000, cls: ['BK'] },
+        'katana': { id: 'katana', name: 'Katana', type: 'weapon', rarity: 'common', slot: 'weapon', atk: 80, reqStr: 100, price: 5000, cls: ['BK'] },
+        'double_blade': { id: 'double_blade', name: 'Double Blade', type: 'weapon', rarity: 'rare', slot: 'weapon', atk: 140, reqStr: 250, price: 15000, cls: ['BK'] },
+        'knight_blade': { id: 'knight_blade', name: 'Knight Blade', type: 'weapon', rarity: 'legendary', slot: 'weapon', atk: 280, reqStr: 400, price: 40000, cls: ['BK'] },
+        
+        'skull_staff': { id: 'skull_staff', name: 'Skull Staff', type: 'weapon', rarity: 'common', slot: 'weapon', matk: 20, reqEne: 40, price: 120, cls: ['SM'] },
+        'angelic_staff': { id: 'angelic_staff', name: 'Angelic Staff', type: 'weapon', rarity: 'common', slot: 'weapon', matk: 40, reqEne: 80, price: 1200, cls: ['SM'] },
+        'gorgon_staff': { id: 'gorgon_staff', name: 'Gorgon Staff', type: 'weapon', rarity: 'common', slot: 'weapon', matk: 90, reqEne: 150, price: 5500, cls: ['SM'] },
+        'resurrection_staff': { id: 'resurrection_staff', name: 'Staff of Resurrection', type: 'weapon', rarity: 'rare', slot: 'weapon', matk: 150, reqEne: 220, price: 16000, cls: ['SM'] },
+        'grand_viper_staff': { id: 'grand_viper_staff', name: 'Grand Viper Staff', type: 'weapon', rarity: 'legendary', slot: 'weapon', matk: 300, reqEne: 350, price: 42000, cls: ['SM'] },
+        
+        'short_bow': { id: 'short_bow', name: 'Short Bow', type: 'weapon', rarity: 'common', slot: 'weapon', atk: 15, reqAgi: 40, price: 110, cls: ['ELF'] },
+        'crossbow': { id: 'crossbow', name: 'Crossbow', type: 'weapon', rarity: 'common', slot: 'weapon', atk: 35, reqAgi: 70, price: 1100, cls: ['ELF'] },
+        'elven_bow': { id: 'elven_bow', name: 'Elven Bow', type: 'weapon', rarity: 'common', slot: 'weapon', atk: 75, reqAgi: 120, price: 5200, cls: ['ELF'] },
+        'battle_bow': { id: 'battle_bow', name: 'Battle Bow', type: 'weapon', rarity: 'rare', slot: 'weapon', atk: 130, reqAgi: 200, price: 15500, cls: ['ELF'] },
+        'celestial_bow': { id: 'celestial_bow', name: 'Celestial Bow', type: 'weapon', rarity: 'legendary', slot: 'weapon', atk: 260, reqAgi: 320, price: 41000, cls: ['ELF'] },
+        
+        // --- SHIELDS ---
+        'buckler': { id: 'buckler', name: 'Buckler Shield', type: 'shield', rarity: 'common', slot: 'shield', def: 5, reqStr: 30, price: 80, cls: ['BK'] },
+        'horn_shield': { id: 'horn_shield', name: 'Horn Shield', type: 'shield', rarity: 'common', slot: 'shield', def: 15, reqStr: 60, price: 800, cls: ['BK'] },
+        'kite_shield': { id: 'kite_shield', name: 'Kite Shield', type: 'shield', rarity: 'common', slot: 'shield', def: 35, reqStr: 100, price: 4000, cls: ['BK'] },
+        'tower_shield': { id: 'tower_shield', name: 'Tower Shield', type: 'shield', rarity: 'rare', slot: 'shield', def: 70, reqStr: 180, price: 12000, cls: ['BK'] },
+        'dragon_shield': { id: 'dragon_shield', name: 'Dragon Shield', type: 'shield', rarity: 'legendary', slot: 'shield', def: 140, reqStr: 300, price: 30000, cls: ['BK'] },
+
+        // --- ARMORS BK ---
+        'leather_helm': { id: 'leather_helm', name: 'Leather Helm', type: 'armor', rarity: 'common', slot: 'helm', def: 5, reqStr: 30, price: 60, cls: ['BK'] },
+        'leather_armor': { id: 'leather_armor', name: 'Leather Armor', type: 'armor', rarity: 'common', slot: 'armor', def: 10, reqStr: 40, price: 100, cls: ['BK'] },
+        'leather_pants': { id: 'leather_pants', name: 'Leather Pants', type: 'armor', rarity: 'common', slot: 'pants', def: 8, reqStr: 35, price: 80, cls: ['BK'] },
+        'leather_gloves': { id: 'leather_gloves', name: 'Leather Gloves', type: 'armor', rarity: 'common', slot: 'gloves', def: 4, reqStr: 25, price: 50, cls: ['BK'] },
+        'leather_boots': { id: 'leather_boots', name: 'Leather Boots', type: 'armor', rarity: 'common', slot: 'boots', def: 4, reqStr: 25, price: 50, cls: ['BK'] },
+        
+        'bronze_helm': { id: 'bronze_helm', name: 'Bronze Helm', type: 'armor', rarity: 'common', slot: 'helm', def: 15, reqStr: 60, price: 600, cls: ['BK'] },
+        'bronze_armor': { id: 'bronze_armor', name: 'Bronze Armor', type: 'armor', rarity: 'common', slot: 'armor', def: 25, reqStr: 70, price: 1000, cls: ['BK'] },
+        'bronze_pants': { id: 'bronze_pants', name: 'Bronze Pants', type: 'armor', rarity: 'common', slot: 'pants', def: 20, reqStr: 65, price: 800, cls: ['BK'] },
+        'bronze_gloves': { id: 'bronze_gloves', name: 'Bronze Gloves', type: 'armor', rarity: 'common', slot: 'gloves', def: 10, reqStr: 50, price: 500, cls: ['BK'] },
+        'bronze_boots': { id: 'bronze_boots', name: 'Bronze Boots', type: 'armor', rarity: 'common', slot: 'boots', def: 10, reqStr: 50, price: 500, cls: ['BK'] },
+        
+        'brass_helm': { id: 'brass_helm', name: 'Brass Helm', type: 'armor', rarity: 'common', slot: 'helm', def: 30, reqStr: 100, price: 2500, cls: ['BK'] },
+        'brass_armor': { id: 'brass_armor', name: 'Brass Armor', type: 'armor', rarity: 'common', slot: 'armor', def: 40, reqStr: 120, price: 4000, cls: ['BK'] },
+        'brass_pants': { id: 'brass_pants', name: 'Brass Pants', type: 'armor', rarity: 'common', slot: 'pants', def: 35, reqStr: 110, price: 3200, cls: ['BK'] },
+        'brass_gloves': { id: 'brass_gloves', name: 'Brass Gloves', type: 'armor', rarity: 'common', slot: 'gloves', def: 20, reqStr: 90, price: 2000, cls: ['BK'] },
+        'brass_boots': { id: 'brass_boots', name: 'Brass Boots', type: 'armor', rarity: 'common', slot: 'boots', def: 20, reqStr: 90, price: 2000, cls: ['BK'] },
+        
+        'plate_helm': { id: 'plate_helm', name: 'Plate Helm', type: 'armor', rarity: 'rare', slot: 'helm', def: 50, reqStr: 180, price: 10000, cls: ['BK'] },
+        'plate_armor': { id: 'plate_armor', name: 'Plate Armor', type: 'armor', rarity: 'rare', slot: 'armor', def: 70, reqStr: 200, price: 15000, cls: ['BK'] },
+        'plate_pants': { id: 'plate_pants', name: 'Plate Pants', type: 'armor', rarity: 'rare', slot: 'pants', def: 60, reqStr: 190, price: 12000, cls: ['BK'] },
+        'plate_gloves': { id: 'plate_gloves', name: 'Plate Gloves', type: 'armor', rarity: 'rare', slot: 'gloves', def: 40, reqStr: 160, price: 8000, cls: ['BK'] },
+        'plate_boots': { id: 'plate_boots', name: 'Plate Boots', type: 'armor', rarity: 'rare', slot: 'boots', def: 40, reqStr: 160, price: 8000, cls: ['BK'] },
+        
+        'dragon_helm': { id: 'dragon_helm', name: 'Dragon Helm', type: 'armor', rarity: 'legendary', slot: 'helm', def: 100, reqStr: 300, price: 25000, cls: ['BK'] },
+        'dragon_armor': { id: 'dragon_armor', name: 'Dragon Armor', type: 'armor', rarity: 'legendary', slot: 'armor', def: 140, reqStr: 330, price: 35000, cls: ['BK'] },
+        'dragon_pants': { id: 'dragon_pants', name: 'Dragon Pants', type: 'armor', rarity: 'legendary', slot: 'pants', def: 120, reqStr: 310, price: 28000, cls: ['BK'] },
+        'dragon_gloves': { id: 'dragon_gloves', name: 'Dragon Gloves', type: 'armor', rarity: 'legendary', slot: 'gloves', def: 80, reqStr: 280, price: 20000, cls: ['BK'] },
+        'dragon_boots': { id: 'dragon_boots', name: 'Dragon Boots', type: 'armor', rarity: 'legendary', slot: 'boots', def: 80, reqStr: 280, price: 20000, cls: ['BK'] },
+
+        // --- ARMORS SM ---
+        'pad_helm': { id: 'pad_helm', name: 'Pad Helm', type: 'armor', rarity: 'common', slot: 'helm', def: 4, reqEne: 40, price: 60, cls: ['SM'] },
+        'pad_armor': { id: 'pad_armor', name: 'Pad Armor', type: 'armor', rarity: 'common', slot: 'armor', def: 8, reqEne: 50, price: 100, cls: ['SM'] },
+        'pad_pants': { id: 'pad_pants', name: 'Pad Pants', type: 'armor', rarity: 'common', slot: 'pants', def: 6, reqEne: 45, price: 80, cls: ['SM'] },
+        'pad_gloves': { id: 'pad_gloves', name: 'Pad Gloves', type: 'armor', rarity: 'common', slot: 'gloves', def: 3, reqEne: 35, price: 50, cls: ['SM'] },
+        'pad_boots': { id: 'pad_boots', name: 'Pad Boots', type: 'armor', rarity: 'common', slot: 'boots', def: 3, reqEne: 35, price: 50, cls: ['SM'] },
+        
+        'bone_helm': { id: 'bone_helm', name: 'Bone Helm', type: 'armor', rarity: 'common', slot: 'helm', def: 12, reqEne: 80, price: 600, cls: ['SM'] },
+        'bone_armor': { id: 'bone_armor', name: 'Bone Armor', type: 'armor', rarity: 'common', slot: 'armor', def: 20, reqEne: 90, price: 1000, cls: ['SM'] },
+        'bone_pants': { id: 'bone_pants', name: 'Bone Pants', type: 'armor', rarity: 'common', slot: 'pants', def: 16, reqEne: 85, price: 800, cls: ['SM'] },
+        'bone_gloves': { id: 'bone_gloves', name: 'Bone Gloves', type: 'armor', rarity: 'common', slot: 'gloves', def: 8, reqEne: 70, price: 500, cls: ['SM'] },
+        'bone_boots': { id: 'bone_boots', name: 'Bone Boots', type: 'armor', rarity: 'common', slot: 'boots', def: 8, reqEne: 70, price: 500, cls: ['SM'] },
+        
+        'sphinx_helm': { id: 'sphinx_helm', name: 'Sphinx Helm', type: 'armor', rarity: 'common', slot: 'helm', def: 25, reqEne: 150, price: 2500, cls: ['SM'] },
+        'sphinx_armor': { id: 'sphinx_armor', name: 'Sphinx Armor', type: 'armor', rarity: 'common', slot: 'armor', def: 35, reqEne: 170, price: 4000, cls: ['SM'] },
+        'sphinx_pants': { id: 'sphinx_pants', name: 'Sphinx Pants', type: 'armor', rarity: 'common', slot: 'pants', def: 28, reqEne: 160, price: 3200, cls: ['SM'] },
+        'sphinx_gloves': { id: 'sphinx_gloves', name: 'Sphinx Gloves', type: 'armor', rarity: 'common', slot: 'gloves', def: 15, reqEne: 140, price: 2000, cls: ['SM'] },
+        'sphinx_boots': { id: 'sphinx_boots', name: 'Sphinx Boots', type: 'armor', rarity: 'common', slot: 'boots', def: 15, reqEne: 140, price: 2000, cls: ['SM'] },
+        
+        'legendary_helm': { id: 'legendary_helm', name: 'Legendary Helm', type: 'armor', rarity: 'rare', slot: 'helm', def: 45, reqEne: 250, price: 10000, cls: ['SM'] },
+        'legendary_armor': { id: 'legendary_armor', name: 'Legendary Armor', type: 'armor', rarity: 'rare', slot: 'armor', def: 60, reqEne: 280, price: 15000, cls: ['SM'] },
+        'legendary_pants': { id: 'legendary_pants', name: 'Legendary Pants', type: 'armor', rarity: 'rare', slot: 'pants', def: 50, reqEne: 260, price: 12000, cls: ['SM'] },
+        'legendary_gloves': { id: 'legendary_gloves', name: 'Legendary Gloves', type: 'armor', rarity: 'rare', slot: 'gloves', def: 30, reqEne: 230, price: 8000, cls: ['SM'] },
+        'legendary_boots': { id: 'legendary_boots', name: 'Legendary Boots', type: 'armor', rarity: 'rare', slot: 'boots', def: 30, reqEne: 230, price: 8000, cls: ['SM'] },
+        
+        'grand_soul_helm': { id: 'grand_soul_helm', name: 'Grand Soul Helm', type: 'armor', rarity: 'legendary', slot: 'helm', def: 90, reqEne: 400, price: 25000, cls: ['SM'] },
+        'grand_soul_armor': { id: 'grand_soul_armor', name: 'Grand Soul Armor', type: 'armor', rarity: 'legendary', slot: 'armor', def: 120, reqEne: 450, price: 35000, cls: ['SM'] },
+        'grand_soul_pants': { id: 'grand_soul_pants', name: 'Grand Soul Pants', type: 'armor', rarity: 'legendary', slot: 'pants', def: 100, reqEne: 420, price: 28000, cls: ['SM'] },
+        'grand_soul_gloves': { id: 'grand_soul_gloves', name: 'Grand Soul Gloves', type: 'armor', rarity: 'legendary', slot: 'gloves', def: 60, reqEne: 380, price: 20000, cls: ['SM'] },
+        'grand_soul_boots': { id: 'grand_soul_boots', name: 'Grand Soul Boots', type: 'armor', rarity: 'legendary', slot: 'boots', def: 60, reqEne: 380, price: 20000, cls: ['SM'] },
+
+        // --- ARMORS ELF ---
+        'vine_helm': { id: 'vine_helm', name: 'Vine Helm', type: 'armor', rarity: 'common', slot: 'helm', def: 4, reqAgi: 40, price: 60, cls: ['ELF'] },
+        'vine_armor': { id: 'vine_armor', name: 'Vine Armor', type: 'armor', rarity: 'common', slot: 'armor', def: 8, reqAgi: 50, price: 100, cls: ['ELF'] },
+        'vine_pants': { id: 'vine_pants', name: 'Vine Pants', type: 'armor', rarity: 'common', slot: 'pants', def: 6, reqAgi: 45, price: 80, cls: ['ELF'] },
+        'vine_gloves': { id: 'vine_gloves', name: 'Vine Gloves', type: 'armor', rarity: 'common', slot: 'gloves', def: 3, reqAgi: 35, price: 50, cls: ['ELF'] },
+        'vine_boots': { id: 'vine_boots', name: 'Vine Boots', type: 'armor', rarity: 'common', slot: 'boots', def: 3, reqAgi: 35, price: 50, cls: ['ELF'] },
+        
+        'silk_helm': { id: 'silk_helm', name: 'Silk Helm', type: 'armor', rarity: 'common', slot: 'helm', def: 14, reqAgi: 80, price: 600, cls: ['ELF'] },
+        'silk_armor': { id: 'silk_armor', name: 'Silk Armor', type: 'armor', rarity: 'common', slot: 'armor', def: 22, reqAgi: 90, price: 1000, cls: ['ELF'] },
+        'silk_pants': { id: 'silk_pants', name: 'Silk Pants', type: 'armor', rarity: 'common', slot: 'pants', def: 18, reqAgi: 85, price: 800, cls: ['ELF'] },
+        'silk_gloves': { id: 'silk_gloves', name: 'Silk Gloves', type: 'armor', rarity: 'common', slot: 'gloves', def: 9, reqAgi: 70, price: 500, cls: ['ELF'] },
+        'silk_boots': { id: 'silk_boots', name: 'Silk Boots', type: 'armor', rarity: 'common', slot: 'boots', def: 9, reqAgi: 70, price: 500, cls: ['ELF'] },
+        
+        'wind_helm': { id: 'wind_helm', name: 'Wind Helm', type: 'armor', rarity: 'common', slot: 'helm', def: 28, reqAgi: 150, price: 2500, cls: ['ELF'] },
+        'wind_armor': { id: 'wind_armor', name: 'Wind Armor', type: 'armor', rarity: 'common', slot: 'armor', def: 38, reqAgi: 170, price: 4000, cls: ['ELF'] },
+        'wind_pants': { id: 'wind_pants', name: 'Wind Pants', type: 'armor', rarity: 'common', slot: 'pants', def: 32, reqAgi: 160, price: 3200, cls: ['ELF'] },
+        'wind_gloves': { id: 'wind_gloves', name: 'Wind Gloves', type: 'armor', rarity: 'common', slot: 'gloves', def: 18, reqAgi: 140, price: 2000, cls: ['ELF'] },
+        'wind_boots': { id: 'wind_boots', name: 'Wind Boots', type: 'armor', rarity: 'common', slot: 'boots', def: 18, reqAgi: 140, price: 2000, cls: ['ELF'] },
+        
+        'guardian_helm': { id: 'guardian_helm', name: 'Guardian Helm', type: 'armor', rarity: 'rare', slot: 'helm', def: 48, reqAgi: 250, price: 10000, cls: ['ELF'] },
+        'guardian_armor': { id: 'guardian_armor', name: 'Guardian Armor', type: 'armor', rarity: 'rare', slot: 'armor', def: 65, reqAgi: 280, price: 15000, cls: ['ELF'] },
+        'guardian_pants': { id: 'guardian_pants', name: 'Guardian Pants', type: 'armor', rarity: 'rare', slot: 'pants', def: 55, reqAgi: 260, price: 12000, cls: ['ELF'] },
+        'guardian_gloves': { id: 'guardian_gloves', name: 'Guardian Gloves', type: 'armor', rarity: 'rare', slot: 'gloves', def: 35, reqAgi: 230, price: 8000, cls: ['ELF'] },
+        'guardian_boots': { id: 'guardian_boots', name: 'Guardian Boots', type: 'armor', rarity: 'rare', slot: 'boots', def: 35, reqAgi: 230, price: 8000, cls: ['ELF'] },
+        
+        'divine_helm': { id: 'divine_helm', name: 'Divine Helm', type: 'armor', rarity: 'legendary', slot: 'helm', def: 95, reqAgi: 400, price: 25000, cls: ['ELF'] },
+        'divine_armor': { id: 'divine_armor', name: 'Divine Armor', type: 'armor', rarity: 'legendary', slot: 'armor', def: 130, reqAgi: 450, price: 35000, cls: ['ELF'] },
+        'divine_pants': { id: 'divine_pants', name: 'Divine Pants', type: 'armor', rarity: 'legendary', slot: 'pants', def: 110, reqAgi: 420, price: 28000, cls: ['ELF'] },
+        'divine_gloves': { id: 'divine_gloves', name: 'Divine Gloves', type: 'armor', rarity: 'legendary', slot: 'gloves', def: 70, reqAgi: 380, price: 20000, cls: ['ELF'] },
+        'divine_boots': { id: 'divine_boots', name: 'Divine Boots', type: 'armor', rarity: 'legendary', slot: 'boots', def: 70, reqAgi: 380, price: 20000, cls: ['ELF'] },
+
+        // --- CONSUMÍVEIS ---
+        'hp_pot_s': { id: 'hp_pot_s', name: 'Healing Potion (S)', type: 'consumable', rarity: 'common', healHp: 150, price: 50, desc: 'Recupera 150 HP.' },
+        'hp_pot_m': { id: 'hp_pot_m', name: 'Healing Potion (M)', type: 'consumable', rarity: 'common', healHp: 400, price: 150, desc: 'Recupera 400 HP.' },
+        'hp_pot_l': { id: 'hp_pot_l', name: 'Healing Potion (L)', type: 'consumable', rarity: 'common', healHp: 1000, price: 350, desc: 'Recupera 1000 HP.' },
+        'mp_pot_s': { id: 'mp_pot_s', name: 'Mana Potion (S)', type: 'consumable', rarity: 'common', healMp: 100, price: 50, desc: 'Recupera 100 MP.' },
+        'mp_pot_m': { id: 'mp_pot_m', name: 'Mana Potion (M)', type: 'consumable', rarity: 'common', healMp: 300, price: 150, desc: 'Recupera 300 MP.' },
+        
+        // --- MAGIAS ---
+        'scroll_twisting': { id: 'scroll_twisting', name: 'Orb of Twisting Slash', type: 'skill_book', rarity: 'rare', skillId: 'twisting', reqEne: 20, reqLvl: 10, price: 5000, cls: ['BK'], desc: 'Ensina Twisting Slash. Dano em área.' },
+        'scroll_evil': { id: 'scroll_evil', name: 'Scroll of Evil Spirits', type: 'skill_book', rarity: 'rare', skillId: 'evil_spirits', reqEne: 80, reqLvl: 15, price: 8000, cls: ['SM'], desc: 'Ensina Evil Spirits. Dano em área contínuo.' },
+        'scroll_multishot': { id: 'scroll_multishot', name: 'Orb of Multi-Shot', type: 'skill_book', rarity: 'rare', skillId: 'multishot', reqEne: 30, reqLvl: 10, price: 5000, cls: ['ELF'], desc: 'Ensina Multi-Shot. Dispara em área.' },
+
+        // --- JOIAS ---
+        'jewel_bless': { id: 'jewel_bless', name: 'Jewel of Bless', type: 'jewel', rarity: 'jewel', price: 100000, desc: 'Refina equipamento (+1 a +6) com 100% chance.' },
+        'jewel_soul': { id: 'jewel_soul', name: 'Jewel of Soul', type: 'jewel', rarity: 'jewel', price: 250000, desc: 'Refina equipamento (+1 a +15) sem chance de falha.' }
+    },
+    skills: {
+        'twisting': { id: 'twisting', name: 'Twisting Slash', costMp: 15, dmgMult: 3.0, type: 'phys', isAoE: true },
+        'evil_spirits': { id: 'evil_spirits', name: 'Evil Spirits', costMp: 30, dmgMult: 3.5, type: 'mag', isAoE: true },
+        'multishot': { id: 'multishot', name: 'Multi-Shot', costMp: 20, hits: 3, dmgMult: 1.2, type: 'phys', isAoE: true }
+    },
+    spotDrops: {
+        'lorencia': { common: POOLS.T1, rare: POOLS.T2, legendary: [] },
+        'devias': { common: POOLS.T2, rare: POOLS.T3, legendary: [] },
+        'losttower': { common: POOLS.T3, rare: POOLS.RARE, legendary: [] },
+        'atlans': { common: POOLS.RARE, rare: POOLS.LEG, legendary: POOLS.LEG },
+        'tarkan': { common: POOLS.RARE, rare: POOLS.LEG, legendary: POOLS.LEG },
+        'icarus': { common: POOLS.LEG, rare: POOLS.LEG, legendary: POOLS.LEG }
+    },
+    spots: {
+        'lorencia': { name: 'Lorencia', minLv: 1, maxLv: 15, monsters: ['spider', 'goblin'] },
+        'devias': { name: 'Devias', minLv: 15, maxLv: 30, monsters: ['worm', 'elite_goblin', 'yeti'] },
+        'losttower': { name: 'Lost Tower', minLv: 30, maxLv: 50, monsters: ['shadow', 'poison_bull'] },
+        'atlans': { name: 'Atlans', minLv: 50, maxLv: 70, monsters: ['bahamut', 'vepar', 'valkyrie'] },
+        'tarkan': { name: 'Tarkan', minLv: 70, maxLv: 90, monsters: ['mutant', 'bloody_wolf', 'tantalos'] },
+        'icarus': { name: 'Icarus', minLv: 90, maxLv: 100, monsters: ['alquamos', 'mega_crust', 'phantom_knight'] }
+    },
+    monsters: {
+        'spider': { name: 'Spider', hp: 30, atk: 10, def: 2, exp: 15, zen: 20 },
+        'goblin': { name: 'Goblin', hp: 50, atk: 18, def: 4, exp: 25, zen: 40 },
+        'worm': { name: 'Ice Worm', hp: 120, atk: 45, def: 12, exp: 80, zen: 100 },
+        'elite_goblin': { name: 'Elite Goblin', hp: 250, atk: 65, def: 18, exp: 150, zen: 200 },
+        'yeti': { name: 'Yeti', hp: 500, atk: 100, def: 30, exp: 350, zen: 400 },
+        'shadow': { name: 'Shadow', hp: 1200, atk: 180, def: 60, exp: 900, zen: 800 },
+        'poison_bull': { name: 'Poison Bull', hp: 2500, atk: 280, def: 100, exp: 1800, zen: 1500 },
+        'bahamut': { name: 'Bahamut', hp: 4000, atk: 450, def: 180, exp: 3000, zen: 2500 },
+        'vepar': { name: 'Vepar', hp: 5500, atk: 600, def: 220, exp: 4000, zen: 3500 },
+        'valkyrie': { name: 'Valkyrie', hp: 7000, atk: 750, def: 280, exp: 5500, zen: 4800 },
+        'mutant': { name: 'Mutant', hp: 9000, atk: 900, def: 350, exp: 7500, zen: 6000 },
+        'bloody_wolf': { name: 'Bloody Wolf', hp: 12000, atk: 1100, def: 450, exp: 9500, zen: 8000 },
+        'tantalos': { name: 'Tantalos', hp: 15000, atk: 1300, def: 550, exp: 12000, zen: 10000 },
+        'alquamos': { name: 'Alquamos', hp: 20000, atk: 1600, def: 700, exp: 18000, zen: 15000 },
+        'mega_crust': { name: 'Mega Crust', hp: 26000, atk: 1900, def: 900, exp: 25000, zen: 22000 },
+        'phantom_knight': { name: 'Phantom Knight', hp: 35000, atk: 2400, def: 1200, exp: 35000, zen: 30000 }
+    }
+};
+
+// --- ESTADO DO JOGO E CONTA ---
+let account = { chars: [], stash: [], zen: 0 };
+let currentCharIndex = -1;
+let isViewingStash = false;
+
+let player = null; 
+
+let derived = { maxHp: 0, maxMp: 0, atkMin: 0, atkMax: 0, matk: 0, def: 0, eva: 0, atkSpeed: 2000 };
+let currentTarget = null;
+let activeModalContext = null;
+let jewelToUse = null;
+
+let combatTimers = { player: 0, monster: 0, regen: 0 };
+let statHoldTimer = null;
+let statIsHolding = false;
+let statTarget = '';
+
+const MAX_INV = 20;
+
+function formatAbrev(num) {
+    return num.toLocaleString('pt-BR');
+}
+
+// --- SISTEMA DE TOAST (NOTIFICAÇÕES) ---
+function showToast(msg, type = 'info') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    
+    let bgColor = 'bg-gray-800 border-gray-600 text-white';
+    if (type === 'error') bgColor = 'bg-red-900 border-red-500 text-red-100';
+    if (type === 'success') bgColor = 'bg-green-900 border-green-500 text-green-100';
+    if (type === 'warning') bgColor = 'bg-yellow-900 border-yellow-500 text-yellow-100';
+
+    toast.className = `px-4 py-3 rounded shadow-2xl border ${bgColor} text-sm font-bold transition-all duration-300 transform translate-y-4 opacity-0 w-full`;
+    toast.innerHTML = msg;
+    
+    container.appendChild(toast);
+
+    setTimeout(() => { toast.classList.remove('translate-y-4', 'opacity-0'); }, 10);
+    setTimeout(() => {
+        toast.classList.add('opacity-0', 'scale-95');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+// --- INICIALIZAÇÃO E SAVE ---
+window.onload = () => {
+    let savedAcc = null;
+    let oldSingleSave = null;
+    try {
+        savedAcc = localStorage.getItem('pocketmu_save_v2');
+        oldSingleSave = localStorage.getItem('pocketmu_save');
+    } catch(e) { console.warn("Navegador bloqueou localStorage."); }
+
+    if (savedAcc) {
+        account = JSON.parse(savedAcc);
+        if(account.zen === undefined) account.zen = 0; 
+    } else if (oldSingleSave) {
+        let oldPlayer = JSON.parse(oldSingleSave);
+        account.chars.push(oldPlayer);
+        saveGame();
+        try { localStorage.removeItem('pocketmu_save'); } catch(e){}
+    }
+
+    renderCharSelect();
+    setInterval(saveGame, 60000); 
+};
+
+function saveGame() {
+    try { 
+        if(currentCharIndex !== -1 && player && player.name) {
+            account.chars[currentCharIndex] = player;
+        }
+        localStorage.setItem('pocketmu_save_v2', JSON.stringify(account)); 
+    } catch(e) {}
+}
+
+// --- TELAS E SELEÇÃO DE PERSONAGEM ---
+function renderCharSelect() {
+    document.getElementById('screen-select').classList.remove('hidden');
+    document.getElementById('screen-create').classList.add('hidden');
+    document.getElementById('screen-game').classList.add('hidden');
+
+    let list = document.getElementById('char-list');
+    list.innerHTML = '';
+    
+    if (account.chars.length === 0) {
+        list.innerHTML = '<p class="text-gray-500 text-center text-sm py-4">Nenhum herói na conta.</p>';
+    } else {
+        account.chars.forEach((c, idx) => {
+            let baseCls = DB.classes[c.cls];
+            let resets = c.resets || 0;
+            list.innerHTML += `
+            <div class="bg-gray-800 p-4 rounded-lg flex justify-between items-center border border-gray-700 shadow-md">
+                <div>
+                    <div class="font-bold text-white text-lg">${c.name}</div>
+                    <div class="text-xs text-blue-300">Lv ${c.level} | ${baseCls ? baseCls.name : c.cls} | Resets: ${resets}</div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="playChar(${idx})" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold shadow transition">Jogar</button>
+                    <button onclick="deleteChar(${idx})" class="bg-red-600 hover:bg-red-500 px-3 py-2 rounded font-bold shadow text-lg transition" title="Excluir">🗑️</button>
+                </div>
+            </div>`;
+        });
+    }
+}
+
+function deleteChar(idx) {
+    if(confirm("Tem certeza que quer apagar esse herói pra sempre? O Baú de itens e o Banco continuam a salvo!")) {
+        account.chars.splice(idx, 1);
+        saveGame();
+        renderCharSelect();
+        showToast("Herói deletado com sucesso.", "success");
+    }
+}
+
+function showCreateForm() {
+    document.getElementById('screen-select').classList.add('hidden');
+    document.getElementById('screen-create').classList.remove('hidden');
+}
+
+function cancelCreate() {
+    document.getElementById('screen-create').classList.add('hidden');
+    document.getElementById('screen-select').classList.remove('hidden');
+}
+
+function playChar(idx) {
+    currentCharIndex = idx;
+    player = account.chars[idx];
+    
+    if(!player.tactics) {
+        player.tactics = { hpPct: 50, mpPct: 20, activeSkill: 'none', autoReturn: false, sellCommon: true, sellRare: false, sellPots: false };
+    }
+    if(player.tactics.autoReturn === undefined) {
+        player.tactics.autoReturn = false;
+        player.tactics.sellCommon = true;
+        player.tactics.sellRare = false;
+        player.tactics.sellPots = false;
+    }
+    if(player.resets === undefined) player.resets = 0;
+    
+    currentTarget = null; 
+    combatTimers = { player: 0, monster: 0, regen: 0 };
+    isViewingStash = false;
+    
+    calcDerivedStats();
+    player.hp = derived.maxHp; player.mp = derived.maxMp;
+    
+    updateLocationLabel(player.location);
+    showGame();
+    logCombat(`Bem-vindo de volta, ${player.name}!`);
+}
+
+function logout() {
+    saveGame();
+    currentCharIndex = -1;
+    player = null;
+    currentTarget = null;
+    renderCharSelect();
+}
+
+// --- CRIAÇÃO DE PERSONAGEM ---
+let tempClass = 'BK';
+function selectClass(cls) {
+    tempClass = cls;
+    ['BK', 'SM', 'ELF'].forEach(c => {
+        let btn = document.getElementById(`btn-cls-${c}`);
+        btn.classList.remove('border-blue-500', 'border-red-500', 'border-green-500');
+        btn.classList.add('border-transparent');
+    });
+    let cBtn = document.getElementById(`btn-cls-${cls}`);
+    cBtn.classList.remove('border-transparent');
+    if(cls === 'BK') { cBtn.classList.add('border-red-500'); document.getElementById('class-desc').innerText = "BK: Focado em Força e Vitalidade. Combate corpo a corpo forte."; }
+    if(cls === 'SM') { cBtn.classList.add('border-blue-500'); document.getElementById('class-desc').innerText = "SM: Focado em Energia. Mestre das magias destrutivas em área."; }
+    if(cls === 'ELF') { cBtn.classList.add('border-green-500'); document.getElementById('class-desc').innerText = "ELF: Focada em Agilidade. Ataques rápidos à distância e alta esquiva."; }
+}
+
+function startGame() {
+    let name = document.getElementById('char-name').value.trim();
+    if (!name) return showToast("Digita um nome ae, pow!", "error");
+    if (name.length > 12) return showToast("Nome muito grande!", "error");
+
+    let newPlayer = {
+        name: name, cls: tempClass, level: 1, exp: 0, zen: 0, hp: 0, mp: 0, resets: 0,
+        stats: { str: DB.classes[tempClass].str, agi: DB.classes[tempClass].agi, vit: DB.classes[tempClass].vit, ene: DB.classes[tempClass].ene, points: 0 },
+        equip: { helm: null, armor: null, pants: null, gloves: null, boots: null, weapon: null, shield: null },
+        inv: [], skills: [], location: 'city',
+        tactics: { hpPct: 50, mpPct: 20, activeSkill: 'none', autoReturn: false, sellCommon: true, sellRare: false, sellPots: false }
+    };
+    
+    account.chars.push(newPlayer);
+    currentCharIndex = account.chars.length - 1;
+    player = account.chars[currentCharIndex];
+    
+    if(tempClass === 'BK') addInvItem('short_sword');
+    if(tempClass === 'SM') addInvItem('skull_staff');
+    if(tempClass === 'ELF') addInvItem('short_bow');
+    addInvItem('hp_pot_s', 5);
+
+    calcDerivedStats();
+    player.hp = derived.maxHp; player.mp = derived.maxMp;
+    
+    combatTimers = { player: 0, monster: 0, regen: 0 };
+    saveGame();
+    updateLocationLabel('city');
+    showGame();
+    logCombat("Sua jornada começou em Lorencia (Cidade).");
+}
+
+function showGame() {
+    document.getElementById('screen-select').classList.add('hidden');
+    document.getElementById('screen-create').classList.add('hidden');
+    document.getElementById('screen-game').classList.remove('hidden');
+    switchTab('map');
+    updateUI();
+    updateTacticsUI();
+}
+
+// --- UI E NAVEGAÇÃO ---
+const tabs = ['map', 'inv', 'stats', 'shops', 'tactics'];
+function switchTab(tabId) {
+    if (jewelToUse !== null) jewelToUse = null; 
+
+    tabs.forEach(t => {
+        document.getElementById(`tab-${t}`).classList.add('hidden-tab');
+        document.getElementById(`nav-${t}`).classList.remove('text-blue-400', 'border-t-2', 'border-blue-500');
+    });
+    document.getElementById(`tab-${tabId}`).classList.remove('hidden-tab');
+    document.getElementById(`nav-${tabId}`).classList.add('text-blue-400', 'border-t-2', 'border-blue-500');
+    
+    if(tabId === 'inv') { isViewingStash = false; renderInventory(); }
+    if(tabId === 'stats') renderStats();
+    if(tabId === 'shops') renderShops();
+    if(tabId === 'tactics') renderTacticsTab();
+    saveGame();
+}
+
+function updateUI() {
+    document.getElementById('top-name').innerText = player.name;
+    document.getElementById('top-level').innerText = `Lv: ${player.level}`;
+    document.getElementById('top-zen').innerText = `Zen: ${formatAbrev(player.zen)}`;
+    
+    let hpPct = Math.max(0, Math.min(100, (player.hp / derived.maxHp) * 100));
+    let mpPct = derived.maxMp > 0 ? Math.max(0, Math.min(100, (player.mp / derived.maxMp) * 100)) : 0;
+    let reqExp = getReqExp(player.level);
+    let expPct = Math.min(100, (player.exp / reqExp) * 100);
+
+    document.getElementById('bar-hp').style.width = hpPct + '%';
+    document.getElementById('txt-hp').innerText = `${Math.floor(player.hp)} / ${derived.maxHp}`;
+    
+    document.getElementById('bar-mp').style.width = mpPct + '%';
+    document.getElementById('txt-mp').innerText = `${Math.floor(player.mp)} / ${derived.maxMp}`;
+
+    document.getElementById('txt-exp').innerText = `${formatAbrev(Math.floor(player.exp))} / ${formatAbrev(reqExp)}`;
+    let totalBlocksExp = (player.exp / reqExp) * 10;
+    for(let i=0; i<10; i++) {
+        let seg = document.getElementById(`xp-seg-${i}`);
+        if (totalBlocksExp >= i + 1) {
+            seg.style.width = '100%';
+        } else if (totalBlocksExp > i) {
+            let partial = (totalBlocksExp - i) * 100;
+            seg.style.width = `${partial}%`;
+        } else {
+            seg.style.width = '0%';
+        }
+    }
+    
+    if (hpPct < 30 && player.hp > 0) document.getElementById('txt-hp').classList.add('blink-red');
+    else document.getElementById('txt-hp').classList.remove('blink-red');
+}
+
+// --- SISTEMA DE STATUS E RESET ---
+function calcDerivedStats() {
+    let s = player.stats;
+    derived.maxHp = 150 + (s.vit * 4) + (player.level * 25);
+    derived.maxMp = 80 + (s.ene * 4) + (player.level * 10);
+    
+    if(player.cls === 'BK') derived.maxHp += s.vit * 2;
+    if(player.cls === 'SM') derived.maxMp += s.ene * 2;
+
+    let wpn = player.equip.weapon ? DB.items[player.equip.weapon.id] : null;
+    let wpnLvl = player.equip.weapon ? player.equip.weapon.level : 0;
+    
+    let baseAtk = wpn ? (wpn.atk || 0) + (wpnLvl * 5) : 0;
+    let baseMatk = wpn ? (wpn.matk || 0) + (wpnLvl * 5) : 0;
+
+    if (player.cls === 'BK') {
+        derived.atkMin = Math.floor(s.str / 4) + baseAtk;
+        derived.atkMax = Math.floor(s.str / 3) + baseAtk;
+        derived.matk = 0;
+        derived.def = Math.floor(s.agi / 3);
+    } else if (player.cls === 'SM') {
+        derived.atkMin = Math.floor(s.str / 6) + baseAtk;
+        derived.atkMax = Math.floor(s.str / 4) + baseAtk;
+        derived.matk = Math.floor(s.ene / 3) + baseMatk;
+        derived.def = Math.floor(s.agi / 4);
+    } else { // ELF
+        derived.atkMin = Math.floor((s.str + s.agi) / 5) + baseAtk;
+        derived.atkMax = Math.floor((s.str + s.agi) / 3) + baseAtk;
+        derived.matk = 0;
+        derived.def = Math.floor(s.agi / 4);
+    }
+
+    derived.eva = Math.floor(s.agi / 10);
+    derived.atkSpeed = Math.max(400, 2000 - (s.agi * 4));
+
+    ['helm', 'armor', 'pants', 'gloves', 'boots', 'shield'].forEach(slot => {
+        let eq = player.equip[slot];
+        if(eq) {
+            let item = DB.items[eq.id];
+            derived.def += (item.def || 0) + (eq.level * 4);
+        }
+    });
+}
+
+function getReqExp(lvl) { return Math.floor(100 * Math.pow(1.18, lvl - 1)); }
+
+function gainExp(amount) {
+    player.exp += amount;
+    let req = getReqExp(player.level);
+    let leveledUp = false;
+    while(player.exp >= req) {
+        player.exp -= req;
+        player.level++;
+        player.stats.points += 5;
+        req = getReqExp(player.level);
+        leveledUp = true;
+    }
+    if(leveledUp) {
+        logCombat(`🎉 UPOU! Level ${player.level}! Recebeu 5 pontos.`);
+        calcDerivedStats();
+        player.hp = derived.maxHp; player.mp = derived.maxMp;
+        renderStats();
+    }
+    updateUI();
+}
+
+function doReset() {
+    if(player.level < 100) return;
+    
+    let eqCount = 0;
+    let slots = ['helm', 'armor', 'pants', 'gloves', 'boots', 'weapon', 'shield'];
+    slots.forEach(s => { if(player.equip[s]) eqCount++; });
+
+    if(MAX_INV - player.inv.length < eqCount) {
+        return showToast("Esvazie a mochila pra desequipar o set antes do Reset!", "error");
+    }
+
+    slots.forEach(s => {
+        if(player.equip[s]) {
+            addInvItem(player.equip[s].id, player.equip[s].qty, player.equip[s].level);
+            player.equip[s] = null;
+        }
+    });
+
+    player.resets = (player.resets || 0) + 1;
+    player.level = 1;
+    player.exp = 0;
+    
+    let base = DB.classes[player.cls];
+    player.stats.str = base.str;
+    player.stats.agi = base.agi;
+    player.stats.vit = base.vit;
+    player.stats.ene = base.ene;
+    player.stats.points = player.resets * 15;
+    
+    calcDerivedStats();
+    player.hp = derived.maxHp;
+    player.mp = derived.maxMp;
+    
+    showToast(`👑 RENASCIMENTO CONCLUÍDO! (Total: ${player.resets})`, "success");
+    saveGame();
+    renderStats();
+    updateUI();
+}
+
+function renderStats() {
+    document.getElementById('stat-name').innerText = `${player.name} - ${DB.classes[player.cls].name}`;
+    
+    ['str', 'agi', 'vit', 'ene'].forEach(st => {
+        document.getElementById(`val-${st}`).innerText = player.stats[st];
+    });
+
+    let pts = player.stats.points;
+    let ptsDiv = document.getElementById('pts-container');
+    let btns = document.querySelectorAll('.btn-add-stat');
+    
+    if(pts > 0) {
+        ptsDiv.classList.remove('hidden');
+        document.getElementById('stat-points').innerText = pts;
+        btns.forEach(b => b.classList.remove('hidden'));
+    } else {
+        ptsDiv.classList.add('hidden');
+        btns.forEach(b => b.classList.add('hidden'));
+    }
+
+    document.getElementById('der-atk').innerText = `${formatAbrev(derived.atkMin)}-${formatAbrev(derived.atkMax)}`;
+    document.getElementById('der-matk').innerText = derived.matk > 0 ? formatAbrev(derived.matk) : '-';
+    document.getElementById('der-def').innerText = formatAbrev(derived.def);
+    document.getElementById('der-eva').innerText = `${derived.eva}%`;
+    document.getElementById('der-speed').innerText = `${(derived.atkSpeed / 1000).toFixed(1)}s`;
+    
+    document.getElementById('stat-resets').innerText = player.resets || 0;
+    let resetBtn = document.getElementById('btn-reset');
+    if (player.level >= 100) resetBtn.classList.remove('hidden');
+    else resetBtn.classList.add('hidden');
+}
+
+function startHoldStat(stat) {
+    statIsHolding = false;
+    statTarget = stat;
+    statHoldTimer = setTimeout(() => {
+        statIsHolding = true;
+        openStatSlider(stat);
+    }, 400);
+}
+
+function endHoldStat(stat) {
+    if(statHoldTimer) clearTimeout(statHoldTimer);
+    if(!statIsHolding) addStat(stat, 1);
+    statHoldTimer = null;
+}
+
+function cancelHoldStat() {
+    if(statHoldTimer) clearTimeout(statHoldTimer);
+    statHoldTimer = null;
+}
+
+function addStat(st, amount = 1) {
+    if(player.stats.points >= amount) {
+        player.stats[st] += amount;
+        player.stats.points -= amount;
+        calcDerivedStats();
+        renderStats();
+        updateUI();
+    }
+}
+
+function openStatSlider(stat) {
+    if(player.stats.points < 2) return; 
+    let names = { str: 'Força', agi: 'Agilidade', vit: 'Vitalidade', ene: 'Energia' };
+    document.getElementById('modal-stat-title').innerText = names[stat];
+    document.getElementById('modal-stat-avail').innerText = player.stats.points;
+    document.getElementById('modal-stat-val').innerText = '1';
+    
+    let slider = document.getElementById('modal-stat-range');
+    slider.max = player.stats.points;
+    slider.value = 1;
+    
+    document.getElementById('stat-slider-modal').classList.remove('hidden');
+    document.getElementById('stat-slider-modal').classList.add('flex');
+}
+
+function closeStatSlider() {
+    document.getElementById('stat-slider-modal').classList.add('hidden');
+    document.getElementById('stat-slider-modal').classList.remove('flex');
+}
+
+function confirmStatSlider() {
+    let val = parseInt(document.getElementById('modal-stat-range').value);
+    addStat(statTarget, val);
+    closeStatSlider();
+    showToast(`Adicionou +${val} em ${statTarget.toUpperCase()}!`, "success");
+}
+
+// --- SISTEMA DE INVENTÁRIO COM STACK (100) ---
+function addInvItem(id, qty = 1, level = 0) {
+    let base = DB.items[id];
+    if(!base) return false;
+
+    while(qty > 0) {
+        let existing = player.inv.find(i => i.id === id && i.level === level && i.qty < 100);
+        if(existing) {
+            let space = 100 - existing.qty;
+            let add = Math.min(qty, space);
+            existing.qty += add;
+            qty -= add;
+        } else {
+            if(player.inv.length >= MAX_INV) return false; 
+            let add = Math.min(qty, 100);
+            player.inv.push({ id, qty: add, level: level });
+            qty -= add;
+        }
+    }
+    return true;
+}
+
+function addStashItem(id, qty = 1, level = 0) {
+    let base = DB.items[id];
+    if(!base) return false;
+
+    while(qty > 0) {
+        let existing = account.stash.find(i => i.id === id && i.level === level && i.qty < 100);
+        if(existing) {
+            let space = 100 - existing.qty;
+            let add = Math.min(qty, space);
+            existing.qty += add;
+            qty -= add;
+        } else {
+            if(account.stash.length >= MAX_INV) return false; 
+            let add = Math.min(qty, 100);
+            account.stash.push({ id, qty: add, level: level });
+            qty -= add;
+        }
+    }
+    return true;
+}
+
+function organizeInv() {
+    if(jewelToUse !== null) jewelToUse = null; 
+    let target = isViewingStash ? account.stash : player.inv;
+    
+    target.sort((a,b) => {
+        let ba = DB.items[a.id], bb = DB.items[b.id];
+        if(ba.type !== bb.type) return ba.type.localeCompare(bb.type);
+        return ba.name.localeCompare(bb.name);
+    });
+    renderInventory();
+}
+
+function getItemColorClass(rarity) {
+    if(rarity === 'legendary') return 'rarity-legendary';
+    if(rarity === 'rare') return 'rarity-rare';
+    if(rarity === 'jewel') return 'rarity-jewel';
+    return 'rarity-common';
+}
+
+function getItemNameHTML(itemObj) {
+    let base = DB.items[itemObj.id];
+    let name = base.name;
+    if(itemObj.level > 0) name = `+${itemObj.level} ${name}`;
+    
+    let colorClass = getItemColorClass(base.rarity);
+    if(itemObj.level >= 7 && base.rarity === 'common') colorClass = 'rarity-rare';
+    
+    return `<span class="${colorClass} line-clamp-3 leading-tight px-[2px] w-full">${name}</span>`;
+}
+
+function toggleStash() {
+    if(player.location !== 'city') return showToast("O Baú só pode ser acessado na Cidade!", "error");
+    if(jewelToUse !== null) jewelToUse = null; 
+    isViewingStash = !isViewingStash;
+    renderInventory();
+}
+
+// Abre banco de Zen
+function openBankModal() {
+    if(!isViewingStash) return;
+    
+    let content = `<h3 class="text-lg font-bold mb-4 border-b border-gray-600 pb-2 text-yellow-400">Banco de Zen</h3>`;
+    content += `<p class="text-sm text-gray-300 mb-2">Zen na Mochila: <span class="font-bold text-white">${formatAbrev(player.zen)}</span></p>`;
+    content += `<p class="text-sm text-gray-300 mb-4">Zen no Baú: <span class="font-bold text-white">${formatAbrev(account.zen || 0)}</span></p>`;
+
+    if(player.zen > 0) {
+        content += `<div class="mb-4 bg-gray-900 p-3 rounded shadow-inner">
+            <label class="block text-xs text-gray-400 mb-2">Depositar: <span id="dep-val" class="text-white font-bold text-lg">0</span></label>
+            <input type="range" id="dep-range" min="0" max="${player.zen}" value="0" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" oninput="document.getElementById('dep-val').innerText = formatAbrev(parseInt(this.value));">
+            <button onclick="depositZen()" class="w-full mt-3 bg-indigo-600 hover:bg-indigo-500 py-2 rounded font-bold shadow transition">Confirmar Depósito</button>
+        </div>`;
+    }
+    
+    if((account.zen || 0) > 0) {
+        content += `<div class="mb-2 bg-gray-900 p-3 rounded shadow-inner">
+            <label class="block text-xs text-gray-400 mb-2">Retirar: <span id="wit-val" class="text-white font-bold text-lg">0</span></label>
+            <input type="range" id="wit-range" min="0" max="${account.zen || 0}" value="0" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" oninput="document.getElementById('wit-val').innerText = formatAbrev(parseInt(this.value));">
+            <button onclick="withdrawZen()" class="w-full mt-3 bg-yellow-600 hover:bg-yellow-500 py-2 rounded font-bold shadow transition">Confirmar Saque</button>
+        </div>`;
+    }
+
+    document.getElementById('modal-content').innerHTML = content;
+    document.getElementById('item-modal').classList.remove('hidden');
+    document.getElementById('item-modal').classList.add('flex');
+}
+
+function depositZen() {
+    let val = parseInt(document.getElementById('dep-range').value);
+    if(val > 0 && player.zen >= val) {
+        player.zen -= val;
+        account.zen = (account.zen || 0) + val;
+        saveGame();
+        updateUI();
+        renderInventory();
+        openBankModal();
+        showToast(`Depositou ${formatAbrev(val)}z!`, "success");
+    }
+}
+
+function withdrawZen() {
+    let val = parseInt(document.getElementById('wit-range').value);
+    if(val > 0 && (account.zen || 0) >= val) {
+        account.zen -= val;
+        player.zen += val;
+        saveGame();
+        updateUI();
+        renderInventory();
+        openBankModal();
+        showToast(`Retirou ${formatAbrev(val)}z!`, "success");
+    }
+}
+
+function renderInventory() {
+    let bankSlot = document.getElementById('eq-bank');
+    let titleEl = document.getElementById('inv-title');
+    let btnToggle = document.getElementById('btn-toggle-stash');
+    
+    if(isViewingStash) {
+        titleEl.innerHTML = `Baú Compartilhado (<span id="inv-count">${account.stash.length}</span>/${MAX_INV})`;
+        btnToggle.innerText = "Ver Mochila";
+        btnToggle.className = "text-green-400 underline mr-3";
+        bankSlot.classList.remove('opacity-50', 'pointer-events-none');
+        document.getElementById('stash-zen-display').innerText = formatAbrev(account.zen || 0);
+    } else {
+        titleEl.innerHTML = `Mochila (<span id="inv-count">${player.inv.length}</span>/${MAX_INV})`;
+        btnToggle.innerText = "Baú";
+        btnToggle.className = "text-yellow-400 underline mr-3";
+        bankSlot.classList.add('opacity-50', 'pointer-events-none');
+        document.getElementById('stash-zen-display').innerText = 'Fechado';
+    }
+
+    ['helm', 'armor', 'pants', 'gloves', 'boots', 'weapon', 'shield'].forEach(slot => {
+        let el = document.getElementById(`eq-${slot}`);
+        let eq = player.equip[slot];
+        
+        el.className = "item-slot"; 
+        
+        if(eq) {
+            el.innerHTML = getItemNameHTML(eq);
+            el.classList.add('equipped');
+            if (jewelToUse !== null) el.classList.add('ring-2', 'ring-inset', 'ring-blue-400'); 
+        } else {
+            el.innerHTML = `<span class="text-gray-600">${slot.charAt(0).toUpperCase() + slot.slice(1)}</span>`;
+        }
+    });
+
+    let grid = document.getElementById('inv-grid');
+    grid.innerHTML = '';
+    
+    let targetArray = isViewingStash ? account.stash : player.inv;
+    let clickSource = isViewingStash ? 'stash' : 'inv';
+
+    for(let i=0; i<MAX_INV; i++) {
+        let div = document.createElement('div');
+        div.className = "item-slot cursor-pointer hover:bg-gray-700 transition-colors";
+        let item = targetArray[i];
+        
+        if(item) {
+            let base = DB.items[item.id];
+            let qtyStr = item.qty > 1 ? `<span class="absolute bottom-0 right-1 text-[8px] text-yellow-300 font-bold">x${item.qty}</span>` : '';
+            div.innerHTML = `<div class="relative w-full h-full flex items-center justify-center">${getItemNameHTML(item)}${qtyStr}</div>`;
+            div.onclick = () => openItemModal(clickSource, i);
+            
+            if(jewelToUse !== null && clickSource === 'inv') {
+                if (i === jewelToUse) {
+                    div.classList.add('ring-2', 'ring-inset', 'ring-pink-500', 'bg-pink-900', 'animate-pulse');
+                } else if (['weapon','shield','armor'].includes(base.type)) {
+                    div.classList.add('ring-2', 'ring-inset', 'ring-blue-400');
+                }
+            }
+        } else {
+            div.classList.add('opacity-30');
+            div.innerHTML = `<span class="text-gray-700 text-[10px]">-</span>`;
+        }
+        grid.appendChild(div);
+    }
+}
+
+function getStatDiffHTML(val1, val2) {
+    let diff = val2 - val1;
+    if(diff > 0) return `<span class="text-green-500 text-xs ml-1">(+${diff})</span>`;
+    if(diff < 0) return `<span class="text-red-500 text-xs ml-1">(${diff})</span>`;
+    return `<span class="text-gray-500 text-xs ml-1">(=)</span>`;
+}
+
+function openItemModal(source, indexOrSlot) {
+    if(jewelToUse !== null) {
+        if (source === 'inv' && indexOrSlot === jewelToUse) {
+            jewelToUse = null;
+            showToast("Refino cancelado.", "info");
+            renderInventory();
+            return;
+        }
+        if (source === 'inv') { applyJewel(jewelToUse, indexOrSlot); return; }
+        if (source === 'equip') { applyJewelEquip(jewelToUse, indexOrSlot); return; }
+        if (source === 'stash') { showToast("Não dá pra refinar item direto do baú!", "error"); return; }
+    }
+
+    let itemObj = null;
+    if(source === 'inv') itemObj = player.inv[indexOrSlot];
+    else if(source === 'stash') itemObj = account.stash[indexOrSlot];
+    else if(source === 'equip') itemObj = player.equip[indexOrSlot];
+    if(!itemObj) return;
+
+    activeModalContext = { source, id: indexOrSlot, item: itemObj };
+    let base = DB.items[itemObj.id];
+    let content = `<h3 class="text-lg font-bold mb-2 border-b border-gray-600 pb-2">${getItemNameHTML(itemObj)}</h3>`;
+    
+    // Mostra Diffs pro Inventario e Bau tbm!
+    if(['weapon', 'shield', 'armor'].includes(base.type)) {
+        let eq = player.equip[base.slot];
+        let eqBase = eq ? DB.items[eq.id] : null;
+        let eqLvl = eq ? eq.level : 0;
+        
+        if(source !== 'equip') {
+            content += `<p class="text-xs text-gray-400 mb-2">VS Equipado: ${eq ? '+'+eqLvl+' '+eqBase.name : 'Nenhum'}</p>`;
+        }
+
+        if(base.type === 'weapon') {
+            let curAtk = eqBase ? (eqBase.atk||0) + (eqLvl*5) : 0;
+            let curMatk = eqBase ? (eqBase.matk||0) + (eqLvl*5) : 0;
+            let newAtk = (base.atk||0) + (itemObj.level*5);
+            let newMatk = (base.matk||0) + (itemObj.level*5);
+            
+            content += `<p class="text-gray-300 text-sm">Dano Físico: ${newAtk} ${source !== 'equip' ? getStatDiffHTML(curAtk, newAtk) : ''}</p>`;
+            if(base.matk) content += `<p class="text-gray-300 text-sm">Dano Mágico: ${newMatk} ${source !== 'equip' ? getStatDiffHTML(curMatk, newMatk) : ''}</p>`;
+        }
+        if(['armor','shield'].includes(base.type)) {
+            let curDef = eqBase ? (eqBase.def||0) + (eqLvl*4) : 0;
+            let newDef = (base.def||0) + (itemObj.level*4);
+            content += `<p class="text-gray-300 text-sm">Defesa: ${newDef} ${source !== 'equip' ? getStatDiffHTML(curDef, newDef) : ''}</p>`;
+        }
+    }
+    
+    if(base.desc) content += `<p class="text-gray-400 text-xs mt-2 italic">"${base.desc}"</p>`;
+
+    content += `<div class="mt-4 text-xs bg-gray-900 p-2 rounded border border-gray-700">`;
+    if(base.cls) content += `<p class="${base.cls.includes(player.cls) ? 'text-green-400' : 'text-red-400'}">Classe: ${base.cls.join(', ')}</p>`;
+    if(base.reqStr) content += `<p class="${player.stats.str >= base.reqStr ? 'text-green-400' : 'text-red-400'}">Req FOR: ${base.reqStr}</p>`;
+    if(base.reqAgi) content += `<p class="${player.stats.agi >= base.reqAgi ? 'text-green-400' : 'text-red-400'}">Req AGI: ${base.reqAgi}</p>`;
+    if(base.reqEne) content += `<p class="${player.stats.ene >= base.reqEne ? 'text-green-400' : 'text-red-400'}">Req ENE: ${base.reqEne}</p>`;
+    if(base.reqLvl) content += `<p class="${player.level >= base.reqLvl ? 'text-green-400' : 'text-red-400'}">Req Lv: ${base.reqLvl}</p>`;
+    content += `</div>`;
+
+    content += `<div class="flex gap-2 mt-4 pt-4 border-t border-gray-600 flex-wrap">`;
+    if(source === 'inv') {
+        if(['weapon', 'shield', 'armor'].includes(base.type)) {
+            content += `<button onclick="equipItem(${indexOrSlot})" class="flex-1 min-w-[30%] bg-blue-600 hover:bg-blue-500 py-2 rounded font-bold shadow-lg transition">Equipar</button>`;
+        } else if(base.type === 'consumable' || base.type === 'skill_book') {
+            content += `<button onclick="useItem(${indexOrSlot})" class="flex-1 min-w-[30%] bg-green-600 hover:bg-green-500 py-2 rounded font-bold shadow-lg transition">Usar</button>`;
+        } else if(base.type === 'jewel') {
+            content += `<button onclick="prepareJewel(${indexOrSlot})" class="flex-1 min-w-[30%] bg-pink-600 hover:bg-pink-500 py-2 rounded font-bold shadow-lg transition">Refinar</button>`;
+        }
+        
+        if (player.location === 'city') {
+            content += `<button onclick="depositItem(${indexOrSlot})" class="flex-1 min-w-[30%] bg-indigo-600 hover:bg-indigo-500 py-2 rounded font-bold shadow-lg transition">Baú</button>`;
+        }
+        
+        // Slider para venda parcial
+        let sellPrice = Math.floor(base.price / 3);
+        let maxQty = itemObj.qty || 1;
+        
+        if (maxQty > 1) {
+            content += `
+            <div class="mt-4 bg-gray-900 p-3 rounded border border-gray-700 shadow-inner w-full">
+                <label class="block text-gray-400 text-xs mb-2">Vender Qtd: <span id="sell-qty-val" class="text-white font-bold">${maxQty}</span></label>
+                <input type="range" id="sell-qty" min="1" max="${maxQty}" value="${maxQty}" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer transition" oninput="updateSellPreview(${sellPrice})">
+            </div>`;
+        }
+        
+        content += `<button id="btn-sell-confirm" onclick="sellItem(${indexOrSlot})" class="flex-1 min-w-[30%] bg-yellow-700 hover:bg-yellow-600 py-2 rounded font-bold shadow-lg mt-2 transition">Vender<br><span class="text-[10px]">${formatAbrev(sellPrice * maxQty)}z</span></button>`;
+    } 
+    else if (source === 'stash') {
+        content += `<button onclick="withdrawItem(${indexOrSlot})" class="flex-1 bg-indigo-600 hover:bg-indigo-500 py-3 rounded font-bold shadow-lg text-lg transition">Retirar</button>`;
+    }
+    else if(source === 'equip') {
+        content += `<button onclick="unequipItem('${indexOrSlot}')" class="flex-1 bg-red-600 hover:bg-red-500 py-3 rounded font-bold shadow-lg transition">Desequipar</button>`;
+    }
+    content += `</div>`;
+
+    document.getElementById('modal-content').innerHTML = content;
+    document.getElementById('item-modal').classList.remove('hidden');
+    document.getElementById('item-modal').classList.add('flex');
+}
+
+function updateSellPreview(unitPrice) {
+    let qty = parseInt(document.getElementById('sell-qty').value);
+    document.getElementById('sell-qty-val').innerText = qty;
+    document.getElementById('btn-sell-confirm').innerHTML = `Vender<br><span class="text-[10px]">${formatAbrev(unitPrice * qty)}z</span>`;
+}
+
+function closeModal() {
+    document.getElementById('item-modal').classList.add('hidden');
+    document.getElementById('item-modal').classList.remove('flex');
+    activeModalContext = null;
+}
+
+function checkReqs(base) {
+    if(base.cls && !base.cls.includes(player.cls)) return false;
+    if(base.reqStr && player.stats.str < base.reqStr) return false;
+    if(base.reqAgi && player.stats.agi < base.reqAgi) return false;
+    if(base.reqEne && player.stats.ene < base.reqEne) return false;
+    if(base.reqLvl && player.level < base.reqLvl) return false;
+    return true;
+}
+
+function equipItem(invIndex) {
+    let item = player.inv[invIndex];
+    let base = DB.items[item.id];
+    
+    if(!checkReqs(base)) return showToast("Vish, vc não tem os atributos pra usar isso!", "error");
+
+    let slot = base.slot;
+    let oldEquip = player.equip[slot];
+    
+    if (item.qty > 1) {
+        item.qty--;
+        player.equip[slot] = { id: item.id, qty: 1, level: item.level };
+    } else {
+        player.equip[slot] = item;
+        player.inv.splice(invIndex, 1);
+    }
+    
+    if(oldEquip) addInvItem(oldEquip.id, oldEquip.qty, oldEquip.level);
+
+    calcDerivedStats();
+    closeModal();
+    renderInventory();
+    renderStats();
+}
+
+function unequipItem(slot) {
+    let item = player.equip[slot];
+    if(!addInvItem(item.id, item.qty, item.level)) return showToast("Mochila tá lotada, mano!", "error");
+    
+    player.equip[slot] = null;
+    calcDerivedStats();
+    closeModal();
+    renderInventory();
+    renderStats();
+}
+
+function useItem(invIndex) {
+    let item = player.inv[invIndex];
+    let base = DB.items[item.id];
+
+    if(base.type === 'consumable') {
+        if(base.healHp) player.hp = Math.min(derived.maxHp, player.hp + base.healHp);
+        if(base.healMp) player.mp = Math.min(derived.maxMp, player.mp + base.healMp);
+        item.qty--;
+        if(item.qty <= 0) player.inv.splice(invIndex, 1);
+        updateUI();
+        closeModal();
+        renderInventory();
+    } else if(base.type === 'skill_book') {
+        if(!checkReqs(base)) return showToast("Ainda não dá pra aprender essa magia!", "error");
+        if(player.skills.includes(base.skillId)) return showToast("Mano, tu já sabe essa magia!", "warning");
+        
+        player.skills.push(base.skillId);
+        item.qty--;
+        if(item.qty <= 0) player.inv.splice(invIndex, 1);
+        showToast(`Boa! Você aprendeu ${DB.skills[base.skillId].name}!`, "success");
+        updateTacticsUI();
+        closeModal();
+        renderInventory();
+    }
+}
+
+function sellItem(invIndex) {
+    let item = player.inv[invIndex];
+    let base = DB.items[item.id];
+    
+    let qtyEl = document.getElementById('sell-qty');
+    let sellQty = qtyEl ? parseInt(qtyEl.value) : 1;
+    
+    let val = Math.floor(base.price / 3) * sellQty;
+    player.zen += val;
+    
+    item.qty -= sellQty;
+    if(item.qty <= 0) player.inv.splice(invIndex, 1);
+    
+    updateUI();
+    closeModal();
+    renderInventory();
+    showToast(`Vendeu ${sellQty}x ${base.name} por ${formatAbrev(val)}z!`, "success");
+}
+
+function depositItem(invIndex) {
+    let item = player.inv[invIndex];
+    if(!addStashItem(item.id, item.qty, item.level)) return showToast("Baú lotado!", "error");
+    
+    player.inv.splice(invIndex, 1);
+    saveGame();
+    closeModal();
+    renderInventory();
+    showToast("Guardado no Baú.", "success");
+}
+
+function withdrawItem(stashIndex) {
+    let item = account.stash[stashIndex];
+    if(!addInvItem(item.id, item.qty, item.level)) return showToast("Mochila cheia!", "error");
+    
+    account.stash.splice(stashIndex, 1);
+    saveGame();
+    closeModal();
+    renderInventory();
+    showToast("Retirado pro inventário.", "success");
+}
+
+function prepareJewel(invIndex) {
+    jewelToUse = invIndex;
+    closeModal();
+    showToast("Selecione um equipamento ou clique na joia pra cancelar.", "info");
+    renderInventory();
+}
+
+function applyJewel(jIndex, targetIndex) { processJewel(jIndex, player.inv[targetIndex]); }
+function applyJewelEquip(jIndex, slot) { processJewel(jIndex, player.equip[slot]); }
+
+function processJewel(jIndex, targetItem) {
+    if(!targetItem) return;
+    let base = DB.items[targetItem.id];
+    if(!['weapon', 'shield', 'armor'].includes(base.type)) {
+        showToast("Não rola usar joia nisso.", "error");
+        jewelToUse = null; renderInventory(); return;
+    }
+
+    let jewelItem = player.inv[jIndex];
+    let lvl = targetItem.level;
+    
+    if(lvl >= 15) { showToast("Tá no máximo já!", "warning"); jewelToUse = null; renderInventory(); return; }
+
+    let tIndex = player.inv.indexOf(targetItem);
+    if(tIndex !== -1 && targetItem.qty > 1) {
+        if(player.inv.length >= MAX_INV) {
+            showToast("Sem espaço na mochila pra separar o item!", "error");
+            jewelToUse = null; renderInventory(); return;
+        }
+        targetItem.qty--;
+        let separated = { id: targetItem.id, qty: 1, level: targetItem.level };
+        player.inv.push(separated);
+        targetItem = separated;
+    }
+
+    jewelItem.qty--;
+    if(jewelItem.qty <= 0) player.inv.splice(jIndex, 1);
+
+    let success = false;
+    if(jewelItem.id === 'jewel_bless') {
+        if(lvl < 6) success = true;
+        else { showToast("Bless só vai até +6. Use a Soul.", "error"); success = false; }
+    } else if(jewelItem.id === 'jewel_soul') {
+        success = true;
+    }
+
+    if(success) {
+        targetItem.level++;
+        showToast(`✨ BOOOA! Foi pra +${targetItem.level}!`, "success");
+    }
+
+    calcDerivedStats();
+    jewelToUse = null;
+    renderInventory();
+    renderStats();
+}
+
+let currentShop = 'blacksmith';
+function openShop(npc) {
+    if(player.location !== 'city') return;
+    currentShop = npc;
+    ['bs', 'pt', 'mg'].forEach(b => document.getElementById(`btn-shop-${b}`).classList.remove('border-blue-500', 'text-blue-400'));
+    
+    let btnMap = { 'blacksmith': 'bs', 'potion': 'pt', 'mage': 'mg' };
+    document.getElementById(`btn-shop-${btnMap[npc]}`).classList.add('border-blue-500', 'text-blue-400');
+    
+    let tierLabel = player.level >= 50 ? "Épica (Lv 50+)" : (player.level >= 30 ? "Avançada (Lv 30+)" : (player.level >= 15 ? "Média (Lv 15+)" : "Básica (Lv 1-14)"));
+    let titleMap = { 'blacksmith': 'Ferreiro', 'potion': 'Potion Girl', 'mage': 'Mago' };
+    
+    document.getElementById('shop-title').innerText = `${titleMap[npc]} - ${tierLabel}`;
+    renderShopItems();
+}
+
+function renderShops() {
+    if(player.location !== 'city') {
+        document.getElementById('city-warning').classList.remove('hidden');
+        document.getElementById('shop-content').classList.add('hidden');
+    } else {
+        document.getElementById('city-warning').classList.add('hidden');
+        document.getElementById('shop-content').classList.remove('hidden');
+        openShop(currentShop);
+    }
+}
+
+function renderShopItems() {
+    let grid = document.getElementById('shop-items');
+    grid.innerHTML = '';
+    let itemsToSell = [];
+    
+    if(currentShop === 'blacksmith') {
+        if (player.level < 15) itemsToSell = POOLS.T1;
+        else if (player.level < 30) itemsToSell = POOLS.T2;
+        else if (player.level < 50) itemsToSell = POOLS.T3;
+        else itemsToSell = POOLS.RARE; 
+    }
+    else if(currentShop === 'potion') itemsToSell = ['hp_pot_s', 'hp_pot_m', 'hp_pot_l', 'mp_pot_s', 'mp_pot_m'];
+    else if(currentShop === 'mage') itemsToSell = ['scroll_twisting', 'scroll_evil', 'scroll_multishot'];
+
+    itemsToSell.forEach(id => {
+        let base = DB.items[id];
+        if (base.cls && !base.cls.includes(player.cls) && base.type !== 'consumable') return;
+
+        let div = document.createElement('div');
+        div.className = "bg-gray-700 p-2 rounded flex justify-between items-center cursor-pointer hover:bg-gray-600 transition-colors";
+        div.innerHTML = `
+            <div>
+                <div class="font-bold ${getItemColorClass(base.rarity)}">${base.name}</div>
+                <div class="text-xs text-yellow-300 font-bold">${formatAbrev(base.price)} z</div>
+            </div>
+            <button class="bg-blue-600 px-4 py-2 rounded text-xs font-bold shadow-md">Ver</button>
+        `;
+        div.onclick = () => previewShopItem(id);
+        grid.appendChild(div);
+    });
+}
+
+function previewShopItem(id) {
+    let base = DB.items[id];
+    let content = `<h3 class="text-lg font-bold mb-2 border-b border-gray-600 pb-2 ${getItemColorClass(base.rarity)}">${base.name}</h3>`;
+    
+    if(['weapon', 'shield', 'armor'].includes(base.type)) {
+        let eq = player.equip[base.slot];
+        let eqBase = eq ? DB.items[eq.id] : null;
+        let eqLvl = eq ? eq.level : 0;
+        content += `<p class="text-xs text-gray-400 mb-2">VS Equipado: ${eq ? '+'+eqLvl+' '+eqBase.name : 'Nenhum'}</p>`;
+        
+        if(base.type === 'weapon') {
+            let curAtk = eqBase ? (eqBase.atk||0) + (eqLvl*5) : 0;
+            let curMatk = eqBase ? (eqBase.matk||0) + (eqLvl*5) : 0;
+            if(base.atk) content += `<p class="text-gray-200">Dano Físico: ${base.atk} ${getStatDiffHTML(curAtk, base.atk)}</p>`;
+            if(base.matk) content += `<p class="text-gray-200">Dano Mágico: ${base.matk} ${getStatDiffHTML(curMatk, base.matk)}</p>`;
+        }
+        if(['armor','shield'].includes(base.type)) {
+            let curDef = eqBase ? eqBase.def + (eqLvl*4) : 0;
+            content += `<p class="text-gray-200">Defesa: ${base.def} ${getStatDiffHTML(curDef, base.def)}</p>`;
+        }
+    }
+
+    if(base.desc) content += `<p class="text-gray-400 text-xs mt-2 italic">"${base.desc}"</p>`;
+
+    content += `<div class="mt-4 text-xs bg-gray-900 p-2 rounded border border-gray-700">`;
+    if(base.cls) content += `<p class="${base.cls.includes(player.cls) ? 'text-green-400' : 'text-red-400'}">Classe: ${base.cls.join(', ')}</p>`;
+    if(base.reqStr) content += `<p class="${player.stats.str >= base.reqStr ? 'text-green-400' : 'text-red-400'}">Req FOR: ${base.reqStr}</p>`;
+    if(base.reqAgi) content += `<p class="${player.stats.agi >= base.reqAgi ? 'text-green-400' : 'text-red-400'}">Req AGI: ${base.reqAgi}</p>`;
+    if(base.reqEne) content += `<p class="${player.stats.ene >= base.reqEne ? 'text-green-400' : 'text-red-400'}">Req ENE: ${base.reqEne}</p>`;
+    if(base.reqLvl) content += `<p class="${player.level >= base.reqLvl ? 'text-green-400' : 'text-red-400'}">Req Lv: ${base.reqLvl}</p>`;
+    content += `</div>`;
+
+    let canBuy = player.zen >= base.price;
+    if (canBuy) {
+        let maxBuy = Math.floor(player.zen / base.price);
+        let absoluteMax = 100; 
+        if (maxBuy > absoluteMax) maxBuy = absoluteMax;
+        
+        content += `
+        <div class="mt-4 bg-gray-900 p-3 rounded border border-gray-700 shadow-inner">
+            <label class="block text-gray-400 text-xs mb-2">Quantidade: <span id="buy-qty-val" class="text-white font-bold text-lg">1</span></label>
+            <input type="range" id="buy-qty" min="1" max="${maxBuy}" value="1" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" oninput="updateBuyPreview(${base.price})">
+        </div>`;
+    }
+
+    content += `<div class="mt-4 pt-4 border-t border-gray-600 flex gap-2">
+        <button id="btn-buy-confirm" onclick="buyItem('${id}')" class="flex-1 ${canBuy ? 'bg-green-600 hover:bg-green-500 shadow-lg' : 'bg-gray-600 cursor-not-allowed'} py-3 rounded font-bold text-lg transition" ${canBuy ? '' : 'disabled'}>Comprar (${formatAbrev(base.price)}z)</button>
+    </div>`;
+
+    document.getElementById('modal-content').innerHTML = content;
+    document.getElementById('item-modal').classList.remove('hidden');
+    document.getElementById('item-modal').classList.add('flex');
+}
+
+function updateBuyPreview(price) {
+    let qty = parseInt(document.getElementById('buy-qty').value);
+    document.getElementById('buy-qty-val').innerText = qty;
+    document.getElementById('btn-buy-confirm').innerText = `Comprar (${formatAbrev(price * qty)}z)`;
+}
+
+function buyItem(id) {
+    let base = DB.items[id];
+    let qtyEl = document.getElementById('buy-qty');
+    let qty = qtyEl ? parseInt(qtyEl.value) : 1;
+    
+    if(base.type !== 'consumable' && !checkReqs({cls: base.cls})) {
+        return showToast("Sua classe não consegue usar esse item!", "error");
+    }
+
+    let totalPrice = qty * base.price;
+    if(player.zen < totalPrice) return showToast("Zen insuficiente!", "error");
+
+    if(addInvItem(id, qty, 0)) {
+        player.zen -= totalPrice;
+        updateUI();
+        closeModal();
+        showToast(`Comprou ${qty}x ${base.name} por ${formatAbrev(totalPrice)}z!`, "success");
+    } else {
+        showToast("Mochila lotada! Libere espaço.", "error");
+    }
+}
+
+// --- TÁTICAS ---
+function renderTacticsTab() {
+    document.getElementById('tac-hp').value = player.tactics.hpPct;
+    document.getElementById('val-tac-hp').innerText = player.tactics.hpPct + '%';
+    document.getElementById('tac-mp').value = player.tactics.mpPct;
+    document.getElementById('val-tac-mp').innerText = player.tactics.mpPct + '%';
+    
+    document.getElementById('tac-auto-return').checked = player.tactics.autoReturn;
+    document.getElementById('tac-sell-common').checked = player.tactics.sellCommon;
+    document.getElementById('tac-sell-rare').checked = player.tactics.sellRare;
+    document.getElementById('tac-sell-pots').checked = player.tactics.sellPots;
+
+    updateTacticsUI();
+}
+
+function updateTacticsUI() {
+    let sel = document.getElementById('tac-skill');
+    let currentVal = player.tactics.activeSkill;
+    sel.innerHTML = '<option value="none">Ataque Básico Físico</option>';
+    
+    player.skills.forEach(sId => {
+        let sk = DB.skills[sId];
+        sel.innerHTML += `<option value="${sId}">${sk.name} (Gasta MP: ${sk.costMp})</option>`;
+    });
+    
+    if(player.skills.includes(currentVal)) sel.value = currentVal;
+    else { sel.value = 'none'; player.tactics.activeSkill = 'none'; }
+}
+
+function saveTactics() {
+    player.tactics.hpPct = parseInt(document.getElementById('tac-hp').value);
+    player.tactics.mpPct = parseInt(document.getElementById('tac-mp').value);
+    player.tactics.activeSkill = document.getElementById('tac-skill').value;
+    
+    player.tactics.autoReturn = document.getElementById('tac-auto-return').checked;
+    player.tactics.sellCommon = document.getElementById('tac-sell-common').checked;
+    player.tactics.sellRare = document.getElementById('tac-sell-rare').checked;
+    player.tactics.sellPots = document.getElementById('tac-sell-pots').checked;
+}
+
+// --- COMBATE E DROPS ---
+function updateLocationLabel(loc) {
+    let mapNames = { 'city': 'Lorencia (Seguro)', 'lorencia': 'Spot: Lorencia', 'devias': 'Spot: Devias', 'losttower': 'Spot: Lost Tower', 'atlans': 'Spot: Atlans', 'tarkan': 'Spot: Tarkan', 'icarus': 'Spot: Icarus' };
+    let locLabel = document.getElementById('current-location-label');
+    if(locLabel) locLabel.innerText = `📍 Você está em: ${mapNames[loc] || loc}`;
+}
+
+function moveTo(loc) {
+    player.location = loc;
+    currentTarget = null;
+    combatTimers = { player: 0, monster: 0, regen: 0 }; 
+    
+    updateLocationLabel(loc);
+    
+    let st = document.getElementById('combat-status');
+    if(loc === 'city') {
+        st.innerText = "Status: Seguro na Cidade";
+        st.className = "text-center p-2 bg-gray-800 rounded border border-gray-600 text-green-400 font-bold shadow-inner";
+        logCombat("Voltou pra cidade. Recuperando HP/MP...");
+    } else {
+        st.innerText = `Status: Caçando em ${DB.spots[loc].name}`;
+        st.className = "text-center p-2 bg-gray-800 rounded border border-red-600 text-red-400 font-bold shadow-inner";
+        logCombat(`Chegou em ${DB.spots[loc].name}. Procurando bicho...`);
+    }
+}
+
+function logCombat(msg) {
+    let box = document.getElementById('combat-log');
+    let p = document.createElement('div');
+    p.className = 'mb-2 border-b border-gray-800 pb-1';
+    p.innerHTML = msg;
+    box.appendChild(p);
+    if(box.childNodes.length > 50) box.removeChild(box.firstChild);
+    box.scrollTop = box.scrollHeight;
+}
+
+function handleDrops(monster) {
+    // Drop Rate Global: Apenas 30% de chance de o monstro dropar QUALQUER coisa.
+    if (Math.random() > 0.30) return;
+
+    let roll = Math.random() * 100;
+    let dropId = null;
+    
+    let pool = DB.spotDrops[player.location];
+
+    // Definição de chances por mapa (A soma das chances deve fechar perto de 100%)
+    let chances = {
+        'lorencia':  { pot: 50, common: 45, rare: 4.8, legendary: 0, jewel: 0.2 },
+        'devias':    { pot: 45, common: 35, rare: 18.6, legendary: 0, jewel: 0.4 },
+        'losttower': { pot: 40, common: 30, rare: 27, legendary: 2, jewel: 1.0 },
+        'atlans':    { pot: 35, common: 20, rare: 35, legendary: 8, jewel: 2.0 },
+        'tarkan':    { pot: 30, common: 10, rare: 40, legendary: 16, jewel: 4.0 },
+        'icarus':    { pot: 20, common: 0,  rare: 45, legendary: 27, jewel: 8.0 }
+    }[player.location] || { pot: 50, common: 45, rare: 4.8, legendary: 0, jewel: 0.2 };
+
+    let category = null;
+    if (roll < chances.jewel) category = 'jewel';
+    else if (roll < chances.jewel + chances.legendary) category = 'legendary';
+    else if (roll < chances.jewel + chances.legendary + chances.rare) category = 'rare';
+    else if (roll < chances.jewel + chances.legendary + chances.rare + chances.common) category = 'common';
+    else category = 'pot';
+
+    if (category === 'jewel') {
+        dropId = Math.random() > 0.7 ? 'jewel_soul' : 'jewel_bless';
+    } else if (category === 'pot') {
+        if(player.location === 'lorencia') dropId = Math.random() > 0.5 ? 'hp_pot_s' : 'mp_pot_s';
+        else if(player.location === 'devias') dropId = Math.random() > 0.5 ? 'hp_pot_m' : 'mp_pot_m';
+        else dropId = 'hp_pot_l';
+    } else {
+        let availableItems = pool[category]; 
+        if(availableItems && availableItems.length > 0) {
+            dropId = availableItems[Math.floor(Math.random() * availableItems.length)];
+        } else {
+            dropId = 'hp_pot_m'; 
+        }
+    }
+
+    if(dropId) {
+        let base = DB.items[dropId];
+        if (base.cls && !base.cls.includes(player.cls) && base.type !== 'consumable') {
+            dropId = 'hp_pot_m';
+            base = DB.items[dropId];
+        }
+
+        if(addInvItem(dropId, 1, 0)) {
+            let color = getItemColorClass(base.rarity);
+            if (base.rarity === 'jewel') {
+                logCombat(`<div class="blink-pink p-1 -mx-1 text-pink-300 font-bold rounded">✨ TING! Caiu uma ${base.name}! ✨</div>`);
+            } else {
+                logCombat(`🎁 Caiu um <span class="${color}">${base.name}</span>!`);
+            }
+        }
+    }
+}
+
+function combatTick() {
+    if(currentCharIndex === -1 || !player) return; 
+
+    if(player.location === 'city') {
+        combatTimers.regen -= 200;
+        if(combatTimers.regen <= 0) {
+            if(player.hp < derived.maxHp) player.hp = Math.min(derived.maxHp, player.hp + derived.maxHp*0.05);
+            if(player.mp < derived.maxMp) player.mp = Math.min(derived.maxMp, player.mp + derived.maxMp*0.05);
+            combatTimers.regen = 2000;
+            updateUI();
+        }
+        return;
+    }
+
+    if(player.hp <= 0) {
+        logCombat('<span class="text-red-500 font-bold text-lg">☠️ VOCÊ MORREU!</span> Voltando pra cidade...');
+        player.hp = Math.floor(derived.maxHp * 0.1);
+        moveTo('city');
+        updateUI();
+        return;
+    }
+
+    // --- AUTO RETURN E VENDA (GRIND) ---
+    if (player.inv.length >= MAX_INV && player.tactics.autoReturn) {
+        let itemsSold = 0;
+        let zenGained = 0;
+        
+        let keptHp = false;
+        let keptMp = false;
+        
+        for (let i = player.inv.length - 1; i >= 0; i--) {
+            let item = player.inv[i];
+            let base = DB.items[item.id];
+            let isTrash = false;
+            let sellQty = item.qty;
+            
+            if (base.rarity === 'common' && player.tactics.sellCommon) isTrash = true;
+            if (base.rarity === 'rare' && player.tactics.sellRare) isTrash = true;
+            
+            if (base.type === 'consumable' && player.tactics.sellPots) {
+                if (base.healHp && !keptHp) {
+                    keptHp = true; 
+                } else if (base.healMp && !keptMp) {
+                    keptMp = true; 
+                } else {
+                    isTrash = true; 
+                }
+            }
+            
+            if (base.rarity === 'legendary' || base.rarity === 'jewel') isTrash = false; 
+            
+            if (isTrash) {
+                let val = Math.floor(base.price / 3) * sellQty;
+                zenGained += val;
+                itemsSold++;
+                player.inv.splice(i, 1);
+            }
+        }
+        
+        if (itemsSold > 0) {
+            player.zen += zenGained;
+            logCombat(`🚚 <span class="text-blue-300">Auto-Grind:</span> Mochila lotou! Voltou na cidade, vendeu ${itemsSold} espaço(s) de lixo por <span class="text-yellow-400">${formatAbrev(zenGained)}z</span> e já voltou pro Spot.`);
+            updateUI();
+            return; 
+        } else {
+            logCombat(`⚠️ <span class="text-red-400">Auto-Grind Pausado:</span> Mochila cheia de itens valiosos que você não marcou como lixo! Volte na cidade para guardar.`);
+            player.tactics.autoReturn = false; 
+            renderTacticsTab();
+        }
+    }
+
+    if((player.hp / derived.maxHp)*100 <= player.tactics.hpPct) {
+        let pot = player.inv.findIndex(i => DB.items[i.id].type === 'consumable' && DB.items[i.id].healHp);
+        if(pot !== -1) { useItem(pot); logCombat('<span class="text-green-400">💊 Usou poção de HP.</span>'); }
+    }
+    
+    let needsMpForSkill = player.tactics.activeSkill !== 'none' && player.mp < DB.skills[player.tactics.activeSkill].costMp && player.tactics.mpPct > 0;
+    if((derived.maxMp > 0 && (player.mp / derived.maxMp)*100 <= player.tactics.mpPct) || needsMpForSkill) {
+        let pot = player.inv.findIndex(i => DB.items[i.id].type === 'consumable' && DB.items[i.id].healMp);
+        if(pot !== -1) { useItem(pot); logCombat('<span class="text-blue-400">🧪 Usou poção de MP.</span>'); }
+    }
+
+    let spot = DB.spots[player.location];
+    if(!spot) return;
+
+    if(!currentTarget) {
+        let pool = spot.monsters;
+        let mId = pool[Math.floor(Math.random() * pool.length)];
+        let mBase = DB.monsters[mId];
+        
+        let mobCount = Math.floor(Math.random() * 3) + 1; 
+        currentTarget = { 
+            ...mBase, id: mId, initialCount: mobCount, count: mobCount,
+            maxHp: mBase.hp, currentHp: mBase.hp * mobCount
+        };
+        
+        let nameStr = mobCount > 1 ? `Bando de ${mBase.name} (${mobCount}x)` : mBase.name;
+        logCombat(`Achou um <span class="text-red-300 font-bold">${nameStr}</span>! (HP Total: ${formatAbrev(currentTarget.currentHp)})`);
+        
+        combatTimers.player = 500; 
+        combatTimers.monster = 1500;
+        return;
+    }
+
+    combatTimers.player -= 200;
+    combatTimers.monster -= 200;
+
+    // Turno Jogador
+    if(combatTimers.player <= 0) {
+        let baseRawDmg = Math.floor(Math.random() * (derived.atkMax - derived.atkMin + 1)) + derived.atkMin;
+        let activeSk = player.tactics.activeSkill;
+        let hits = 1;
+        let dmgPerHit = baseRawDmg;
+        let isAoE = false;
+        
+        if(activeSk !== 'none') {
+            let sk = DB.skills[activeSk];
+            if (sk.isAoE && currentTarget.count <= 1) {
+                // Falback p/ hit basico grátis
+            } else if(player.mp >= sk.costMp) {
+                player.mp -= sk.costMp;
+                hits = sk.hits || 1;
+                isAoE = sk.isAoE || false;
+                let baseDmg = sk.type === 'mag' ? derived.matk : baseRawDmg;
+                dmgPerHit = Math.floor(baseDmg * (sk.dmgMult || 1));
+                logCombat(`✨ Soltou <span class="text-purple-400">${sk.name}</span>!`);
+            }
+        }
+
+        let dmgToOneTarget = 0;
+        let actualHits = 0;
+        for(let i = 0; i < hits; i++) {
+            let finalHitDmg = Math.max(1, dmgPerHit - currentTarget.def);
+            dmgToOneTarget += finalHitDmg;
+            actualHits++;
+        }
+
+        let totalDmg = 0;
+        if (isAoE && currentTarget.count > 1) {
+            totalDmg = dmgToOneTarget * currentTarget.count;
+            logCombat(`💥 <span class="text-pink-400">Ataque em Área!</span> Acertou ${currentTarget.count} inimigos. Dano: <span class="text-yellow-400 font-bold">${formatAbrev(totalDmg)}</span>.`);
+        } else {
+            totalDmg = dmgToOneTarget;
+            if (actualHits > 1) logCombat(`🏹 Acertou ${actualHits}x! Dano: <span class="text-yellow-400 font-bold">${formatAbrev(totalDmg)}</span>.`);
+            else logCombat(`⚔️ Vc bateu <span class="text-yellow-400 font-bold">${formatAbrev(totalDmg)}</span>.`);
+        }
+
+        currentTarget.currentHp -= totalDmg;
+
+        let newCount = Math.ceil(currentTarget.currentHp / currentTarget.maxHp);
+        if(newCount < currentTarget.count && newCount > 0) {
+            let killed = currentTarget.count - newCount;
+            logCombat(`🩸 Vc deitou ${killed}x ${currentTarget.name}! Restam ${newCount}.`);
+            currentTarget.count = newCount;
+        }
+
+        if(currentTarget.currentHp <= 0) {
+            let totalExp = currentTarget.exp * currentTarget.initialCount;
+            let totalZen = currentTarget.zen * currentTarget.initialCount;
+            
+            let nameStr = currentTarget.initialCount > 1 ? `Bando de ${currentTarget.name}` : currentTarget.name;
+            logCombat(`💀 Matou o <span class="text-red-300">${nameStr}</span>! <span class="text-yellow-200">+${formatAbrev(totalExp)} XP</span>, <span class="text-yellow-400">+${formatAbrev(totalZen)}z</span>.`);
+            
+            player.zen += totalZen;
+            gainExp(totalExp);
+            
+            for(let k = 0; k < currentTarget.initialCount; k++) { handleDrops(currentTarget); }
+            
+            currentTarget = null;
+            updateUI();
+            return;
+        }
+        
+        combatTimers.player = derived.atkSpeed; 
+    }
+
+    // Turno Monstro
+    if(currentTarget && combatTimers.monster <= 0) {
+        let hitsTaken = 0;
+        let totalDmgTaken = 0;
+        
+        for(let i = 0; i < currentTarget.count; i++) {
+            if(Math.random()*100 >= derived.eva) {
+                let mDmg = Math.max(1, currentTarget.atk - derived.def);
+                player.hp -= mDmg;
+                totalDmgTaken += mDmg;
+                hitsTaken++;
+            }
+        }
+
+        if(hitsTaken > 0) logCombat(`🩸 Tomou ${hitsTaken} porrada(s)! <span class="text-red-400 font-bold">-${formatAbrev(totalDmgTaken)} HP</span>.`);
+        else logCombat(`💨 Vc <span class="text-blue-300">esquivou</span> de todos os ataques do bando!`);
+        
+        combatTimers.monster = 2000;
+    }
+
+    updateUI();
+}
+
+setInterval(combatTick, 200);
+
+</script>
+</body>
+</html>
