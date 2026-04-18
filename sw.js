@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pocketmu-cache-v4';
+const CACHE_NAME = 'pocketmu-cache-v5';
 const urlsToCache = [
     './',
     './index.html',
