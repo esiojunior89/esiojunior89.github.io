@@ -267,16 +267,48 @@ const DB = {
     spots: {
         'lorencia': { name: 'Lorencia', monsters: ['spider', 'hound', 'goblin', 'dark_knight'] }, 'devias': { name: 'Devias', monsters: ['worm', 'ice_monster', 'elite_goblin', 'yeti'] }, 'losttower': { name: 'Lost Tower', monsters: ['shadow', 'poison_bull', 'death_gorgon', 'death_knight'] }, 'atlans': { name: 'Atlans', monsters: ['bahamut', 'vepar', 'valkyrie', 'hydra'] }, 'tarkan': { name: 'Tarkan', monsters: ['mutant', 'bloody_wolf', 'iron_wheel', 'tantalos'] }, 'aida': { name: 'Aida', monsters: ['death_tree', 'forest_orc', 'blue_golem', 'hell_maine'] }, 'icarus': { name: 'Icarus', monsters: ['alquamos', 'mega_crust', 'phantom_knight', 'great_dram'] }, 'kanturu': { name: 'Kanturu', monsters: ['splinter_wolf', 'iron_rider', 'blade_hunter', 'nightmare'] }
     },
-    monsters: {
-        'spider': { name:'Spider', hp:80, atk:30, def:5, exp:15, zen:20 }, 'hound': { name:'Hound', hp:150, atk:45, def:10, exp:30, zen:40 }, 'goblin': { name:'Goblin', hp:250, atk:60, def:15, exp:60, zen:70 }, 'dark_knight': { name:'Dark Knight', hp:400, atk:90, def:25, exp:120, zen:150 },
-        'worm': { name:'Ice Worm', hp:800, atk:150, def:50, exp:250, zen:300 }, 'ice_monster': { name:'Ice Monster', hp:1200, atk:200, def:60, exp:400, zen:450 }, 'elite_goblin': { name:'Elite Goblin', hp:1600, atk:260, def:75, exp:600, zen:650 }, 'yeti': { name:'Yeti', hp:2500, atk:350, def:100, exp:900, zen:1000 },
-        'shadow': { name:'Shadow', hp:4000, atk:500, def:150, exp:1500, zen:1800 }, 'poison_bull': { name:'Poison Bull', hp:5500, atk:650, def:180, exp:2200, zen:2500 }, 'death_gorgon': { name:'Death Gorgon', hp:7000, atk:800, def:220, exp:3000, zen:3500 }, 'death_knight': { name:'Death Knight', hp:10000, atk:1100, def:280, exp:4500, zen:5000 },
-        'bahamut': { name:'Bahamut', hp:14000, atk:1400, def:350, exp:6500, zen:7000 }, 'vepar': { name:'Vepar', hp:18000, atk:1700, def:420, exp:8500, zen:9000 }, 'valkyrie': { name:'Valkyrie', hp:22000, atk:2100, def:500, exp:11000, zen:12000 }, 'hydra': { name:'Hydra', hp:28000, atk:2600, def:600, exp:15000, zen:16000 },
-        'mutant': { name:'Mutant', hp:35000, atk:3200, def:800, exp:20000, zen:22000 }, 'bloody_wolf': { name:'Bloody Wolf', hp:45000, atk:4000, def:1000, exp:28000, zen:30000 }, 'iron_wheel': { name:'Iron Wheel', hp:55000, atk:4800, def:1200, exp:35000, zen:38000 }, 'tantalos': { name:'Tantalos', hp:70000, atk:6000, def:1500, exp:45000, zen:48000 },
-        'death_tree': { name:'Death Tree', hp:90000, atk:7500, def:2000, exp:60000, zen:65000 }, 'forest_orc': { name:'Forest Orc', hp:110000, atk:9000, def:2400, exp:80000, zen:85000 }, 'blue_golem': { name:'Blue Golem', hp:140000, atk:11000, def:2900, exp:100000, zen:110000 }, 'hell_maine': { name:'Hell Maine', hp:180000, atk:14000, def:3500, exp:130000, zen:140000 },
-        'alquamos': { name:'Alquamos', hp:220000, atk:17000, def:4200, exp:170000, zen:180000 }, 'mega_crust': { name:'Mega Crust', hp:270000, atk:20000, def:5000, exp:220000, zen:230000 }, 'phantom_knight': { name:'Phantom Knight', hp:330000, atk:24000, def:6000, exp:280000, zen:300000 }, 'great_dram': { name:'Great Dram', hp:400000, atk:29000, def:7500, exp:350000, zen:380000 },
-        'splinter_wolf': { name:'Splinter Wolf', hp:500000, atk:35000, def:9000, exp:450000, zen:480000 }, 'iron_rider': { name:'Iron Rider', hp:650000, atk:45000, def:11000, exp:600000, zen:650000 }, 'blade_hunter': { name:'Blade Hunter', hp:850000, atk:58000, def:14000, exp:800000, zen:850000 }, 'nightmare': { name:'Nightmare', hp:1200000, atk:80000, def:18000, exp:1200000, zen:1300000 }
+        monsters: {
+        'spider': { name:'Spider', hp:30, atk:10, def:2, exp:15, zen:20 },
+        'hound': { name:'Hound', hp:40, atk:14, def:3, exp:20, zen:30 },
+        'goblin': { name:'Goblin', hp:50, atk:18, def:4, exp:25, zen:40 },
+        'dark_knight': { name:'Dark Knight', hp:80, atk:25, def:8, exp:45, zen:60 },
+        
+        'worm': { name:'Ice Worm', hp:120, atk:45, def:12, exp:80, zen:100 },
+        'ice_monster': { name:'Ice Monster', hp:160, atk:55, def:15, exp:110, zen:150 },
+        'elite_goblin': { name:'Elite Goblin', hp:250, atk:65, def:18, exp:150, zen:200 },
+        'yeti': { name:'Yeti', hp:500, atk:100, def:30, exp:350, zen:400 },
+        
+        'shadow': { name:'Shadow', hp:1200, atk:180, def:60, exp:900, zen:800 },
+        'poison_bull': { name:'Poison Bull', hp:2500, atk:280, def:100, exp:1800, zen:1500 },
+        'death_gorgon': { name:'Death Gorgon', hp:3500, atk:350, def:150, exp:2500, zen:2200 },
+        'death_knight': { name:'Death Knight', hp:5000, atk:400, def:200, exp:4000, zen:3500 },
+
+        'bahamut': { name:'Bahamut', hp:4000, atk:450, def:180, exp:3000, zen:2500 },
+        'vepar': { name:'Vepar', hp:5500, atk:600, def:220, exp:4000, zen:3500 },
+        'valkyrie': { name:'Valkyrie', hp:7000, atk:750, def:280, exp:5500, zen:4800 },
+        'hydra': { name:'Hydra', hp:8500, atk:850, def:320, exp:6500, zen:5500 },
+
+        'mutant': { name:'Mutant', hp:9000, atk:900, def:350, exp:7500, zen:6000 },
+        'bloody_wolf': { name:'Bloody Wolf', hp:12000, atk:1100, def:450, exp:9500, zen:8000 },
+        'iron_wheel': { name:'Iron Wheel', hp:13500, atk:1200, def:500, exp:10500, zen:9000 },
+        'tantalos': { name:'Tantalos', hp:15000, atk:1300, def:550, exp:12000, zen:10000 },
+
+        'death_tree': { name:'Death Tree', hp:17000, atk:1400, def:600, exp:14000, zen:12000 },
+        'forest_orc': { name:'Forest Orc', hp:18500, atk:1500, def:650, exp:16000, zen:13500 },
+        'blue_golem': { name:'Blue Golem', hp:22000, atk:1750, def:750, exp:20000, zen:17000 },
+        'hell_maine': { name:'Hell Maine', hp:28000, atk:2100, def:950, exp:28000, zen:25000 },
+
+        'alquamos': { name:'Alquamos', hp:20000, atk:1600, def:700, exp:18000, zen:15000 },
+        'mega_crust': { name:'Mega Crust', hp:26000, atk:1900, def:900, exp:25000, zen:22000 },
+        'phantom_knight': { name:'Phantom Knight', hp:35000, atk:2400, def:1200, exp:35000, zen:30000 },
+        'great_dram': { name:'Great Dram', hp:45000, atk:3000, def:1500, exp:50000, zen:40000 },
+
+        'splinter_wolf': { name:'Splinter Wolf', hp:50000, atk:3500, def:1800, exp:60000, zen:50000 },
+        'iron_rider': { name:'Iron Rider', hp:65000, atk:4200, def:2200, exp:80000, zen:65000 },
+        'blade_hunter': { name:'Blade Hunter', hp:85000, atk:5500, def:2800, exp:105000, zen:85000 },
+        'nightmare': { name:'Nightmare', hp:120000, atk:7500, def:3800, exp:150000, zen:120000 }
     }
+
 };
 
 let account = { chars: [], stash: [], zen: 0 }; let currentCharIndex = -1; let isViewingStash = false; let player = null; 
