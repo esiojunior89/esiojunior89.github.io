@@ -227,13 +227,13 @@ if ('serviceWorker' in navigator) { try { navigator.serviceWorker.getRegistratio
 // --- PAINEL DE CONTROLE DE DROPS E BALANÇO ---
 const CONFIG = {
     drops: {
-        globalChance: 0.06, 
+        globalChance: 0.95, 
         potionChance: 0.2,  
         featherBase: 0.002, chaosBase: 0.005, blessBase: 0.004, soulBase: 0.003,    
-        itemLevels: { lvl9: 0.003, lvl8: 0.007, lvl7: 0.012, lvl5: 0.022, lvl4: 0.042, lvl3: 0.072, lvl2: 0.112, lvl1: 0.162, lvl0: 0.212 }
+        itemLevels: { lvl9: 0.3, lvl8: 0.7, lvl7: 0.12, lvl5: 0.22, lvl4: 0.42, lvl3: 0.72, lvl2: 1.12, lvl1: 1.62, lvl0: 2.12 }
     },
-    zen: { dropChance: 0.05, xpMultiplier: 0.10 },
-    progression: { xpBase: 100, xpMultiplier: 1.18 }
+    zen: { dropChance: 0.75, xpMultiplier: 0.45 },
+    progression: { xpBase: 100, xpMultiplier: 1.14 }
 };
 
 const POOLS = {
