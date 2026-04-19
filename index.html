@@ -227,7 +227,7 @@ if ('serviceWorker' in navigator) { try { navigator.serviceWorker.getRegistratio
 // --- PAINEL DE CONTROLE DE DROPS E BALANÇO ---
 const CONFIG = {
     drops: {
-        globalChance: 0.15, // 6% de chance de cair QUALQUER coisa no chão
+        globalChance: 0.5, // 6% de chance de cair QUALQUER coisa no chão
         potionChance: 0.5,  // 0.2% de chance de ser uma poção
         
         // As joias multiplicam esse valor pelo número da cidade (ex: Tarkan é a cidade 5)
@@ -238,7 +238,7 @@ const CONFIG = {
         
         // Tabela de levels dos itens dropados (tudo em %)
         itemLevels: {
-            lvl9: 0.03, lvl8: 0.07, lvl7: 0.12, lvl5: 0.22, lvl4: 0.42, lvl3: 0.72, lvl2: 1.12, lvl1: 1.62, lvl0: 2.12 // Item +0 base
+            lvl9: 0.06, lvl8: 0.14, lvl7: 0.24, lvl5: 0.44, lvl4: 1.42, lvl3: 2.72, lvl2: 3.12, lvl1: 4.62, lvl0: 5.12 // Item +0 base
         }
     },
     zen: {
