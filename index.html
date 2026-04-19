@@ -1,4 +1,4 @@
-0.002b
+0.003b
 
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -307,7 +307,7 @@ DB.monsters = {};
 let curStats = { hp: 20, atk: 12, def: 2, exp: 22, zen: 20 };
 MONSTER_LIST.forEach(m => {
     DB.monsters[m.id] = { name: m.name, hp: Math.floor(curStats.hp), atk: Math.floor(curStats.atk), def: Math.floor(curStats.def), exp: Math.floor(curStats.exp), zen: Math.floor(curStats.zen) };
-    curStats.hp *= 1.15; curStats.atk *= 1.15; curStats.def *= 1.15; curStats.exp *= 1.15; curStats.zen *= 1.15;
+    curStats.hp *= 1.25; curStats.atk *= 1.25; curStats.def *= 1.25; curStats.exp *= 1.25; curStats.zen *= 1.25;
 });
 
 let account = { chars: [], stash: [], zen: 0 }; let currentCharIndex = -1; let isViewingStash = false; let player = null; 
