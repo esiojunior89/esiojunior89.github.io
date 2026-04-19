@@ -224,6 +224,29 @@
 <script>
 if ('serviceWorker' in navigator) { try { navigator.serviceWorker.getRegistrations().then(rs => { if(rs && rs.length) for(let r of rs) r.unregister(); }).catch(e => {}); } catch(e) {} }
 
+// --- PAINEL DE CONTROLE DE DROPS E BALANÇO ---
+const CONFIG = {
+    drops: {
+        globalChance: 0.06, // 6% de chance de cair QUALQUER coisa no chão
+        potionChance: 0.2,  // 0.2% de chance de ser uma poção
+        
+        // As joias multiplicam esse valor pelo número da cidade (ex: Tarkan é a cidade 5)
+        featherBase: 0.002, // Loch's Feather
+        chaosBase: 0.005,   // Jewel of Chaos
+        blessBase: 0.004,   // Jewel of Bless
+        soulBase: 0.003,    // Jewel of Soul
+        
+        // Tabela de levels dos itens dropados (tudo em %)
+        itemLevels: {
+            lvl9: 0.003, lvl8: 0.007, lvl7: 0.012, lvl5: 0.022, lvl4: 0.042, lvl3: 0.072, lvl2: 0.112, lvl1: 0.162, lvl0: 0.212 // Item +0 base
+        }
+    },
+    zen: {
+        dropChance: 0.05,    // 5% de chance de cair dinheiro do bicho
+        xpMultiplier: 0.10   // O zen dropado equivale a 10% da XP q o bicho deu
+    }
+};
+
 const POOLS = {
     T1: ['short_sword','buckler','leather_helm','leather_armor','leather_pants','leather_gloves','leather_boots','skull_staff','pad_helm','pad_armor','pad_pants','pad_gloves','pad_boots','short_bow','vine_helm','vine_armor','vine_pants','vine_gloves','vine_boots'],
     T2: ['hand_axe','horn_shield','bronze_helm','bronze_armor','bronze_pants','bronze_gloves','bronze_boots','angelic_staff','bone_helm','bone_armor','bone_pants','bone_gloves','bone_boots','crossbow','silk_helm','silk_armor','silk_pants','silk_gloves','silk_boots'],
@@ -562,7 +585,7 @@ function openItemModal(source, indexOrSlot) {
         if (player.location.split('_')[1] === 'city') content += `<button onclick="depositItem(${indexOrSlot})" class="flex-1 min-w-[30%] bg-indigo-600 hover:bg-indigo-500 py-2 rounded font-bold shadow-lg transition">Baú</button>`;
         let sellPrice = Math.floor(base.price / 3); let maxQty = itemObj.qty || 1;
         if (maxQty > 1) content += `<div class="mt-4 bg-gray-900 p-3 rounded border border-gray-700 shadow-inner w-full"><label class="block text-gray-400 text-xs mb-2">Vender Qtd: <span id="sell-qty-val" class="text-white font-bold">${maxQty}</span></label><input type="range" id="sell-qty" min="1" max="${maxQty}" value="${maxQty}" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer transition" oninput="updateSellPreview(${sellPrice})"></div>`;
-        content += `<button id="btn-sell-confirm" onclick="sellItem(${indexOrSlot})" class="flex-1 min-w-[30%] bg-yellow-700 hover:bg-yellow-600 py-2 rounded font-bold shadow-lg mt-2 transition">Vender<br><span class="text-[10px]">${formatAbrev(sellPrice * maxQty)}z</span></button>`;
+        content += `<button id="btn-sell-confirm" onclick="sellItem(${indexOrSlot})" class="flex-1 min-w-[30%] bg-yellow-700 hover:bg-yellow-600 py-2 rounded font-bold shadow-lg mt-2 transition">Vender (${formatAbrev(sellPrice * maxQty)}z)</button>`;
     } 
     else if (source === 'stash') content += `<button onclick="withdrawItem(${indexOrSlot})" class="flex-1 bg-indigo-600 hover:bg-indigo-500 py-3 rounded font-bold shadow-lg text-lg transition">Retirar</button>`;
     else if(source === 'equip') content += `<button onclick="unequipItem('${indexOrSlot}')" class="flex-1 bg-red-600 hover:bg-red-500 py-3 rounded font-bold shadow-lg transition">Desequipar</button>`;
@@ -730,28 +753,39 @@ function logCombat(msg) {
 }
 
 function handleDrops() {
+    // Lê a chance global de drop lá do painel
+    if (Math.random() > CONFIG.drops.globalChance) return;
+
     let baseCity = player.location.split('_')[0];
     let cityIndex = ['lorencia', 'devias', 'losttower', 'atlans', 'tarkan', 'aida', 'icarus', 'kanturu'].indexOf(baseCity) + 1;
     let roll = Math.random() * 100;
     
-    let cChaos = 0.005 * cityIndex; let cBless = 0.004 * cityIndex; let cSoul = 0.003 * cityIndex; let cFeather = 0.002 * cityIndex;
+    // Puxa as chances das joias e multiplica pela dificuldade da cidade
+    let cFeather = CONFIG.drops.featherBase * cityIndex;
+    let cChaos = CONFIG.drops.chaosBase * cityIndex;
+    let cBless = CONFIG.drops.blessBase * cityIndex;
+    let cSoul = CONFIG.drops.soulBase * cityIndex;
     
     if (roll < cFeather) { addInvItem('feather', 1, 0); logCombat(`🪶 TING! Loch's Feather! Raridade Extrema!`); return; } roll -= cFeather;
     if (roll < cChaos) { addInvItem('jewel_chaos', 1, 0); logCombat(`✨ TING! Jewel of Chaos!`); return; } roll -= cChaos;
     if (roll < cBless) { addInvItem('jewel_bless', 1, 0); logCombat(`✨ TING! Jewel of Bless!`); return; } roll -= cBless;
     if (roll < cSoul) { addInvItem('jewel_soul', 1, 0); logCombat(`✨ TING! Jewel of Soul!`); return; } roll -= cSoul;
-    if (roll < 0.2) { let pot = baseCity === 'lorencia' ? (Math.random()>0.5?'hp_pot_s':'mp_pot_s') : baseCity === 'devias' ? (Math.random()>0.5?'hp_pot_m':'mp_pot_m') : 'hp_pot_l'; addInvItem(pot, 1, 0); logCombat(`💊 Dropou Poção!`); return; } roll -= 0.2;
+    
+    if (roll < CONFIG.drops.potionChance) { let pot = baseCity === 'lorencia' ? (Math.random()>0.5?'hp_pot_s':'mp_pot_s') : baseCity === 'devias' ? (Math.random()>0.5?'hp_pot_m':'mp_pot_m') : 'hp_pot_l'; addInvItem(pot, 1, 0); logCombat(`💊 Dropou Poção!`); return; } roll -= CONFIG.drops.potionChance;
 
     let itemLvl = -1;
-    if (roll < 0.003) itemLvl = 9;
-    else if (roll < 0.007) itemLvl = 8;
-    else if (roll < 0.012) itemLvl = 7;
-    else if (roll < 0.022) itemLvl = 5;
-    else if (roll < 0.042) itemLvl = 4;
-    else if (roll < 0.072) itemLvl = 3;
-    else if (roll < 0.112) itemLvl = 2;
-    else if (roll < 0.162) itemLvl = 1;
-    else if (roll < 0.212) itemLvl = 0; // +0 cai as vezes também
+    let lvls = CONFIG.drops.itemLevels;
+    
+    // Testa os levels do item de acordo com o painel
+    if (roll < lvls.lvl9) itemLvl = 9;
+    else if (roll < lvls.lvl8) itemLvl = 8;
+    else if (roll < lvls.lvl7) itemLvl = 7;
+    else if (roll < lvls.lvl5) itemLvl = 5;
+    else if (roll < lvls.lvl4) itemLvl = 4;
+    else if (roll < lvls.lvl3) itemLvl = 3;
+    else if (roll < lvls.lvl2) itemLvl = 2;
+    else if (roll < lvls.lvl1) itemLvl = 1;
+    else if (roll < lvls.lvl0) itemLvl = 0; 
     
     if (itemLvl !== -1) {
         let pool = DB.spotDrops[baseCity]; let cat = Math.random(); let targetCat = cat < 0.1 ? 'legendary' : cat < 0.4 ? 'rare' : 'common';
@@ -846,8 +880,12 @@ function combatTick() {
         if(currentTarget.hpList.length === 0) {
             let mult = (player.equip && player.equip.wings) ? 1.15 : 1.0;
             let totalExp = Math.floor(currentTarget.exp * currentTarget.initialCount * mult);
+            
+            // Puxa as configs de Zen lá de cima
             let totalZen = 0; 
-            if (Math.random() <= 0.05) { totalZen = Math.floor(totalExp * 0.10 * mult); }
+            if (Math.random() <= CONFIG.zen.dropChance) { 
+                totalZen = Math.floor(totalExp * CONFIG.zen.xpMultiplier * mult); 
+            }
             
             let nameStr = currentTarget.initialCount > 1 ? `Bando de ${currentTarget.name}` : currentTarget.name;
             let zenMsg = totalZen > 0 ? `, <span class="text-yellow-400">+${formatAbrev(totalZen)}z</span>` : '';
