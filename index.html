@@ -227,18 +227,18 @@ if ('serviceWorker' in navigator) { try { navigator.serviceWorker.getRegistratio
 // --- PAINEL DE CONTROLE DE DROPS E BALANÇO ---
 const CONFIG = {
     drops: {
-        globalChance: 0.06, // 6% de chance de cair QUALQUER coisa no chão
-        potionChance: 0.2,  // 0.2% de chance de ser uma poção
+        globalChance: 0.15, // 6% de chance de cair QUALQUER coisa no chão
+        potionChance: 0.5,  // 0.2% de chance de ser uma poção
         
         // As joias multiplicam esse valor pelo número da cidade (ex: Tarkan é a cidade 5)
-        featherBase: 0.002, // Loch's Feather
-        chaosBase: 0.005,   // Jewel of Chaos
-        blessBase: 0.004,   // Jewel of Bless
-        soulBase: 0.003,    // Jewel of Soul
+        featherBase: 0.02, // Loch's Feather
+        chaosBase: 0.05,   // Jewel of Chaos
+        blessBase: 0.04,   // Jewel of Bless
+        soulBase: 0.03,    // Jewel of Soul
         
         // Tabela de levels dos itens dropados (tudo em %)
         itemLevels: {
-            lvl9: 0.003, lvl8: 0.007, lvl7: 0.012, lvl5: 0.022, lvl4: 0.042, lvl3: 0.072, lvl2: 0.112, lvl1: 0.162, lvl0: 0.212 // Item +0 base
+            lvl9: 0.03, lvl8: 0.07, lvl7: 0.12, lvl5: 0.22, lvl4: 0.42, lvl3: 0.72, lvl2: 1.12, lvl1: 1.62, lvl0: 2.12 // Item +0 base
         }
     },
     zen: {
