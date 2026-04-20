@@ -1,4 +1,4 @@
-0.008b
+0.010b
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -1383,7 +1383,7 @@ function openBoxOfHeaven(invIndex) {
     
     let rolls = Math.floor(Math.random() * 3) + 1; // Dropa de 1 a 3 itens
     for(let i=0; i<rolls; i++) { 
-        simulateDrop(8, true); // Index 8 é o spot de devias pra base de calculo do drop
+        simulateDrop(32, true); // Index 8 é o spot de devias pra base de calculo do drop
     } 
     showToast("Caixa de Heaven aberta!", "success"); 
     renderInventory();
