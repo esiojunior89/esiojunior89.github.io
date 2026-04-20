@@ -1,4 +1,4 @@
-0.004b
+0.005b
 
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -232,10 +232,10 @@ const CONFIG = {
         globalChance: 0.95, 
         potionChance: 0.2,  
         featherBase: 0.002, chaosBase: 0.005, blessBase: 0.004, soulBase: 0.003,    
-        itemLevels: { lvl9: 0.3, lvl8: 0.7, lvl7: 0.12, lvl5: 0.22, lvl4: 0.42, lvl3: 0.72, lvl2: 1.12, lvl1: 1.62, lvl0: 2.12 }
+        itemLevels: { lvl9: 0.03, lvl8: 0.07, lvl7: 0.012, lvl5: 0.022, lvl4: 0.042, lvl3: 0.072, lvl2: 0.12, lvl1: 0.62, lvl0: 1.212 }
     },
-    zen: { dropChance: 0.75, xpMultiplier: 0.45 },
-    progression: { xpBase: 100, xpMultiplier: 1.14 }
+    zen: { dropChance: 0.65, xpMultiplier: 0.15 },
+    progression: { xpBase: 100, xpMultiplier: 1.07 }
 };
 
 const POOLS = {
@@ -278,7 +278,7 @@ const DB = {
         'jewel_bless': { id:'jewel_bless', name:'Jewel of Bless', type:'jewel', rarity:'jewel', price:100000 }, 'jewel_soul': { id:'jewel_soul', name:'Jewel of Soul', type:'jewel', rarity:'jewel', price:250000 },
         'jewel_chaos': { id:'jewel_chaos', name:'Jewel of Chaos', type:'jewel', rarity:'jewel', price:150000, desc:'Joia fundamental para a Máquina Goblin.' },
         'feather': { id:'feather', name:"Loch's Feather", type:'material', rarity:'jewel', price:500000, desc:'Item raríssimo. Usado na Chaos Machine.' },
-        'wing_bk': { id:'wing_bk', name:'Wings of Dragon', type:'wings', rarity:'legendary', slot:'wings', atk:150, def:100, reqLvl:150, cls:['BK'] }, 'wing_sm': { id:'wing_sm', name:'Wings of Soul', type:'wings', rarity:'legendary', slot:'wings', matk:150, def:80, reqLvl:150, cls:['SM'] }, 'wing_elf': { id:'wing_elf', name:'Wings of Spirit', type:'wings', rarity:'legendary', slot:'wings', atk:120, def:120, reqLvl:150, cls:['ELF'] }
+        'wing_bk': { id:'wing_bk', name:'Wings of Dragon', type:'wings', rarity:'legendary', slot:'wings', atk:150, def:100, reqLvl:100, cls:['BK'] }, 'wing_sm': { id:'wing_sm', name:'Wings of Soul', type:'wings', rarity:'legendary', slot:'wings', matk:150, def:80, reqLvl:100, cls:['SM'] }, 'wing_elf': { id:'wing_elf', name:'Wings of Spirit', type:'wings', rarity:'legendary', slot:'wings', atk:120, def:120, reqLvl:100, cls:['ELF'] }
     },
     skills: {
         'fireball': { id:'fireball', name:'Fireball', costMp:5, dmgMult:1.5, type:'mag', isAoE:false }, 'falling_slash': { id:'falling_slash', name:'Falling Slash', costMp:5, dmgMult:1.5, type:'phys', isAoE:false }, 'penetration': { id:'penetration', name:'Penetration', costMp:5, dmgMult:1.5, type:'phys', isAoE:false },
