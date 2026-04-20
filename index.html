@@ -1,4 +1,4 @@
-0.004b
+0.005b
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -234,9 +234,9 @@ const CONFIG = {
         potionChance: 0.15,      
         boxOfHeavenRate: 0.05,   
         itemLevels: {            
-            lvl9: 0.001, lvl8: 0.002, lvl7: 0.003, 
-            lvl6: 0.004, lvl5: 0.010, lvl4: 0.030, 
-            lvl3: 0.050, lvl2: 0.100, lvl1: 0.300, lvl0: 0.500
+            lvl9: 0.001, lvl8: 0.003, lvl7: 0.008, 
+            lvl6: 0.015, lvl5: 0.030, lvl4: 0.060, 
+            lvl3: 0.100, lvl2: 0.150, lvl1: 0.250, lvl0: 0.383
         }
     },
     zen: { dropChance: 0.50, xpMultiplier: 0.10 }, 
@@ -358,7 +358,12 @@ function showToast(msg, type = 'info') {
 }
 
 window.onload = () => { 
-    let savedAcc = localStorage.getItem('pocketmu_save_v2'); if (savedAcc) account = JSON.parse(savedAcc); 
+    let savedAcc = localStorage.getItem('pocketmu_save_v2'); 
+    if (savedAcc) {
+        account = JSON.parse(savedAcc); 
+        if(!account.stash) account.stash = []; // Proteção contra saves velhos
+        if(!account.chars) account.chars = [];
+    }
     renderCharSelect(); buildMapUI(); setInterval(saveGame, 60000); 
 };
 function saveGame() { try { if(currentCharIndex !== -1 && player && player.name) account.chars[currentCharIndex] = player; localStorage.setItem('pocketmu_save_v2', JSON.stringify(account)); } catch(e) {} }
@@ -398,8 +403,11 @@ function startGame() {
 
 function playChar(idx) {
     currentCharIndex = idx; player = account.chars[idx];
-    if(!player.location || player.location === 'city') player.location = 'lorencia_city'; if(!player.equip.wings && player.equip.wings !== null) player.equip.wings = null;
-    if(!player.tactics.primary) { player.tactics.primary = player.tactics.activeSkill && player.tactics.activeSkill !== 'none' ? player.tactics.activeSkill : 'basic'; player.tactics.secondary = 'none'; player.tactics.threshold = 2; }
+    if(!player.location || player.location === 'city') player.location = 'lorencia_city'; 
+    if(!player.equip) player.equip = { helm: null, armor: null, pants: null, gloves: null, boots: null, weapon: null, shield: null, wings: null }; // Proteção contra save velho
+    if(player.equip.wings === undefined) player.equip.wings = null;
+    if(!player.tactics) player.tactics = { hpPct: 50, mpPct: 20, primary: 'basic', secondary: 'none', threshold: 2, autoReturn: false, sellCommon: true, sellRare: false, sellPots: false };
+    if(!player.tactics.primary) { player.tactics.primary = 'basic'; player.tactics.secondary = 'none'; player.tactics.threshold = 2; }
     currentTarget = null; combatTimers = { player: 0, monster: 0, regen: 0 }; isViewingStash = false;
     calcDerivedStats(); player.hp = derived.maxHp; player.mp = derived.maxMp; updateLocationLabel(); showGame(); logCombat(`Bem-vindo de volta!`);
 }
@@ -441,9 +449,12 @@ function calcDerivedStats() {
     ['helm', 'armor', 'pants', 'gloves', 'boots', 'shield', 'wings'].forEach(slot => { 
         let eq = player.equip[slot]; 
         if(eq) { 
-            let itm = DB.items[eq.id]; derived.def += (itm.def || 0) + (eq.level * 12); 
-            if(itm.atk) { derived.atkMin += itm.atk + (slot === 'wings' ? eq.level * 15 : 0); derived.atkMax += itm.atk + (slot === 'wings' ? eq.level * 15 : 0); } 
-            if(itm.matk) derived.matk += itm.matk + (slot === 'wings' ? eq.level * 15 : 0); 
+            let itm = DB.items[eq.id]; 
+            if(itm) {
+                derived.def += (itm.def || 0) + (eq.level * 12); 
+                if(itm.atk) { derived.atkMin += itm.atk + (slot === 'wings' ? eq.level * 15 : 0); derived.atkMax += itm.atk + (slot === 'wings' ? eq.level * 15 : 0); } 
+                if(itm.matk) derived.matk += itm.matk + (slot === 'wings' ? eq.level * 15 : 0); 
+            }
         } 
     });
 
@@ -525,12 +536,27 @@ function addStashItem(id, qty = 1, level = 0) {
     }
     return true;
 }
-function organizeInv() { if(jewelToUse !== null) jewelToUse = null; let target = isViewingStash ? account.stash : player.inv; target.sort((a,b) => { let ba = DB.items[a.id], bb = DB.items[b.id]; return ba.type !== bb.type ? ba.type.localeCompare(bb.type) : ba.name.localeCompare(bb.name); }); renderInventory(); }
+
+function organizeInv() { 
+    if(jewelToUse !== null) jewelToUse = null; 
+    let target = isViewingStash ? account.stash : player.inv; 
+    target.sort((a,b) => { 
+        let ba = DB.items[a.id], bb = DB.items[b.id]; 
+        if(!ba) return 1; if(!bb) return -1;
+        return ba.type !== bb.type ? ba.type.localeCompare(bb.type) : ba.name.localeCompare(bb.name); 
+    }); 
+    renderInventory(); 
+}
+
 function getItemColorClass(rarity) { return rarity === 'legendary' ? 'rarity-legendary' : rarity === 'rare' ? 'rarity-rare' : rarity === 'jewel' ? 'rarity-jewel' : 'rarity-common'; }
 function getItemNameHTML(itemObj) {
-    let base = DB.items[itemObj.id]; let name = itemObj.level > 0 ? `+${itemObj.level} ${base.name}` : base.name; let colorClass = getItemColorClass(base.rarity);
-    if(itemObj.level >= 7 && base.rarity === 'common') colorClass = 'rarity-rare';
-    let glow = ''; if(itemObj.level >= 15) glow = 'lvl-15'; else if(itemObj.level >= 11) glow = 'lvl-11-14'; else if(itemObj.level >= 9) glow = 'lvl-9-10'; else if(itemObj.level >= 7) glow = 'lvl-7-8'; else if(itemObj.level >= 5) glow = 'lvl-5-6';
+    let base = DB.items[itemObj.id]; 
+    if(!base) return `<span class="text-red-500">Item Bugado</span>`;
+    let lvl = itemObj.level || 0;
+    let name = lvl > 0 ? `+${lvl} ${base.name}` : base.name; 
+    let colorClass = getItemColorClass(base.rarity);
+    if(lvl >= 7 && base.rarity === 'common') colorClass = 'rarity-rare';
+    let glow = ''; if(lvl >= 15) glow = 'lvl-15'; else if(lvl >= 11) glow = 'lvl-11-14'; else if(lvl >= 9) glow = 'lvl-9-10'; else if(lvl >= 7) glow = 'lvl-7-8'; else if(lvl >= 5) glow = 'lvl-5-6';
     return `<div class="absolute inset-0 ${glow} rounded pointer-events-none"></div><span class="${colorClass} z-10 line-clamp-3 leading-tight px-[2px] w-full text-shadow-md">${name}</span>`;
 }
 function toggleStash() { let isSafe = player.location.split('_')[1] === 'city'; if(!isSafe) return showToast("Vá pra cidade!", "error"); if(jewelToUse !== null) jewelToUse = null; isViewingStash = !isViewingStash; renderInventory(); }
@@ -547,8 +573,8 @@ function withdrawZen() { let val = parseInt(document.getElementById('wit-range')
 
 function openChaosMachine() {
     closeSpotModal();
-    let content = `<h3 class="text-lg font-bold mb-2 border-b border-gray-600 pb-2 text-pink-400">Chaos Machine</h3><p class="text-xs text-gray-400 mb-4">Crie suas Asas!</p>`;
-    content += `<div class="bg-gray-900 p-3 rounded shadow-inner mb-4"><h4 class="text-sm font-bold text-yellow-300 mb-2">Custo: ${formatAbrev(CONFIG.rates.wingZenCost)} Zens</h4><ul class="text-xs text-gray-300 ml-4 list-disc mb-2"><li>1x Loch's Feather</li><li>1x Jewel of Chaos</li><li>3x Jewel of Bless</li><li>3x Jewel of Soul</li><li>1x Item +15 (Sacrifício)</li></ul></div>`;
+    let content = `<h3 class="text-lg font-bold mb-2 border-b border-gray-600 pb-2 text-pink-400">Chaos Machine</h3><p class="text-xs text-gray-400 mb-4">Crie suas Asas sacrificando itens valiosos!</p>`;
+    content += `<div class="bg-gray-900 p-3 rounded shadow-inner mb-4"><h4 class="text-sm font-bold text-yellow-300 mb-2">Custo: ${formatAbrev(CONFIG.rates.wingZenCost)} Zens</h4><ul class="text-xs text-gray-300 ml-4 list-disc mb-2"><li>1x Loch's Feather</li><li>1x Jewel of Chaos</li><li>3x Jewel of Bless</li><li>3x Jewel of Soul</li><li>1x Qualquer Item +15</li></ul></div>`;
     content += `<button onclick="craftWings()" class="w-full bg-pink-700 hover:bg-pink-600 py-3 rounded font-bold text-white transition shadow-lg">Combinar Itens</button>`;
     document.getElementById('modal-content').innerHTML = content; document.getElementById('item-modal').classList.remove('hidden'); document.getElementById('item-modal').classList.add('flex');
 }
@@ -570,6 +596,55 @@ function openBoxOfHeaven(invIndex) {
     showToast("Caixa de Heaven aberta!", "success"); renderInventory();
 }
 
+function renderInventory() {
+    let titleEl = document.getElementById('inv-title'); let btnToggle = document.getElementById('btn-toggle-stash'); let btnBank = document.getElementById('btn-open-bank');
+    
+    if(!account.stash) account.stash = []; // Proteção contra saves velhos
+
+    if(isViewingStash) { 
+        titleEl.innerHTML = `Baú (<span id="inv-count">${account.stash.length}</span>/${MAX_INV})`; 
+        btnToggle.innerText = "Mochila"; btnToggle.className = "text-green-400 underline"; btnBank.classList.remove('hidden'); 
+    } else { 
+        titleEl.innerHTML = `Mochila (<span id="inv-count">${player.inv.length}</span>/${MAX_INV})`; 
+        btnToggle.innerText = "Baú"; btnToggle.className = "text-yellow-400 underline"; btnBank.classList.add('hidden'); 
+    }
+
+    ['helm', 'armor', 'pants', 'gloves', 'boots', 'weapon', 'shield', 'wings'].forEach(slot => {
+        let el = document.getElementById(`eq-${slot}`); let eq = player.equip[slot]; el.className = "item-slot"; 
+        if(eq) { 
+            let base = DB.items[eq.id];
+            if(!base) { player.equip[slot] = null; eq = null; } // Limpa slot se o item foi apagado do BD
+        }
+        if(eq) { el.innerHTML = getItemNameHTML(eq); el.classList.add('equipped'); if (jewelToUse !== null) el.classList.add('ring-2', 'ring-inset', 'ring-blue-400'); } 
+        else el.innerHTML = `<span class="text-gray-600">${slot.charAt(0).toUpperCase() + slot.slice(1)}</span>`;
+    });
+
+    let grid = document.getElementById('inv-grid'); grid.innerHTML = ''; 
+    let targetArray = isViewingStash ? account.stash : player.inv; let clickSource = isViewingStash ? 'stash' : 'inv';
+    
+    // Limpeza silenciosa de itens que não existem mais no Banco de Dados
+    for(let i = targetArray.length - 1; i >= 0; i--) {
+        if(targetArray[i] && !DB.items[targetArray[i].id]) targetArray.splice(i, 1);
+    }
+
+    for(let i=0; i<MAX_INV; i++) {
+        let div = document.createElement('div'); div.className = "item-slot cursor-pointer hover:bg-gray-700 transition-colors"; let item = targetArray[i];
+        if(item) {
+            let base = DB.items[item.id]; 
+            let qtyStr = item.qty > 1 ? `<span class="absolute bottom-0 right-1 text-[8px] text-yellow-300 font-bold">x${item.qty}</span>` : '';
+            div.innerHTML = `<div class="relative w-full h-full flex items-center justify-center">${getItemNameHTML(item)}${qtyStr}</div>`; 
+            div.onclick = () => openItemModal(clickSource, i);
+            if(jewelToUse !== null && clickSource === 'inv') { 
+                if (i === jewelToUse) div.classList.add('ring-2', 'ring-inset', 'ring-pink-500', 'bg-pink-900', 'animate-pulse'); 
+                else if (['weapon','shield','armor', 'wings'].includes(base.type)) div.classList.add('ring-2', 'ring-inset', 'ring-blue-400'); 
+            }
+        } else { 
+            div.classList.add('opacity-30'); div.innerHTML = `<span class="text-gray-700 text-[10px]">-</span>`; 
+        }
+        grid.appendChild(div);
+    }
+}
+
 function openItemModal(source, indexOrSlot) {
     if(jewelToUse !== null) {
         if (source === 'inv' && indexOrSlot === jewelToUse) { jewelToUse = null; showToast("Cancelado.", "info"); renderInventory(); return; }
@@ -580,13 +655,18 @@ function openItemModal(source, indexOrSlot) {
     activeModalContext = { source, id: indexOrSlot, item: it }; let base = DB.items[it.id]; let content = `<h3 class="text-lg font-bold mb-2 border-b border-gray-600 pb-2">${getItemNameHTML(it)}</h3>`;
     
     if(['weapon', 'shield', 'armor', 'wings'].includes(base.type)) {
-        let eq = player.equip[base.slot]; let eqBase = eq ? DB.items[eq.id] : null; let eqLvl = eq ? eq.level : 0;
+        let eq = player.equip[base.slot]; let eqBase = eq ? DB.items[eq.id] : null; let eqLvl = eq ? (eq.level || 0) : 0;
         if(source !== 'equip') content += `<p class="text-xs text-gray-400 mb-2">Equipado: ${eq ? '+'+eqLvl+' '+eqBase.name : 'Vazio'}</p>`;
         if(base.atk || base.matk) {
-            let curA = eqBase ? (eqBase.atk||0) + (eqLvl*15) : 0; let newA = (base.atk||0) + (it.level*15);
+            let lvlIt = it.level || 0;
+            let curA = eqBase ? (eqBase.atk||0) + (eqLvl*15) : 0; let newA = (base.atk||0) + (lvlIt*15);
             if(base.atk) content += `<p class="text-gray-300 text-sm">Físico: ${newA} ${source!=='equip'?getStatDiffHTML(curA,newA):''}</p>`;
         }
-        if(base.def) { let curD = eqBase ? (eqBase.def||0) + (eqLvl*12) : 0; let newD = (base.def||0) + (it.level*12); content += `<p class="text-gray-300 text-sm">Defesa: ${newD} ${source!=='equip'?getStatDiffHTML(curD,newD):''}</p>`; }
+        if(base.def) { 
+            let lvlIt = it.level || 0;
+            let curD = eqBase ? (eqBase.def||0) + (eqLvl*12) : 0; let newD = (base.def||0) + (lvlIt*12); 
+            content += `<p class="text-gray-300 text-sm">Defesa: ${newD} ${source!=='equip'?getStatDiffHTML(curD,newD):''}</p>`; 
+        }
     }
     if(base.desc) content += `<p class="text-gray-400 text-xs mt-2 italic">"${base.desc}"</p>`;
     content += `<div class="mt-4 text-xs bg-gray-900 p-2 rounded border border-gray-700">`;
@@ -598,7 +678,7 @@ function openItemModal(source, indexOrSlot) {
         if(['weapon','shield','armor','wings'].includes(base.type)) content += `<button onclick="equipItem(${indexOrSlot})" class="flex-1 bg-blue-600 py-2 rounded font-bold transition">Equipar</button>`;
         else if(base.type === 'consumable' || base.type === 'skill_book') content += `<button onclick="useItem(${indexOrSlot})" class="flex-1 bg-green-600 py-2 rounded font-bold transition">Usar</button>`;
         else if(base.type === 'jewel') content += `<button onclick="prepareJewel(${indexOrSlot})" class="flex-1 bg-pink-600 py-2 rounded font-bold transition">Refinar</button>`;
-        let sellP = Math.floor(base.price / 3);
+        let sellP = Math.floor((base.price||0) / 3);
         content += `<button onclick="sellItem(${indexOrSlot})" class="flex-1 bg-yellow-700 py-2 rounded font-bold transition">Vender (${formatAbrev(sellP)}z)</button>`;
     } else if (source === 'stash') content += `<button onclick="withdrawItem(${indexOrSlot})" class="flex-1 bg-indigo-600 py-3 rounded font-bold transition">Retirar</button>`;
     else if(source === 'equip') content += `<button onclick="unequipItem('${indexOrSlot}')" class="flex-1 bg-red-600 py-3 rounded font-bold transition">Desequipar</button>`;
@@ -622,7 +702,7 @@ function useItem(idx) {
         player.skills.push(b.skillId); it.qty--; if(it.qty <= 0) player.inv.splice(idx, 1); updateTacticsUI(); closeModal(); renderInventory(); 
     } 
 }
-function sellItem(idx) { let it = player.inv[idx]; let b = DB.items[it.id]; player.zen += Math.floor(b.price / 3) * it.qty; player.inv.splice(idx, 1); updateUI(); closeModal(); renderInventory(); }
+function sellItem(idx) { let it = player.inv[idx]; let b = DB.items[it.id]; player.zen += Math.floor((b.price||0) / 3) * it.qty; player.inv.splice(idx, 1); updateUI(); closeModal(); renderInventory(); }
 function depositItem(idx) { let it = player.inv[idx]; if(!addStashItem(it.id, it.qty, it.level)) return showToast("Baú lotado!", "error"); player.inv.splice(idx, 1); saveGame(); closeModal(); renderInventory(); }
 function withdrawItem(idx) { let it = account.stash[idx]; if(!addInvItem(it.id, it.qty, it.level)) return showToast("Cheia!", "error"); account.stash.splice(idx, 1); saveGame(); closeModal(); renderInventory(); }
 function prepareJewel(idx) { jewelToUse = idx; closeModal(); showToast("Escolha o item.", "info"); renderInventory(); }
@@ -630,10 +710,10 @@ function applyJewel(j, t) { processJewel(j, player.inv[t]); }
 function applyJewelEquip(j, s) { processJewel(j, player.equip[s]); }
 function processJewel(jIdx, it) {
     if(!it) return; let b = DB.items[it.id]; if(!['weapon','shield','armor','wings'].includes(b.type)) return;
-    let j = player.inv[jIdx]; if(it.level >= 15) return;
-    if(j.id === 'jewel_bless' && it.level >= 6) return showToast("Bless só até +6!", "error");
+    let j = player.inv[jIdx]; let lvl = it.level || 0; if(lvl >= 15) return;
+    if(j.id === 'jewel_bless' && lvl >= 6) return showToast("Bless só até +6!", "error");
     j.qty--; if(j.qty <= 0) player.inv.splice(jIdx, 1);
-    it.level++; showToast("Success!", "success"); calcDerivedStats(); jewelToUse = null; renderInventory(); renderStats();
+    it.level = lvl + 1; showToast("Success!", "success"); calcDerivedStats(); jewelToUse = null; renderInventory(); renderStats();
 }
 
 function openShop(npc) {
@@ -683,7 +763,8 @@ function renderTacticsTab() {
 function updateTacticsUI() {
     let pSel = document.getElementById('tac-primary'); let sSel = document.getElementById('tac-secondary');
     let opts = `<option value="basic">Básico</option>`;
-    player.skills.forEach(sId => { let sk = DB.skills[sId]; opts += `<option value="${sId}">${sk.name}</option>`; });
+    if(!player.skills) player.skills = []; // Safeguard
+    player.skills.forEach(sId => { let sk = DB.skills[sId]; if(sk) opts += `<option value="${sId}">${sk.name}</option>`; });
     pSel.innerHTML = opts; sSel.innerHTML = `<option value="none">Nenhum</option>` + opts;
     pSel.value = player.tactics.primary; sSel.value = player.tactics.secondary;
 }
@@ -732,7 +813,6 @@ function logCombat(msg, s = false) {
 function simulateDrop(idx, isB) {
     let roll = Math.random() * 100;
     
-    // Matemática do MU de verdade: Cada nível de spot multiplica a chance por décimos
     let jM = (idx / 10) * (isB ? 5 : 1);
     
     let cF = CONFIG.drops.jewelBase.feather * 100 * jM; 
@@ -756,7 +836,6 @@ function simulateDrop(idx, isB) {
         roll -= potC; 
     }
     
-    // Matemática dos Equipamentos: (spot / 5) * spot
     let eM = (idx / 5) * idx;
     let eC = CONFIG.drops.globalEquipBase * 100 * eM;
     
@@ -771,7 +850,7 @@ function simulateDrop(idx, isB) {
         if (av && av.length > 0) { 
             let id = av[Math.floor(Math.random()*av.length)]; 
             let b = DB.items[id];
-            if (b.cls && !b.cls.includes(player.cls)) return; // Restrição de classe
+            if (b.cls && !b.cls.includes(player.cls)) return;
             
             let color = getItemColorClass(b.rarity);
             if(addInvItem(id, 1, iL)) logCombat(`🎁 Dropou <span class="${color}">${iL>0?'+'+iL+' ':''}${b.name}</span>!`, isB); 
@@ -792,7 +871,7 @@ function combatTick() {
             if (b.rarity === 'rare' && player.tactics.sellRare) trash = true;
             if (b.type === 'consumable') { if (player.tactics.sellPots) { if (!kP[it.id]) kP[it.id] = true; else trash = true; } else trash = false; }
             if (b.rarity === 'legendary' || b.rarity === 'jewel') trash = false;
-            if (trash) { zenGained += Math.floor(b.price / 3) * it.qty; sold++; player.inv.splice(i, 1); }
+            if (trash) { zenGained += Math.floor((b.price||0) / 3) * it.qty; sold++; player.inv.splice(i, 1); }
         }
         if(sold > 0) { player.zen += zenGained; logCombat(`🚚 <span class="text-blue-300">Auto-Grind:</span> Vendeu ${sold} lixos.`); updateUI(); return; }
         else { logCombat(`⚠️ <span class="text-red-400">Auto-Grind Pausado:</span> Mochila cheia de raros!`); player.tactics.autoReturn = false; renderTacticsTab(); }
@@ -842,10 +921,9 @@ function combatTick() {
                 currentTarget = null; updateUI(); return;
             }
 
-            let mult = (player.equip && player.equip.wings) ? 1.15 + (player.equip.wings.level*0.01) : 1.0;
+            let mult = (player.equip && player.equip.wings) ? 1.15 + ((player.equip.wings.level || 0)*0.01) : 1.0;
             let xp = Math.floor(currentTarget.exp * currentTarget.initialCount * mult);
             
-            // Zen Rola "por monstro" matematicamente (Gerações independentes)
             let totalZen = 0;
             for(let z = 0; z < currentTarget.initialCount; z++) {
                 if(Math.random() <= CONFIG.zen.dropChance) { totalZen += Math.floor(currentTarget.exp * CONFIG.zen.xpMultiplier * mult); }
@@ -883,3 +961,4 @@ setInterval(combatTick, 200);
 </script>
 </body>
 </html>
+
