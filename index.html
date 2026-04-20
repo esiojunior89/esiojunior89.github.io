@@ -1,4 +1,4 @@
-0.002b
+0.003b
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -85,6 +85,7 @@
         </div>
 
         <div id="content-area" class="flex-1 overflow-y-auto p-2 min-h-0">
+            <!-- ABA MAPA -->
             <div id="tab-map" class="h-full flex flex-col hidden-tab">
                 <div id="current-location-label" class="text-center py-2 mb-2 bg-gray-800 border border-gray-600 rounded text-blue-400 font-bold uppercase tracking-wider shadow-inner text-xs shrink-0">📍 Lorencia (Safe Zone)</div>
                 <div class="flex-1 mb-2 bg-black border border-gray-700 rounded p-2 overflow-y-auto log-box text-xs font-mono leading-relaxed" id="combat-log"><div class="text-gray-500">Você está na cidade. Seguro.</div></div>
@@ -92,6 +93,7 @@
                 <div id="combat-status" class="text-center p-2 bg-gray-800 rounded border border-gray-600 text-yellow-400 font-bold shadow-inner shrink-0">Status: Descansando</div>
             </div>
 
+            <!-- ABA INVENTARIO -->
             <div id="tab-inv" class="h-full hidden-tab flex flex-col">
                 <div class="text-center font-bold mb-2 text-gray-400 text-xs shrink-0">Equipamentos</div>
                 <div class="grid grid-cols-4 gap-2 mb-4 bg-gray-800 p-2 rounded shrink-0">
@@ -115,6 +117,7 @@
                 <div class="grid grid-cols-5 gap-1 pb-2 overflow-y-auto" id="inv-grid"></div>
             </div>
 
+            <!-- ABA STATUS -->
             <div id="tab-stats" class="h-full hidden-tab overflow-y-auto pb-2">
                 <div class="bg-gray-800 p-4 rounded-lg shadow-lg border border-gray-700">
                     <h2 class="text-xl font-bold text-center text-blue-400 mb-2 border-b border-gray-600 pb-2" id="stat-name">Nome - Classe</h2>
@@ -139,6 +142,7 @@
                 </div>
             </div>
 
+            <!-- ABA LOJAS -->
             <div id="tab-shops" class="h-full hidden-tab flex flex-col">
                 <div id="city-warning" class="text-center p-4 text-red-400 font-bold bg-gray-800 rounded shrink-0">Você precisa estar em uma Safe Zone. (Vá na aba Mapa)</div>
                 <div id="shop-content" class="hidden flex-1 flex flex-col min-h-0">
@@ -155,6 +159,7 @@
                 </div>
             </div>
 
+            <!-- ABA TÁTICAS -->
             <div id="tab-tactics" class="h-full hidden-tab overflow-y-auto pb-2">
                 <div class="bg-gray-800 p-4 rounded-lg">
                     <h2 class="font-bold text-center text-blue-400 mb-4 border-b border-gray-600 pb-2">Auto-Combat & Táticas</h2>
@@ -166,6 +171,7 @@
                         <label class="block text-gray-400 text-xs mb-1 mt-2">Ataque Secundário</label><select id="tac-secondary" onchange="saveTactics()" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white outline-none font-bold mb-2 text-xs"></select>
                         <label class="block text-gray-400 text-xs mb-1">Usar <span class="text-yellow-300">Secundário</span> se houver <span id="val-tac-threshold" class="text-white font-bold">2</span> ou + monstros:</label><input type="range" id="tac-threshold" min="2" max="6" value="2" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" oninput="document.getElementById('val-tac-threshold').innerText = this.value; saveTactics();">
                     </div>
+                    
                     <div class="mt-4 pt-4 border-t border-gray-600">
                         <h3 class="text-sm font-bold text-yellow-400 mb-3">Auto-Retorno e Venda</h3>
                         <label class="flex items-center gap-2 text-xs text-gray-300 mb-4 cursor-pointer"><input type="checkbox" id="tac-auto-return" class="w-4 h-4 accent-blue-600" onchange="saveTactics()">Voltar pra Safe Zone se encher mochila</label>
@@ -189,6 +195,7 @@
         </div>
     </div>
 
+    <!-- Modais -->
     <div id="item-modal" class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center z-50 p-4 backdrop-blur-sm">
         <div class="bg-gray-800 border border-gray-600 rounded-lg max-w-sm w-full p-5 relative shadow-2xl"><button onclick="closeModal()" class="absolute top-2 right-3 text-gray-400 hover:text-white font-bold text-2xl">&times;</button><div id="modal-content"></div></div>
     </div>
@@ -224,28 +231,28 @@ const CONFIG = {
     drops: {
         globalEquipBase: 0.0005, 
         jewelBase: { feather: 0.0002, chaos: 0.0005, bless: 0.0004, soul: 0.0003 }, 
-        potionChance: 0.2,      
+        potionChance: 0.15,      
         boxOfHeavenRate: 0.05,   
         itemLevels: {            
-            lvl9: 0.003, lvl8: 0.004, lvl7: 0.005, 
-            lvl5: 0.01, lvl4: 0.02, lvl3: 0.03, 
-            lvl2: 0.04, lvl1: 0.05, lvl0: 0.1
+            lvl9: 0.001, lvl8: 0.002, lvl7: 0.003, 
+            lvl6: 0.004, lvl5: 0.010, lvl4: 0.030, 
+            lvl3: 0.050, lvl2: 0.100, lvl1: 0.300, lvl0: 0.500
         }
     },
     zen: { dropChance: 0.05, xpMultiplier: 0.10 }, 
     monsters: {
-        baseHp: 20, baseAtk: 12, baseDef: 2, baseExp: 22, baseZen: 20,
-        multiplier: 1.5 
+        baseHp: 40, baseAtk: 12, baseDef: 3, baseExp: 150, baseZen: 100,
+        multiplier: 1.16 
     },
     maps: { 
         'lorencia':  { req: 1,   color: 'green' },
-        'devias':    { req: 35,  color: 'blue' },
-        'losttower': { req: 70,  color: 'red' },
-        'atlans':    { req: 105, color: 'teal' },
-        'tarkan':    { req: 140, color: 'orange' },
-        'aida':      { req: 175, color: 'emerald' },
-        'icarus':    { req: 210, color: 'fuchsia' },
-        'kanturu':   { req: 245, color: 'indigo' }
+        'devias':    { req: 15,  color: 'blue' },
+        'losttower': { req: 40,  color: 'red' },
+        'atlans':    { req: 70,  color: 'teal' },
+        'tarkan':    { req: 100, color: 'orange' },
+        'aida':      { req: 130, color: 'emerald' },
+        'icarus':    { req: 160, color: 'fuchsia' },
+        'kanturu':   { req: 200, color: 'indigo' }
     }
 };
 
@@ -283,14 +290,18 @@ const DB = {
         'guardian_helm': { id:'guardian_helm', name:'Guardian Helm', type:'armor', rarity:'rare', slot:'helm', def:48, reqAgi:250, price:10000, cls:['ELF'] }, 'guardian_armor': { id:'guardian_armor', name:'Guardian Armor', type:'armor', rarity:'rare', slot:'armor', def:65, reqAgi:280, price:15000, cls:['ELF'] }, 'guardian_pants': { id:'guardian_pants', name:'Guardian Pants', type:'armor', rarity:'rare', slot:'pants', def:55, reqAgi:260, price:12000, cls:['ELF'] }, 'guardian_gloves': { id:'guardian_gloves', name:'Guardian Gloves', type:'armor', rarity:'rare', slot:'gloves', def:35, reqAgi:230, price:8000, cls:['ELF'] }, 'guardian_boots': { id:'guardian_boots', name:'Guardian Boots', type:'armor', rarity:'rare', slot:'boots', def:35, reqAgi:230, price:8000, cls:['ELF'] },
         'divine_helm': { id:'divine_helm', name:'Divine Helm', type:'armor', rarity:'legendary', slot:'helm', def:95, reqAgi:400, price:25000, cls:['ELF'] }, 'divine_armor': { id:'divine_armor', name:'Divine Armor', type:'armor', rarity:'legendary', slot:'armor', def:130, reqAgi:450, price:35000, cls:['ELF'] }, 'divine_pants': { id:'divine_pants', name:'Divine Pants', type:'armor', rarity:'legendary', slot:'pants', def:110, reqAgi:420, price:28000, cls:['ELF'] }, 'divine_gloves': { id:'divine_gloves', name:'Divine Gloves', type:'armor', rarity:'legendary', slot:'gloves', def:70, reqAgi:380, price:20000, cls:['ELF'] }, 'divine_boots': { id:'divine_boots', name:'Divine Boots', type:'armor', rarity:'legendary', slot:'boots', def:70, reqAgi:380, price:20000, cls:['ELF'] },
 
-        'hp_pot_s': { id:'hp_pot_s', name:'Healing Potion (S)', type:'consumable', rarity:'common', healHp:0.3, price:50, desc:'Cura 30% do HP.' }, 'hp_pot_m': { id:'hp_pot_m', name:'Healing Potion (M)', type:'consumable', rarity:'common', healHp:0.6, price:150, desc:'Cura 60% do HP.' }, 'hp_pot_l': { id:'hp_pot_l', name:'Healing Potion (L)', type:'consumable', rarity:'common', healHp:0.9, price:350, desc:'Cura 90% do HP.' }, 
-        'mp_pot_s': { id:'mp_pot_s', name:'Mana Potion (S)', type:'consumable', rarity:'common', healMp:0.3, price:50, desc:'Cura 30% da Mana.' }, 'mp_pot_m': { id:'mp_pot_m', name:'Mana Potion (M)', type:'consumable', rarity:'common', healMp:0.6, price:150, desc:'Cura 60% da Mana.' }, 'mp_pot_l': { id:'mp_pot_l', name:'Mana Potion (L)', type:'consumable', rarity:'common', healMp:0.9, price:350, desc:'Cura 90% da Mana.' },
-        'box_of_heaven': { id:'box_of_heaven', name:'Box of Heaven', type:'consumable', rarity:'rare', price:50000, desc:'Jogue no chão para prêmios!' },
+        'hp_pot_s': { id:'hp_pot_s', name:'Healing Potion (S)', type:'consumable', rarity:'common', healHp:0.3, price:50, desc:'Cura 30% do HP MAX.' }, 
+        'hp_pot_m': { id:'hp_pot_m', name:'Healing Potion (M)', type:'consumable', rarity:'common', healHp:0.6, price:150, desc:'Cura 60% do HP MAX.' }, 
+        'hp_pot_l': { id:'hp_pot_l', name:'Healing Potion (L)', type:'consumable', rarity:'common', healHp:0.9, price:350, desc:'Cura 90% do HP MAX.' }, 
+        'mp_pot_s': { id:'mp_pot_s', name:'Mana Potion (S)', type:'consumable', rarity:'common', healMp:0.3, price:50, desc:'Cura 30% do MP MAX.' }, 
+        'mp_pot_m': { id:'mp_pot_m', name:'Mana Potion (M)', type:'consumable', rarity:'common', healMp:0.6, price:150, desc:'Cura 60% do MP MAX.' }, 
+        'mp_pot_l': { id:'mp_pot_l', name:'Mana Potion (L)', type:'consumable', rarity:'common', healMp:0.9, price:350, desc:'Cura 90% do MP MAX.' },
+        'box_of_heaven': { id:'box_of_heaven', name:'Box of Heaven', type:'consumable', rarity:'rare', price:50000, desc:'Drop do Blood Castle. Use na mochila para prêmios!' },
         
         'scroll_falling': { id:'scroll_falling', name:'Orb of Falling Slash', type:'skill_book', rarity:'common', skillId:'falling_slash', reqStr:60, reqLvl:5, price:1500, cls:['BK'] }, 'scroll_penetration': { id:'scroll_penetration', name:'Orb of Penetration', type:'skill_book', rarity:'common', skillId:'penetration', reqAgi:60, reqLvl:5, price:1500, cls:['ELF'] }, 'scroll_twisting': { id:'scroll_twisting', name:'Orb of Twisting Slash', type:'skill_book', rarity:'rare', skillId:'twisting', reqEne:20, reqLvl:15, price:5000, cls:['BK'] }, 'scroll_evil': { id:'scroll_evil', name:'Scroll of Evil Spirits', type:'skill_book', rarity:'rare', skillId:'evil_spirits', reqEne:80, reqLvl:20, price:8000, cls:['SM'] }, 'scroll_multishot': { id:'scroll_multishot', name:'Orb of Multi-Shot', type:'skill_book', rarity:'rare', skillId:'multishot', reqEne:30, reqLvl:15, price:5000, cls:['ELF'] },
         'jewel_bless': { id:'jewel_bless', name:'Jewel of Bless', type:'jewel', rarity:'jewel', price:100000 }, 'jewel_soul': { id:'jewel_soul', name:'Jewel of Soul', type:'jewel', rarity:'jewel', price:250000 },
-        'jewel_chaos': { id:'jewel_chaos', name:'Jewel of Chaos', type:'jewel', rarity:'jewel', price:150000 },
-        'feather': { id:'feather', name:"Loch's Feather", type:'material', rarity:'jewel', price:500000 },
+        'jewel_chaos': { id:'jewel_chaos', name:'Jewel of Chaos', type:'jewel', rarity:'jewel', price:150000, desc:'Joia para Máquina Goblin.' },
+        'feather': { id:'feather', name:"Loch's Feather", type:'material', rarity:'jewel', price:500000, desc:'Item raríssimo para Asas.' },
         'wing_bk': { id:'wing_bk', name:'Wings of Dragon', type:'wings', rarity:'legendary', slot:'wings', atk:150, def:100, cls:['BK'] }, 'wing_sm': { id:'wing_sm', name:'Wings of Soul', type:'wings', rarity:'legendary', slot:'wings', matk:150, def:80, cls:['SM'] }, 'wing_elf': { id:'wing_elf', name:'Wings of Spirit', type:'wings', rarity:'legendary', slot:'wings', atk:120, def:120, cls:['ELF'] }
     },
     skills: {
@@ -309,9 +320,9 @@ const DB = {
 Object.keys(DB.items).forEach(k => {
     let i = DB.items[k]; if(i.reqStr) i.reqStr = Math.floor(i.reqStr / 2); if(i.reqAgi) i.reqAgi = Math.floor(i.reqAgi / 2); if(i.reqEne) i.reqEne = Math.floor(i.reqEne / 2); if(i.price) i.price = Math.floor(i.price / 2);
 });
-DB.items['wing_bk'].reqLvl = 100; DB.items['wing_sm'].reqLvl = 100; DB.items['wing_elf'].reqLvl = 100;
+DB.items['wing_bk'].reqLvl = CONFIG.rates.wingMinLevel; DB.items['wing_sm'].reqLvl = CONFIG.rates.wingMinLevel; DB.items['wing_elf'].reqLvl = CONFIG.rates.wingMinLevel;
 
-// --- GERAÇÃO HIERÁRQUICA DE MONSTROS (+50% POR BICHO) ---
+// --- GERAÇÃO HIERÁRQUICA DE MONSTROS ---
 const MONSTER_LIST = [
     {id:'spider', name:'Spider'}, {id:'hound', name:'Hound'}, {id:'goblin', name:'Goblin'}, {id:'dark_knight', name:'Dark Knight'},
     {id:'worm', name:'Ice Worm'}, {id:'ice_monster', name:'Ice Monster'}, {id:'elite_goblin', name:'Elite Goblin'}, {id:'yeti', name:'Yeti'},
@@ -323,11 +334,12 @@ const MONSTER_LIST = [
     {id:'splinter_wolf', name:'Splinter Wolf'}, {id:'iron_rider', name:'Iron Rider'}, {id:'blade_hunter', name:'Blade Hunter'}, {id:'nightmare', name:'Nightmare'}
 ];
 DB.monsters = {}; let curM = { ...CONFIG.monsters };
-MONSTER_LIST.forEach(m => {
+MONSTER_LIST.forEach((m) => {
     DB.monsters[m.id] = { name: m.name, hp: Math.floor(curM.baseHp), atk: Math.floor(curM.baseAtk), def: Math.floor(curM.baseDef), exp: Math.floor(curM.baseExp), zen: Math.floor(curM.baseZen) };
-    curM.baseHp *= 1.5; curM.baseAtk *= 1.5; curM.baseDef *= 1.5; curM.baseExp *= 1.5; curM.baseZen *= 1.5;
+    curM.baseHp *= curM.multiplier; curM.baseAtk *= curM.multiplier; curM.baseDef *= curM.multiplier; curM.baseExp *= curM.multiplier; curM.baseZen *= curM.multiplier;
 });
 DB.monsters['bc_gate'] = { name: 'Gate of BC', hp: DB.monsters['nightmare'].hp, atk: DB.monsters['nightmare'].atk, def: DB.monsters['nightmare'].def, exp: 0, zen: 0 };
+
 
 let account = { chars: [], stash: [], zen: 0 }; let currentCharIndex = -1; let isViewingStash = false; let player = null; 
 let derived = { maxHp: 0, maxMp: 0, atkMin: 0, atkMax: 0, matk: 0, def: 0, eva: 0, atkSpeed: 2000 };
@@ -457,7 +469,7 @@ function doReset() {
     if(player.zen < 5000000) return showToast("Custo: 5.000.000 Zens!", "error");
     let eqCount = 0;
     ['helm', 'armor', 'pants', 'gloves', 'boots', 'weapon', 'shield', 'wings'].forEach(s => { if(player.equip[s]) eqCount++; });
-    if(MAX_INV - player.inv.length < eqCount) return showToast("Esvazie a mochila!", "error");
+    if(MAX_INV - player.inv.length < eqCount) return showToast("Esvazie a mochila pra desequipar o set!", "error");
     ['helm', 'armor', 'pants', 'gloves', 'boots', 'weapon', 'shield', 'wings'].forEach(s => { if(player.equip[s]) { addInvItem(player.equip[s].id, player.equip[s].qty, player.equip[s].level); player.equip[s] = null; } });
     player.zen -= 5000000; player.resets = (player.resets || 0) + 1; player.level = 1; player.exp = 0;
     let base = DB.classes[player.cls]; player.stats.str = base.str; player.stats.agi = base.agi; player.stats.vit = base.vit; player.stats.ene = base.ene; player.stats.points = player.resets * CONFIG.rates.resetPoints;
@@ -553,9 +565,9 @@ function craftWings() {
 
 function openBoxOfHeaven(invIndex) {
     let item = player.inv[invIndex]; item.qty--; if(item.qty <= 0) player.inv.splice(invIndex, 1);
-    let rolls = Math.floor(Math.random() * 3) + 1;
-    for(let i=0; i<rolls; i++) { simulateDrop(8, true); }
-    showToast("Prêmio ganho!", "success"); renderInventory();
+    let rolls = Math.floor(Math.random() * 3) + 1; // Dropa de 1 a 3 itens
+    for(let i=0; i<rolls; i++) { simulateDrop(8, true); } // Index 8 é o spot de devias pra base de calculo do drop
+    showToast("Caixa de Heaven aberta!", "success"); renderInventory();
 }
 
 function openItemModal(source, indexOrSlot) {
@@ -699,94 +711,170 @@ function openSpotModal(city) {
     if(player.level < CONFIG.maps[city].req) return showToast(`Nível ${CONFIG.maps[city].req}!`, "error");
     currentCityForModal = city; let name = DB.spots[city].name;
     document.getElementById('spot-modal-title').innerText = name;
-    let btnH = `<button onclick="confirmCity()" class="bg-blue-900 border border-blue-500 py-3 rounded font-bold mb-2">Cidade (Safe/Loja)</button>`;
-    if(city === 'lorencia') btnH += `<button onclick="openChaosMachine()" class="bg-pink-900 border border-pink-500 py-2 rounded font-bold mb-2">Chaos Machine</button>`;
-    if(city === 'devias') btnH += `<button onclick="confirmSpot('bc')" class="bg-red-950 border border-red-600 py-3 rounded font-bold mb-2 uppercase">Blood Castle</button>`;
-    btnH += `<button onclick="confirmSpot(1)" class="bg-gray-700 py-2 rounded font-bold">Spot 1</button><button onclick="confirmSpot(2)" class="bg-gray-700 py-2 rounded font-bold">Spot 2</button><button onclick="confirmSpot(3)" class="bg-gray-700 py-2 rounded font-bold">Spot 3</button><button onclick="confirmSpot(4)" class="bg-red-900 py-2 rounded font-bold">Spot 4 (Boss)</button>`;
+    let btnH = `<button onclick="confirmCity()" class="bg-blue-900 border border-blue-500 py-3 rounded font-bold mb-2 text-blue-100">Cidade (Safe/Loja)</button>`;
+    if(city === 'lorencia') btnH += `<button onclick="openChaosMachine()" class="bg-pink-900 border border-pink-500 py-2 rounded font-bold mb-2 text-pink-100">🔥 Chaos Machine</button>`;
+    if(city === 'devias') btnH += `<button onclick="confirmSpot('bc')" class="bg-red-950 border border-red-600 py-3 rounded font-bold mb-2 uppercase text-red-200">🗡️ Blood Castle</button>`;
+    btnH += `<button onclick="confirmSpot(1)" class="bg-gray-700 py-2 rounded font-bold text-gray-200">Spot 1</button><button onclick="confirmSpot(2)" class="bg-gray-700 py-2 rounded font-bold text-gray-200">Spot 2</button><button onclick="confirmSpot(3)" class="bg-gray-700 py-2 rounded font-bold text-gray-200">Spot 3</button><button onclick="confirmSpot(4)" class="bg-red-900 py-2 rounded font-bold text-red-100">Spot 4 (Boss)</button>`;
     document.getElementById('spot-modal-buttons').innerHTML = btnH;
     document.getElementById('spot-modal').classList.remove('hidden'); document.getElementById('spot-modal').classList.add('flex');
 }
 function closeSpotModal() { document.getElementById('spot-modal').classList.add('hidden'); }
-function confirmCity() { closeSpotModal(); player.location = currentCityForModal + '_city'; currentTarget = null; updateLocationLabel(); }
-function confirmSpot(s) { closeSpotModal(); player.location = currentCityForModal + '_' + s; currentTarget = null; updateLocationLabel(); }
-function moveTo(l) { player.location = 'lorencia_city'; currentTarget = null; updateLocationLabel(); }
+function confirmCity() { closeSpotModal(); player.location = currentCityForModal + '_city'; currentTarget = null; updateLocationLabel(); logCombat(`Chegou em ${DB.spots[currentCityForModal].name} Safe Zone.`); }
+function confirmSpot(s) { closeSpotModal(); player.location = currentCityForModal + '_' + s; currentTarget = null; updateLocationLabel(); logCombat(`Luta iniciada no Spot ${s}!`); }
+function moveTo(l) { player.location = 'lorencia_city'; currentTarget = null; updateLocationLabel(); logCombat(`Retornou para Lorencia.`); }
 
-function logCombat(msg, s = false) { if(s) showToast(msg, "success"); let b = document.getElementById('combat-log'); let p = document.createElement('div'); p.className = 'mb-2 border-b border-gray-800 pb-1'; p.innerHTML = msg; b.appendChild(p); if(b.childNodes.length > 50) b.removeChild(b.firstChild); b.scrollTop = b.scrollHeight; }
+function logCombat(msg, s = false) { 
+    if(s) showToast("Item Raro Dropado!", "success"); 
+    let b = document.getElementById('combat-log'); let p = document.createElement('div'); p.className = 'mb-2 border-b border-gray-800 pb-1'; p.innerHTML = msg; b.appendChild(p); 
+    if(b.childNodes.length > 50) b.removeChild(b.firstChild); b.scrollTop = b.scrollHeight; 
+}
 
 function simulateDrop(idx, isB) {
     let roll = Math.random() * 100;
+    
+    // Matemática do MU de verdade: Cada nível de spot multiplica a chance por décimos
     let jM = (idx / 10) * (isB ? 5 : 1);
-    let cF = CONFIG.drops.jewelBase.feather * 100 * jM; let cC = CONFIG.drops.jewelBase.chaos * 100 * jM;
-    let cB = CONFIG.drops.jewelBase.bless * 100 * jM; let cS = CONFIG.drops.jewelBase.soul * 100 * jM;
-    if (roll < cF) { addInvItem('feather', 1, 0); logCombat(`🪶 TING! Feather!`, isB); return; } roll -= cF;
-    if (roll < cC) { addInvItem('jewel_chaos', 1, 0); logCombat(`✨ Chaos Gem!`, isB); return; } roll -= cC;
-    if (roll < cB) { addInvItem('jewel_bless', 1, 0); logCombat(`✨ Bless Gem!`, isB); return; } roll -= cB;
-    if (roll < cS) { addInvItem('jewel_soul', 1, 0); logCombat(`✨ Soul Gem!`, isB); return; } roll -= cS;
-    if (!isB && roll < (CONFIG.drops.potionChance * 100)) { let pot = idx < 12 ? (Math.random()>0.5?'hp_pot_s':'mp_pot_s') : 'hp_pot_l'; addInvItem(pot, 1, 0); return; } roll -= (CONFIG.drops.potionChance * 100);
-    let eC = CONFIG.drops.globalEquipBase * 100 * (idx/5) * idx;
+    
+    let cF = CONFIG.drops.jewelBase.feather * 100 * jM; 
+    let cC = CONFIG.drops.jewelBase.chaos * 100 * jM;
+    let cB = CONFIG.drops.jewelBase.bless * 100 * jM; 
+    let cS = CONFIG.drops.jewelBase.soul * 100 * jM;
+    
+    if (roll < cF) { addInvItem('feather', 1, 0); logCombat(`🪶 TING! <span class="text-blue-300 font-bold">Loch's Feather!</span>`, isB); return; } roll -= cF;
+    if (roll < cC) { addInvItem('jewel_chaos', 1, 0); logCombat(`✨ TING! <span class="text-pink-300 font-bold">Jewel of Chaos!</span>`, isB); return; } roll -= cC;
+    if (roll < cB) { addInvItem('jewel_bless', 1, 0); logCombat(`✨ TING! <span class="text-pink-300 font-bold">Jewel of Bless!</span>`, isB); return; } roll -= cB;
+    if (roll < cS) { addInvItem('jewel_soul', 1, 0); logCombat(`✨ TING! <span class="text-pink-300 font-bold">Jewel of Soul!</span>`, isB); return; } roll -= cS;
+    
+    if (!isB) { 
+        let potC = CONFIG.drops.potionChance * 100;
+        if (roll < potC) { 
+            let pot = idx < 12 ? (Math.random()>0.5?'hp_pot_s':'mp_pot_s') : idx < 24 ? (Math.random()>0.5?'hp_pot_m':'mp_pot_m') : 'hp_pot_l'; 
+            addInvItem(pot, 1, 0); 
+            logCombat(`💊 Dropou Poção!`);
+            return; 
+        } 
+        roll -= potC; 
+    }
+    
+    // Matemática dos Equipamentos: (spot / 5) * spot
+    let eM = (idx / 5) * idx;
+    let eC = CONFIG.drops.globalEquipBase * 100 * eM;
+    
     if (roll < eC) {
         let rL = Math.random(); let lvls = CONFIG.drops.itemLevels; let iL = 0; let cum = 0; let f = false;
-        ['lvl9','lvl8','lvl7','lvl5','lvl4','lvl3','lvl2','lvl1','lvl0'].forEach(k => { if(!f) { cum += lvls[k]; if(rL < cum) { iL = parseInt(k.replace('lvl','')); f = true; } } });
-        let poolC = Object.keys(CONFIG.maps)[Math.floor(idx/4)] || 'kanturu';
+        ['lvl9','lvl8','lvl7','lvl6','lvl5','lvl4','lvl3','lvl2','lvl1','lvl0'].forEach(k => { if(!f) { cum += lvls[k]; if(rL < cum) { iL = parseInt(k.replace('lvl','')); f = true; } } });
+        
+        let poolC = Object.keys(CONFIG.maps)[Math.max(0, Math.floor((idx-1)/4))] || 'kanturu';
         let p = DB.spotDrops[poolC]; let cat = Math.random() < 0.1 ? 'legendary' : Math.random() < 0.4 ? 'rare' : 'common';
-        let av = p[cat] || p['common']; if (av && av.length > 0) { let id = av[Math.floor(Math.random()*av.length)]; if(addInvItem(id, 1, iL)) logCombat(`🎁 Drop: +${iL} ${DB.items[id].name}`, isB); }
+        let av = p[cat] || p['common']; if (!av || av.length===0) av = p['rare'] || p['legendary'];
+        
+        if (av && av.length > 0) { 
+            let id = av[Math.floor(Math.random()*av.length)]; 
+            let b = DB.items[id];
+            if (b.cls && !b.cls.includes(player.cls)) return; // Restrição de classe
+            
+            let color = getItemColorClass(b.rarity);
+            if(addInvItem(id, 1, iL)) logCombat(`🎁 Dropou <span class="${color}">${iL>0?'+'+iL+' ':''}${b.name}</span>!`, isB); 
+        }
     }
 }
 
 function combatTick() {
     if(currentCharIndex === -1 || !player) return; let [city, spot] = player.location.split('_');
     if(spot === 'city') { combatTimers.regen -= 200; if(combatTimers.regen <= 0) { player.hp = Math.min(derived.maxHp, player.hp + derived.maxHp*0.1); player.mp = Math.min(derived.maxMp, player.mp + derived.maxMp*0.1); combatTimers.regen = 2000; updateUI(); } return; }
-    if(player.hp <= 0) { player.hp = Math.floor(derived.maxHp * 0.1); player.location = city + '_city'; updateLocationLabel(); updateUI(); return; }
+    if(player.hp <= 0) { logCombat('<span class="text-red-500 font-bold text-lg">☠️ VOCÊ MORREU!</span>'); player.hp = Math.floor(derived.maxHp * 0.1); player.location = city + '_city'; updateLocationLabel(); updateUI(); return; }
 
     if (player.inv.length >= MAX_INV && player.tactics.autoReturn) {
-        let sold = 0; let kP = {};
+        let sold = 0; let kP = {}; let zenGained = 0;
         for (let i = player.inv.length - 1; i >= 0; i--) {
             let it = player.inv[i]; let b = DB.items[it.id]; let trash = false;
             if (b.rarity === 'common' && player.tactics.sellCommon) trash = true;
-            if (b.type === 'consumable' && player.tactics.sellPots) { if (!kP[it.id]) kP[it.id] = true; else trash = true; }
-            if (trash) { player.zen += Math.floor(b.price / 3) * it.qty; sold++; player.inv.splice(i, 1); }
+            if (b.rarity === 'rare' && player.tactics.sellRare) trash = true;
+            if (b.type === 'consumable') { if (player.tactics.sellPots) { if (!kP[it.id]) kP[it.id] = true; else trash = true; } else trash = false; }
+            if (b.rarity === 'legendary' || b.rarity === 'jewel') trash = false;
+            if (trash) { zenGained += Math.floor(b.price / 3) * it.qty; sold++; player.inv.splice(i, 1); }
         }
-        if(sold > 0) return updateUI();
+        if(sold > 0) { player.zen += zenGained; logCombat(`🚚 <span class="text-blue-300">Auto-Grind:</span> Vendeu ${sold} lixos.`); updateUI(); return; }
+        else { logCombat(`⚠️ <span class="text-red-400">Auto-Grind Pausado:</span> Mochila cheia de raros!`); player.tactics.autoReturn = false; renderTacticsTab(); }
     }
 
-    if((player.hp / derived.maxHp)*100 <= player.tactics.hpPct) { let p = player.inv.findIndex(i => DB.items[i.id].healHp); if(p!==-1) useItem(p); }
+    if((player.hp / derived.maxHp)*100 <= player.tactics.hpPct) { let p = player.inv.findIndex(i => DB.items[i.id].healHp); if(p!==-1) { useItem(p); logCombat('<span class="text-green-400">💊 Usou poção de HP.</span>'); } }
+    
     if(!currentTarget) {
         let mId = ''; let count = 1;
         if(spot === 'bc') { mId = 'bc_gate'; count = 5; } else {
             let sn = parseInt(spot); let pool = DB.spots[city].monsters; let allowed = [];
             if(sn===1) allowed=[pool[0],pool[1]]; else if(sn===2) allowed=[pool[1],pool[2]]; else if(sn===3) allowed=[pool[2],pool[3]]; else allowed=[pool[3]];
-            mId = allowed[Math.floor(Math.random()*allowed.length)]; count = spot==='4'? 4 : Math.floor(Math.random()*4)+1;
+            mId = allowed[Math.floor(Math.random()*allowed.length)]; count = spot==='4'? (Math.floor(Math.random()*4)+3) : (Math.floor(Math.random()*4)+1);
         }
         let b = DB.monsters[mId]; currentTarget = { ...b, id: mId, initialCount: count, hpList: Array(count).fill(b.hp) };
+        let nameStr = count > 1 ? `Bando de ${b.name} (${count}x)` : b.name; logCombat(`Achou um <span class="text-red-300 font-bold">${nameStr}</span>!`);
         combatTimers.player = 500; combatTimers.monster = 1500; return;
     }
 
     combatTimers.player -= 200; combatTimers.monster -= 200;
+    
     if(combatTimers.player <= 0) {
         let activeSk = player.tactics.primary; if (player.tactics.secondary !== 'none' && currentTarget.hpList.length >= player.tactics.threshold) activeSk = player.tactics.secondary;
         let sk = DB.skills[activeSk] || null; let dmg = 0; let aoe = false;
-        if(sk && player.mp >= sk.costMp) { player.mp -= sk.costMp; aoe = sk.isAoE; dmg = Math.floor((sk.type==='mag'?derived.matk:derived.atkMax) * sk.dmgMult); } 
-        else dmg = player.cls==='SM'?derived.matk:derived.atkMax;
+        if(sk && player.mp >= sk.costMp) { player.mp -= sk.costMp; aoe = sk.isAoE; dmg = Math.floor((sk.type==='mag'?derived.matk:derived.atkMax) * sk.dmgMult); logCombat(`✨ Soltou <span class="text-purple-400">${sk.name}</span>!`); } 
+        else dmg = player.cls==='SM'?Math.max(1, derived.matk):derived.atkMax;
 
         let finalD = Math.max(1, dmg - currentTarget.def);
+        let totalDmgDone = 0;
+        
         if (aoe && currentTarget.hpList.length > 1) {
-            currentTarget.hpList.forEach((_, i) => currentTarget.hpList[i] -= finalD); logCombat(`💥 AoE! Dano: ${formatAbrev(finalD * currentTarget.hpList.length)}`);
-        } else { currentTarget.hpList[0] -= finalD; logCombat(`⚔️ Dano: ${formatAbrev(finalD)}`); }
+            currentTarget.hpList.forEach((_, i) => { currentTarget.hpList[i] -= finalD; totalDmgDone += finalD; }); 
+            logCombat(`💥 <span class="text-pink-400">AoE!</span> Dano: <span class="text-yellow-400 font-bold">${formatAbrev(totalDmgDone)}</span>.`);
+        } else { 
+            currentTarget.hpList[0] -= finalD; 
+            logCombat(`⚔️ Dano: <span class="text-yellow-400 font-bold">${formatAbrev(finalD)}</span>.`); 
+        }
 
         let vivos = currentTarget.hpList.length; currentTarget.hpList = currentTarget.hpList.filter(h => h > 0);
+        if(currentTarget.hpList.length < vivos && currentTarget.hpList.length > 0) { logCombat(`🩸 Vc deitou ${vivos - currentTarget.hpList.length}x ${currentTarget.name}! Restam ${currentTarget.hpList.length}.`); }
+
         if(currentTarget.hpList.length === 0) {
+            if(spot === 'bc') {
+                if (Math.random() <= CONFIG.drops.boxOfHeavenRate) {
+                    addInvItem('box_of_heaven', 1, 0); logCombat(`👼 <span class="text-yellow-300 font-bold">Incrível! Dropou a BOX OF HEAVEN!</span>`);
+                } else logCombat(`💀 Derrotou o portão mas a Box não caiu.`);
+                currentTarget = null; updateUI(); return;
+            }
+
             let mult = (player.equip && player.equip.wings) ? 1.15 + (player.equip.wings.level*0.01) : 1.0;
             let xp = Math.floor(currentTarget.exp * currentTarget.initialCount * mult);
-            if(spot === 'bc' && Math.random() < CONFIG.drops.boxOfHeavenRate) addInvItem('box_of_heaven', 1, 0);
-            if(Math.random() < CONFIG.zen.dropChance) player.zen += Math.floor(xp * CONFIG.zen.xpMultiplier);
-            gainExp(xp); let gIdx = (Object.keys(CONFIG.maps).indexOf(city)*4) + (spot==='bc'? 12 : parseInt(spot));
+            
+            // Zen Rola "por monstro" matematicamente (Gerações independentes)
+            let totalZen = 0;
+            for(let z = 0; z < currentTarget.initialCount; z++) {
+                if(Math.random() <= CONFIG.zen.dropChance) { totalZen += Math.floor(currentTarget.exp * CONFIG.zen.xpMultiplier * mult); }
+            }
+            
+            let nameStr = currentTarget.initialCount > 1 ? `Bando de ${currentTarget.name}` : currentTarget.name;
+            let zenMsg = totalZen > 0 ? `, <span class="text-yellow-400">+${formatAbrev(totalZen)}z</span>` : '';
+            logCombat(`💀 Matou o <span class="text-red-300">${nameStr}</span>! <span class="text-yellow-200">+${formatAbrev(xp)} XP</span>${zenMsg}.`);
+            
+            gainExp(xp); if(totalZen > 0) player.zen += totalZen;
+            let cityIndex = Object.keys(CONFIG.maps).indexOf(city) + 1;
+            let gIdx = ((cityIndex - 1) * 4) + parseInt(spot);
             for(let k=0; k<currentTarget.initialCount; k++) simulateDrop(gIdx, false);
+            
             currentTarget = null;
         }
         combatTimers.player = derived.atkSpeed;
     }
+    
     if(currentTarget && combatTimers.monster <= 0) {
-        currentTarget.hpList.forEach(() => { if(Math.random()*100 >= derived.eva) player.hp -= Math.max(1, currentTarget.atk - derived.def); });
+        let hitsTaken = 0; let dmgTaken = 0;
+        currentTarget.hpList.forEach(() => { 
+            if(Math.random()*100 >= derived.eva) {
+                let mDmg = Math.max(1, currentTarget.atk - derived.def);
+                player.hp -= mDmg; dmgTaken += mDmg; hitsTaken++;
+            } 
+        });
+        if(hitsTaken > 0) logCombat(`🩸 Tomou ${hitsTaken} porrada(s)! <span class="text-red-400 font-bold">-${formatAbrev(dmgTaken)} HP</span>.`);
+        else logCombat(`💨 Vc <span class="text-blue-300">esquivou</span> de todos os ataques!`);
         combatTimers.monster = 2000;
     }
     updateUI();
@@ -795,4 +883,3 @@ setInterval(combatTick, 200);
 </script>
 </body>
 </html>
-
