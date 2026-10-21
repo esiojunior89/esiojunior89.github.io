@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.1.1';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -1214,6 +1214,91 @@ function seekTo(seconds) {
   player.seekTo(seconds, true);
   player.playVideo();
   $('.player-wrap').scrollIntoView({ behavior: reducedMotion.matches ? 'auto' : 'smooth', block: 'center' });
+}
+
+/* =========================================================
+   Controles do computador: camada sobre o vídeo + teclado
+   =========================================================
+   O player é um iframe do YouTube, e a página não recebe os
+   cliques feitos dentro dele. Por isso, no computador, uma camada
+   transparente cobre o vídeo (menos a barra de controles embaixo):
+   clique pausa/continua e clique duplo entra/sai da tela cheia,
+   como no YouTube. Os atalhos de teclado também foram recriados.
+   ========================================================= */
+const PLAY_ICONS = {
+  play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>',
+};
+
+function isPlaying() {
+  const S = window.YT?.PlayerState;
+  const st = player?.getPlayerState?.();
+  return Boolean(S) && (st === S.PLAYING || st === S.BUFFERING);
+}
+
+/** Ícone que aparece e some no centro do vídeo, como no YouTube. */
+function flashPlayerIcon(kind) {
+  const overlay = $('#player-overlay');
+  overlay.querySelector('.player-flash')?.remove();
+  overlay.insertAdjacentHTML('beforeend', `<span class="player-flash">${PLAY_ICONS[kind]}</span>`);
+  overlay.querySelector('.player-flash').addEventListener('animationend', e => e.target.remove(), { once: true });
+}
+
+function togglePlay() {
+  if (!player?.getPlayerState) return;
+  if (isPlaying()) {
+    player.pauseVideo();
+    flashPlayerIcon('pause');
+  } else {
+    player.playVideo();
+    flashPlayerIcon('play');
+  }
+}
+
+function togglePlayerFullscreen() {
+  const wrap = $('.player-wrap');
+  const current = document.fullscreenElement;
+  if (current && (current === wrap || wrap.contains(current))) document.exitFullscreen?.();
+  else wrap.requestFullscreen?.().catch(() => { /* navegador recusou */ });
+}
+
+function seekBy(delta) {
+  if (!player?.getCurrentTime) return;
+  player.seekTo(Math.max(0, player.getCurrentTime() + delta), true);
+}
+
+function setupPlayerControls() {
+  const overlay = $('#player-overlay');
+  overlay.addEventListener('click', togglePlay);
+  // As duas batidas do clique duplo também alternam play/pause (anulando-se), como no YouTube.
+  overlay.addEventListener('dblclick', togglePlayerFullscreen);
+
+  // Esconde o cursor parado sobre o vídeo enquanto ele toca (útil na tela cheia).
+  let idleTimer = 0;
+  overlay.addEventListener('mousemove', () => {
+    overlay.classList.remove('idle');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { if (isPlaying()) overlay.classList.add('idle'); }, 2500);
+  });
+
+  document.addEventListener('keydown', e => {
+    if (state.view !== 'watch' || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.target.closest?.('input, textarea, select, button, [contenteditable="true"]')) return;
+    const actions = {
+      ' ': togglePlay,
+      k: togglePlay,
+      f: togglePlayerFullscreen,
+      ArrowLeft: () => seekBy(-5),
+      ArrowRight: () => seekBy(5),
+      j: () => seekBy(-10),
+      l: () => seekBy(10),
+      m: () => (player?.isMuted?.() ? player.unMute() : player?.mute?.()),
+    };
+    const action = actions[e.key.length === 1 ? e.key.toLowerCase() : e.key];
+    if (!action) return;
+    e.preventDefault();
+    action();
+  });
 }
 
 /* =========================================================
@@ -2511,6 +2596,7 @@ function init() {
   renderVersionInfo();
   console.info(`MeuTube v${APP_VERSION}`);
   setupMobileApp();
+  setupPlayerControls();
   bindEvents();
   route(false);
   refreshLives(true);
