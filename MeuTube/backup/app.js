@@ -408,8 +408,12 @@ const Auth = {
     }
   },
 
-  clear(revoke = true) {
-    const token = this.token;
+  /**
+   * Esquece o login NESTE aparelho. Não revoga a autorização no Google: a revogação vale
+   * para a conta inteira e derrubaria o login (e a sincronização) dos outros aparelhos.
+   * Para remover o acesso do app de vez: myaccount.google.com/permissions.
+   */
+  clear() {
     this.token = null;
     this.expiresAt = 0;
     this.profile = null;
@@ -418,17 +422,14 @@ const Auth = {
     this.hasDriveScope = false;
     clearTimeout(this.expiryTimer);
     try { localStorage.removeItem(KEYS.auth); } catch { /* ignora */ }
-    if (revoke && token && window.google?.accounts?.oauth2) {
-      google.accounts.oauth2.revoke(token, () => {});
-    }
     renderAccount();
   },
 
   signOut() {
     this.remembered = null;
     try { localStorage.removeItem(KEYS.account); } catch { /* ignora */ }
-    this.clear(true);
-    toast('Você saiu da conta Google.');
+    this.clear();
+    toast('Você saiu da conta Google neste aparelho.');
     onCredentialsChanged();
   },
 };
@@ -1800,6 +1801,15 @@ async function driveFetch(url, opts = {}) {
     res = await fetch(url, { ...opts, headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) } });
   } catch {
     throw new Error('Sem conexão com o Google Drive.');
+  }
+  if (res.status === 401) {
+    // Login recusado pelo Google (expirou antes da hora ou foi encerrado em outro lugar):
+    // trata como sessão expirada, e o painel passa a oferecer "Reconectar".
+    Auth.clear();
+    toast('Sua sessão do Google foi encerrada. Clique em “Reconectar” para voltar a sincronizar.', 'info', 8000);
+    const err = new Error('Sessão do Google encerrada. Clique em “Reconectar”.');
+    err.status = 401;
+    throw err;
   }
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));

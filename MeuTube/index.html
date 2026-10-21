@@ -6,6 +6,12 @@
   <meta name="theme-color" content="#0f0f12">
   <title>MeuTube</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -4 28 28'%3E%3Crect width='28' height='20' rx='6' fill='%23ff3d3d'/%3E%3Cpath d='M11.5 5.8v8.4L18.6 10z' fill='%23fff'/%3E%3C/svg%3E">
+  <!-- App instalável (abre em tela cheia no celular) -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="preconnect" href="https://i.ytimg.com">
   <link rel="preconnect" href="https://www.googleapis.com">
   <link rel="stylesheet" href="styles.css">
@@ -148,6 +154,11 @@
             <span>Ocultar Shorts da página inicial (as lives ficam sempre no menu lateral, em “Ao vivo”)</span>
           </label>
           <ul id="channel-list" class="channel-list"></ul>
+        </article>
+
+        <article class="card" id="install-card">
+          <h2>App no celular</h2>
+          <div id="install-panel"></div>
         </article>
 
         <article class="card">

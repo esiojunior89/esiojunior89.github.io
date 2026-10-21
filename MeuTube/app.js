@@ -1605,6 +1605,7 @@ function renderSettings() {
   $('#cfg-api-key').value = state.config.apiKey;
   $('#cfg-client-id').value = state.config.clientId;
   $('#hide-shorts').checked = state.hideShorts;
+  renderInstallPanel();
   renderAccount();
   renderChannelList();
 }
@@ -2246,6 +2247,7 @@ function bindEvents() {
       case 'signout': Auth.signOut(); break;
       case 'remove-channel': removeChannel(actionEl.dataset.id); break;
       case 'sync-now': Sync.run(); break;
+      case 'install-app': installApp(); break;
       case 'replies': toggleReplies(actionEl); break;
       case 'retry-feed':
         currentFeed().error = null;
@@ -2332,15 +2334,21 @@ function bindEvents() {
   window.addEventListener('pagehide', saveProgress);
 
   // Tela cheia: a entrada é animada só com CSS (iframe:fullscreen); a saída, por esta classe.
+  // No celular, o vídeo em tela cheia gira sozinho para a horizontal.
   let playerWasFullscreen = false;
   const onFullscreenChange = () => {
     const el = document.fullscreenElement || document.webkitFullscreenElement;
     if (el?.closest?.('.player-wrap')) {
       playerWasFullscreen = true;
+      if (isMobile()) screen.orientation?.lock?.('landscape').catch(() => { /* aparelho não permite */ });
       return;
     }
-    if (!el && playerWasFullscreen) {
+    // Saiu do vídeo em tela cheia (a página pode continuar em tela cheia no celular).
+    if (playerWasFullscreen) {
       playerWasFullscreen = false;
+      if (isMobile()) {
+        try { screen.orientation?.unlock?.(); } catch { /* ignora */ }
+      }
       if (reducedMotion.matches) return;
       const wrap = $('.player-wrap');
       wrap.classList.remove('fs-exit');
@@ -2380,6 +2388,74 @@ function bindEvents() {
 }
 
 /* =========================================================
+   Celular: app instalável e tela cheia
+   =========================================================
+   • Instalado ("Instalar app" no Chrome), o MeuTube abre sempre
+     em tela cheia, sem a barra do navegador (manifest.json).
+   • Aberto pelo navegador, entra em tela cheia no primeiro toque
+     (o navegador não permite fazer isso sem um toque).
+   ========================================================= */
+let installPrompt = null;
+
+function isMobile() {
+  const mobile = navigator.userAgentData?.mobile ?? /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+  return Boolean(mobile) && matchMedia('(pointer: coarse)').matches;
+}
+
+/** Aberto pelo ícone do app instalado (a tela cheia da própria página também conta como "fullscreen", por isso a checagem extra). */
+const isInstalledApp = () => matchMedia('(display-mode: standalone)').matches
+  || (matchMedia('(display-mode: fullscreen)').matches && !document.fullscreenElement);
+
+function renderInstallPanel() {
+  const box = $('#install-panel');
+  if (!box) return;
+  if (isInstalledApp()) {
+    box.innerHTML = '<span class="tier">Você está usando o MeuTube instalado como app.</span>';
+  } else if (installPrompt) {
+    box.innerHTML = `
+      <p class="muted">Instale o MeuTube para ele abrir pelo ícone, sempre em tela cheia, sem a barra do navegador.</p>
+      <div><button class="btn btn-primary" type="button" data-action="install-app">Instalar app</button></div>`;
+  } else {
+    box.innerHTML = `
+      <p class="muted" style="margin:0">Para abrir sempre em tela cheia, sem a barra do navegador, instale o MeuTube:
+        no Chrome do celular, toque em <strong>⋮</strong> › <strong>Instalar app</strong> (ou
+        <strong>Adicionar à tela inicial</strong>) e abra pelo ícone criado. No Samsung Internet: <strong>☰</strong> ›
+        <strong>Adicionar página a › Tela inicial</strong>.</p>`;
+  }
+}
+
+function setupMobileApp() {
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    navigator.serviceWorker.register('sw.js').catch(() => { /* sem service worker, só não fica instalável */ });
+  }
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    installPrompt = e;
+    renderInstallPanel();
+  });
+  window.addEventListener('appinstalled', () => {
+    installPrompt = null;
+    renderInstallPanel();
+    toast('MeuTube instalado. Abra pelo ícone para usar em tela cheia.', 'success');
+  });
+
+  if (!isMobile()) return;
+  // Pelo navegador: entra (ou volta) em tela cheia a cada toque, se não estiver.
+  document.addEventListener('click', () => {
+    if (document.fullscreenElement || matchMedia('(display-mode: fullscreen)').matches) return;
+    document.documentElement.requestFullscreen?.({ navigationUI: 'hide' }).catch(() => { /* ignora */ });
+  }, true);
+}
+
+async function installApp() {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice.catch(() => null);
+  installPrompt = null;
+  renderInstallPanel();
+}
+
+/* =========================================================
    Inicialização
    ========================================================= */
 function init() {
@@ -2389,6 +2465,7 @@ function init() {
   renderSidebar();
   renderLives();
   applyHideWatched();
+  setupMobileApp();
   bindEvents();
   route(false);
   refreshLives(true);
