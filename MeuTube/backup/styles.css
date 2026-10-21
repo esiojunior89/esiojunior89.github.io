@@ -476,42 +476,52 @@ body.sidebar-overlay main { margin-left: 0; }
 }
 .player-error p { margin: 0; max-width: 520px; }
 
-.watch-title { font-size: clamp(18px, 2vw, 22px); font-weight: 700; word-break: break-word; }
-.watch-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px 20px;
-  margin-top: 12px;
+.watch-title {
+  font-size: clamp(18px, 1.2vw + 8px, 22px);
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -.01em;
+  word-break: break-word;
 }
+.watch-meta { display: flex; align-items: center; margin-top: 12px; }
 .watch-channel { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.watch-channel strong { display: block; }
+.watch-avatar { width: 44px; height: 44px; }
+.watch-channel strong { display: block; font-size: 16px; line-height: 1.3; }
 .watch-channel span { display: block; font-size: 13px; }
-.watch-stats { display: flex; flex-wrap: wrap; gap: 8px; }
-.watch-stats span {
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: var(--surface-2);
-  font-size: 13.5px;
-  font-weight: 500;
-}
 
+/* Caixa de descrição no estilo do YouTube: visualizações + data em negrito, texto em 3 linhas e "mais" */
 .description {
+  --desc-bg: var(--surface-2);
+  position: relative;
   margin-top: 14px;
-  padding: 14px 16px;
-  border-radius: var(--radius);
-  background: var(--surface-2);
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--desc-bg);
   font-size: 14px;
+  line-height: 1.55;
+  transition: background .2s;
 }
-.description-text { white-space: normal; word-break: break-word; }
+.description.collapsed { cursor: pointer; }
+.description.collapsed:hover { --desc-bg: var(--surface-3); }
+.description-stats { display: flex; flex-wrap: wrap; gap: 4px 10px; font-weight: 600; }
+.description-text { margin-top: 2px; white-space: normal; word-break: break-word; }
 .description.collapsed .description-text {
-  max-height: 4.6em;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  -webkit-mask-image: linear-gradient(#000 55%, transparent);
-  mask-image: linear-gradient(#000 55%, transparent);
 }
-.description .link-btn { margin-top: 8px; }
+.desc-toggle { margin-top: 8px; font-weight: 700; }
+.description.collapsed .desc-toggle {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  margin: 0;
+  padding-left: 48px;
+  background: linear-gradient(to right, transparent, var(--desc-bg) 40%);
+  transition: background .2s;
+}
+.description.collapsed .desc-toggle:hover { text-decoration: none; }
 
 .ts {
   border: 0;
@@ -902,20 +912,6 @@ body.sidebar-overlay.sidebar-open .sidebar-backdrop { opacity: 1; pointer-events
 }
 .thumb:has(.watch-progress) .badge { bottom: 10px; }
 
-.resume-chip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 14px;
-  width: fit-content;
-  margin-bottom: 14px;
-  padding: 8px 14px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  font-size: 14px;
-  animation: viewIn .4s var(--ease) both;
-}
-.resume-chip .link-btn { color: var(--accent); }
 
 /* Menu lateral dividido: canais em cima, lives embaixo, cada um com a própria rolagem */
 .side-nav { flex-shrink: 0; }
