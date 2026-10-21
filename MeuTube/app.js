@@ -134,8 +134,9 @@ class ApiError extends Error {
 }
 
 const ERROR_MESSAGES = {
-  quotaExceeded: 'A cota diária da YouTube Data API foi esgotada. Tente novamente amanhã.',
-  dailyLimitExceeded: 'A cota diária da YouTube Data API foi esgotada. Tente novamente amanhã.',
+  quotaExceeded: 'O Google recusou a requisição por cota do projeto. Confira em Google Cloud Console › YouTube Data API v3 › Cotas o limite de “Queries per day”.',
+  dailyLimitExceeded: 'O Google recusou a requisição por limite diário do projeto. Confira as cotas da YouTube Data API v3 no Google Cloud Console.',
+  rateLimitExceeded: 'Muitas requisições em pouco tempo. Aguarde alguns segundos e tente de novo.',
   keyInvalid: 'A chave de API é inválida. Verifique em Configurações.',
   badRequest: 'Requisição inválida para a API do YouTube.',
   accessNotConfigured: 'A YouTube Data API v3 não está ativada no seu projeto do Google Cloud.',
@@ -181,7 +182,10 @@ async function api(endpoint, params = {}, retry = true) {
       Auth.setYtScope(false);
       if (apiKey && retry) return api(endpoint, params, false);
     }
-    const message = ERROR_MESSAGES[reason] || data?.error?.message || `Erro ${res.status} na API do YouTube.`;
+    const googleMsg = (data?.error?.message || '').replace(/<[^>]*>/g, '');
+    console.error('[YouTube API]', endpoint, res.status, reason, data?.error || data);
+    const detail = googleMsg ? ` [${reason || res.status}: ${googleMsg}]` : ` [${reason || res.status}]`;
+    const message = ERROR_MESSAGES[reason] ? ERROR_MESSAGES[reason] + detail : (googleMsg || `Erro ${res.status} na API do YouTube.`);
     throw new ApiError(message, res.status, reason);
   }
   return data;
@@ -1203,7 +1207,7 @@ async function onChannelSubmit(e) {
       added++;
     } catch (err) {
       failed.push(entry);
-      toast(err.message, 'error');
+      toast(err.message, 'error', 10000);
     }
   }
   btn.disabled = false;
