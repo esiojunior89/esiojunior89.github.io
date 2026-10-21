@@ -48,10 +48,24 @@
         </span>
         <span class="side-label">Todos os canais</span>
       </a>
-      <div class="side-sep"></div>
-      <h3 class="side-title">Canais</h3>
-      <div id="side-channels"></div>
     </nav>
+    <div class="side-sep"></div>
+
+    <!-- Metade de cima: canais (rola sozinha se a lista for grande) -->
+    <section class="side-section side-section-channels" aria-labelledby="side-channels-title">
+      <h3 class="side-title" id="side-channels-title">Canais</h3>
+      <div id="side-channels" class="side-scroll"></div>
+    </section>
+
+    <div class="side-sep"></div>
+
+    <!-- Metade de baixo: só os canais que estão ao vivo agora -->
+    <section class="side-section side-section-lives" aria-labelledby="side-lives-title">
+      <h3 class="side-title" id="side-lives-title">
+        <span class="live-dot" aria-hidden="true"></span>Ao vivo <span id="lives-count" class="pill"></span>
+      </h3>
+      <div id="side-lives" class="side-scroll"></div>
+    </section>
   </aside>
   <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
 
@@ -127,7 +141,7 @@
           <label class="switch settings-switch">
             <input type="checkbox" id="hide-shorts">
             <span class="switch-track" aria-hidden="true"></span>
-            <span>Ocultar Shorts (mostrar só vídeos normais e transmissões ao vivo)</span>
+            <span>Ocultar Shorts da página inicial (as lives ficam sempre no menu lateral, em “Ao vivo”)</span>
           </label>
           <ul id="channel-list" class="channel-list"></ul>
         </article>
