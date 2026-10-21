@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.3.2';
+const APP_VERSION = '1.4.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -1280,6 +1280,11 @@ function seekBy(delta) {
 }
 
 function setupPlayerControls() {
+  // A altura do player define o tamanho dos tiles de "A seguir" (3 tiles = altura do player).
+  new ResizeObserver(([entry]) => {
+    $('#view-watch').style.setProperty('--player-h', `${Math.round(entry.contentRect.height)}px`);
+  }).observe($('.player-wrap'));
+
   const overlay = $('#player-overlay');
   // Clique simples espera um instante: se vier o segundo clique, é clique duplo e só a tela
   // cheia muda (sem pausar o vídeo).
@@ -1331,7 +1336,7 @@ function setupPlayerControls() {
 /* =========================================================
    Página do vídeo
    ========================================================= */
-const UPNEXT_PAGE = 4; // "A seguir" mostra 4 vídeos; "Mostrar mais" acrescenta outros 4
+const UPNEXT_PAGE = 3; // "A seguir" mostra 3 vídeos; "Mostrar mais" acrescenta outros 3
 let upNextCount = UPNEXT_PAGE;
 
 function watchInfoSkeleton() {

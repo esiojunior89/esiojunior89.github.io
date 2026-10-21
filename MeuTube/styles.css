@@ -1144,3 +1144,36 @@ body.sidebar-mini .side-sep-lives { display: none; }
 @media (min-width: 1001px) and (max-width: 1279px) {
   .upnext .mini-title { -webkit-line-clamp: 2; } /* tiles mais baixos: título em 2 linhas */
 }
+
+/* =========================================================
+   Botão de tela cheia do app (no lugar do botão do YouTube)
+   ========================================================= */
+.player-fs {
+  position: absolute;
+  right: 2.5%;
+  bottom: 13%;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .45);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .25s, background .2s, transform .15s;
+}
+.player-fs svg { width: 24px; height: 24px; fill: currentColor; }
+.player-fs:hover { background: rgba(0, 0, 0, .7); }
+.player-fs:active { transform: scale(.92); }
+.player-fs:focus-visible { opacity: 1; }
+/* Aparece ao passar o mouse sobre o vídeo e some com o cursor parado no centro (como os controles do YouTube) */
+.player-wrap:hover .player-fs { opacity: 1; }
+.player-wrap:has(.player-overlay.idle) .player-fs { opacity: 0; }
+.player-wrap:fullscreen .player-fs { right: 2%; bottom: 11%; }
+/* Celular/toque: sem "passar o mouse", então fica sempre visível, discreto */
+@media (hover: none) {
+  .player-fs { opacity: .8; width: 40px; height: 40px; right: 8px; bottom: 44px; }
+}
