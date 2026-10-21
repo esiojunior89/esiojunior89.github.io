@@ -1939,6 +1939,14 @@ const Sync = {
         this.lastUploaded = body;
       }
 
+      // Resumo do que ficou na nuvem (após a mescla, a nuvem tem exatamente o snapshot deste aparelho).
+      const final = JSON.parse(body);
+      this.meta.cloud = {
+        channels: final.channels.value.length,
+        progress: Object.values(final.progress || {}).filter(p => p && !p.gone).length,
+        updatedAt: body === remoteBody ? (remote.updatedAt || Date.now()) : Date.now(),
+      };
+
       const firstSync = !this.meta.lastSync;
       this.meta.fileId = fileId;
       this.meta.lastSync = Date.now();
@@ -2067,7 +2075,13 @@ function renderSyncStatus() {
     const text = Sync.status === 'syncing'
       ? 'sincronizando…'
       : Sync.meta.lastSync ? `ativa · última sincronização às ${time(Sync.meta.lastSync)}` : 'ativa';
-    html = `<span class="tier sync-ok">☁ Sincronização na nuvem ${text}</span>`;
+    const c = Sync.meta.cloud;
+    html = `
+      <span class="tier sync-ok">☁ Sincronização na nuvem ${text}</span>
+      ${c ? `<p class="sync-summary muted">Na nuvem: <strong>${c.channels}</strong> ${c.channels === 1 ? 'canal' : 'canais'} ·
+        <strong>${c.progress}</strong> ${c.progress === 1 ? 'vídeo' : 'vídeos'} com progresso ·
+        atualizado em ${new Date(c.updatedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</p>` : ''}
+      <div><button class="btn btn-ghost btn-sm" type="button" data-action="sync-now"${Sync.status === 'syncing' ? ' disabled' : ''}>Sincronizar agora</button></div>`;
   }
   box.innerHTML = html;
 }
