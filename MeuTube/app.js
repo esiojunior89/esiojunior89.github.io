@@ -144,13 +144,21 @@ const ERROR_MESSAGES = {
   playlistNotFound: 'Lista de uploads do canal não encontrada.',
   forbidden: 'Acesso negado pela API do YouTube.',
   ipRefererBlocked: 'A chave de API não permite requisições a partir deste endereço.',
-  insufficientPermissions: 'Sua conta Google não autorizou o acesso ao YouTube. Em Configurações, clique em “Autorizar acesso ao YouTube” e marque a permissão do YouTube na tela do Google.',
-  ACCESS_TOKEN_SCOPE_INSUFFICIENT: 'Sua conta Google não autorizou o acesso ao YouTube. Em Configurações, clique em “Autorizar acesso ao YouTube” e marque a permissão do YouTube na tela do Google.',
+  insufficientPermissions: 'O login do Google não tem permissão para esta função. Salve uma chave de API em Configurações para usá-la.',
+  ACCESS_TOKEN_SCOPE_INSUFFICIENT: 'O login do Google não tem permissão para esta função. Salve uma chave de API em Configurações para usá-la.',
 };
 
-async function api(endpoint, params = {}, retry = true) {
-  const token = Auth.ytToken();
+// O Google só aceita ler comentários com login se o app pedir o escopo "youtube.force-ssl",
+// que também permite gerenciar a conta. Para não pedir isso, comentários usam apenas a chave de API.
+const KEY_ONLY_ENDPOINTS = new Set(['commentThreads', 'comments']);
+
+async function api(endpoint, params = {}, { retry = true, useToken = true } = {}) {
   const { apiKey } = state.config;
+  const keyOnly = KEY_ONLY_ENDPOINTS.has(endpoint);
+  if (keyOnly && !apiKey) {
+    throw new ApiError('Para ver os comentários, salve uma chave da YouTube Data API em Configurações › Credenciais da API. O Google não permite ler comentários só com o login de leitura.', 0, 'needsApiKey');
+  }
+  const token = useToken && !keyOnly ? Auth.ytToken() : null;
   if (!token && !apiKey) {
     throw new ApiError('Configure uma chave de API ou entre com sua conta Google em Configurações.', 0, 'noCredentials');
   }
@@ -174,13 +182,12 @@ async function api(endpoint, params = {}, retry = true) {
     if (res.status === 401 && token && retry) {
       Auth.clear(false);
       toast('Sua sessão do Google expirou. Entre novamente.', 'error');
-      if (apiKey) return api(endpoint, params, false);
+      if (apiKey) return api(endpoint, params, { retry: false, useToken: false });
     }
     const reason = data?.error?.errors?.[0]?.reason || data?.error?.details?.[0]?.reason || '';
-    if (res.status === 403 && token && (reason === 'insufficientPermissions' || reason === 'ACCESS_TOKEN_SCOPE_INSUFFICIENT')) {
-      // O token não tem o escopo do YouTube: para de usá-lo e, se houver chave de API, tenta com ela.
-      Auth.setYtScope(false);
-      if (apiKey && retry) return api(endpoint, params, false);
+    if (res.status === 403 && token && retry && apiKey && (reason === 'insufficientPermissions' || reason === 'ACCESS_TOKEN_SCOPE_INSUFFICIENT')) {
+      // Escopo insuficiente só para ESTE endpoint: repete com a chave de API, sem mexer no login.
+      return api(endpoint, params, { retry: false, useToken: false });
     }
     const googleMsg = (data?.error?.message || '').replace(/<[^>]*>/g, '');
     console.error('[YouTube API]', endpoint, res.status, reason, data?.error || data);
@@ -266,13 +273,6 @@ const Auth = {
   /** Token só é usado na YouTube API se o usuário concedeu o escopo do YouTube. */
   ytToken() {
     return this.hasYtScope ? this.validToken() : null;
-  },
-
-  setYtScope(granted) {
-    if (this.hasYtScope === granted) return;
-    this.hasYtScope = granted;
-    this.persist();
-    renderAccount();
   },
 
   async waitForGis() {
@@ -991,7 +991,7 @@ async function loadComments(videoId, reset = false) {
     Comments.done = !Comments.token;
   } catch (e) {
     if (req !== Comments.req) return;
-    if (reset) list.innerHTML = `<p class="${e.reason === 'commentsDisabled' ? 'muted' : 'error'}">${esc(e.message)}</p>`;
+    if (reset) list.innerHTML = `<p class="${['commentsDisabled', 'needsApiKey'].includes(e.reason) ? 'muted' : 'error'}">${esc(e.message)}</p>`;
     else toast(e.message, 'error');
     Comments.done = true;
   } finally {
