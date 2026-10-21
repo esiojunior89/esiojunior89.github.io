@@ -426,32 +426,42 @@ body.sidebar-overlay main { margin-left: 0; }
 /* =========================================================
    Página do vídeo
    ========================================================= */
-#view-watch { padding-top: 20px; }
+/* Página do vídeo com as medidas do YouTube:
+   • margens de 24 px até a borda da tela;
+   • coluna da direita ("A seguir") com ~400 px;
+   • a ALTURA do player é limitada à da janela, deixando espaço embaixo para o título e o
+     canal aparecerem sem rolar. Quando isso limita o player, as colunas ficam centralizadas. */
+#view-watch {
+  --watch-pad: 24px;
+  --side-col: clamp(300px, 22vw, 402px);
+  --below-player: 132px; /* título + linha do canal */
+  --player-max-w: max(560px, calc((100vh - var(--topbar-h) - var(--watch-pad) - var(--below-player)) * 16 / 9));
+  padding: var(--watch-pad) var(--watch-pad) 56px;
+}
 
 .watch-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(320px, 28vw, 420px);
+  grid-template-columns: minmax(0, var(--player-max-w)) var(--side-col);
   grid-template-areas:
     "player   side"
     "info     side"
     "comments side";
   grid-template-rows: auto auto 1fr;
-  gap: 18px 26px;
-  max-width: 1800px;
-  margin: 0 auto;
+  justify-content: center;
+  column-gap: 24px;
   align-items: start;
 }
 .watch-player { grid-area: player; }
-.watch-info { grid-area: info; }
+.watch-info { grid-area: info; margin-top: 12px; }
 .watch-side { grid-area: side; min-width: 0; }
-.watch-comments { grid-area: comments; min-width: 0; }
+.watch-comments { grid-area: comments; min-width: 0; margin-top: 24px; }
 
 .player-wrap {
   position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
   background: #000;
-  border-radius: var(--radius);
+  border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 30px 80px -40px rgba(0, 0, 0, .9);
 }
@@ -477,17 +487,17 @@ body.sidebar-overlay main { margin-left: 0; }
 .player-error p { margin: 0; max-width: 520px; }
 
 .watch-title {
-  font-size: clamp(18px, 1.2vw + 8px, 22px);
+  font-size: 20px;
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 28px;
   letter-spacing: -.01em;
   word-break: break-word;
 }
 .watch-meta { display: flex; align-items: center; margin-top: 12px; }
 .watch-channel { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.watch-avatar { width: 44px; height: 44px; }
-.watch-channel strong { display: block; font-size: 16px; line-height: 1.3; }
-.watch-channel span { display: block; font-size: 13px; }
+.watch-avatar { width: 40px; height: 40px; }
+.watch-channel strong { display: block; font-size: 16px; line-height: 22px; }
+.watch-channel span { display: block; font-size: 12px; line-height: 18px; }
 
 /* Caixa de descrição no estilo do YouTube: visualizações + data em negrito, texto em 3 linhas e "mais" */
 .description {
@@ -612,12 +622,12 @@ body.sidebar-overlay main { margin-left: 0; }
     grid-template-areas: "player" "info" "side" "comments";
     grid-template-rows: auto;
   }
-  .watch-side { margin-top: 8px; }
+  .watch-side { margin-top: 24px; }
   .mini { grid-template-columns: minmax(140px, 40%) minmax(0, 1fr); }
 }
 @media (max-width: 700px) {
-  #view-watch { padding-top: 0; }
-  .watch-player { margin: 0 calc(var(--gutter) * -1); }
+  #view-watch { --watch-pad: 16px; padding-top: 0; }
+  .watch-player { margin: 0 calc(var(--watch-pad) * -1); }
   .player-wrap { border-radius: 0; }
   ::view-transition-old(hero), ::view-transition-new(hero) { border-radius: 0; }
 }
