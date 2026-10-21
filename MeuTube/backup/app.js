@@ -130,6 +130,9 @@ const state = {
 
 const channelById = id => state.channels.find(c => c.id === id);
 const allowedChannels = () => new Set(state.channels.map(c => c.id));
+/** Canais que aparecem no Início e na lista de canais (os marcados "Apenas lives" ficam só em "Ao vivo"). */
+const homeChannels = () => state.channels.filter(c => !c.livesOnly);
+const isHomeChannel = id => homeChannels().some(c => c.id === id);
 const hasCredentials = () => Boolean(state.config.apiKey || Auth.ytToken());
 
 /* =========================================================
@@ -525,7 +528,7 @@ const feeds = new Map();
 function currentFeed() {
   const key = state.filter || 'all';
   if (!feeds.has(key)) {
-    const list = key === 'all' ? state.channels : state.channels.filter(c => c.id === key);
+    const list = key === 'all' ? homeChannels() : homeChannels().filter(c => c.id === key);
     feeds.set(key, new FeedStream(list));
   }
   return feeds.get(key);
@@ -683,6 +686,12 @@ function checkHomePrereqs() {
       '<a class="btn btn-primary" href="#/settings">Adicionar canais</a>');
     return false;
   }
+  if (!homeChannels().length) {
+    status.innerHTML = emptyState('channels', 'Todos os canais estão como “Apenas lives”',
+      'Eles aparecem só no menu lateral, em “Ao vivo”, quando estiverem transmitindo. Para ver vídeos aqui, desative “Apenas lives” em algum canal.',
+      '<a class="btn btn-ghost" href="#/settings">Abrir Configurações</a>');
+    return false;
+  }
   if (!hasCredentials()) {
     status.innerHTML = emptyState('key', 'Falta configurar o acesso',
       'Entre com sua conta Google ou informe uma chave da YouTube Data API para carregar os vídeos.',
@@ -736,7 +745,7 @@ async function loadFeedPage() {
 }
 
 function checkSentinel() {
-  if (state.view !== 'home' || !state.channels.length) return;
+  if (state.view !== 'home' || !homeChannels().length) return;
   const feed = currentFeed();
   if (feed.error || feed.exhausted) return;
   const rect = $('#feed-sentinel').getBoundingClientRect();
@@ -768,12 +777,15 @@ const overlayQuery = matchMedia('(max-width: 1099px)');
 
 function renderSidebar() {
   const box = $('#side-channels');
-  box.innerHTML = state.channels.length
-    ? state.channels.map(c => `
+  const list = homeChannels();
+  box.innerHTML = list.length
+    ? list.map(c => `
         <a class="side-item" href="#/c/${esc(c.id)}" data-channel="${esc(c.id)}" title="${esc(c.title)}">
           <img class="side-avatar" src="${esc(c.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
           <span class="side-label">${esc(c.title)}</span>
         </a>`).join('')
+    : state.channels.length
+    ? '<p class="side-empty">Todos os canais estão como “Apenas lives”.</p>'
     : `<a class="side-item" href="#/settings" title="Adicionar canais">
          <span class="side-icon">${ICONS.add}</span>
          <span class="side-label">Adicionar canais</span>
@@ -1480,6 +1492,11 @@ function renderChannelList() {
         <strong>${esc(c.title)}</strong>
         <span>${esc(c.handle || c.id)}</span>
       </div>
+      <label class="switch channel-switch" title="Quando ativado, o canal só aparece em “Ao vivo” (no menu lateral) enquanto estiver transmitindo">
+        <input type="checkbox" data-lives-only="${esc(c.id)}" ${c.livesOnly ? 'checked' : ''}>
+        <span class="switch-track" aria-hidden="true"></span>
+        <span class="switch-label">Apenas lives</span>
+      </label>
       <button class="btn-icon" type="button" data-action="remove-channel" data-id="${esc(c.id)}" aria-label="Remover ${esc(c.title)}" title="Remover">${ICONS.remove}</button>
     </li>`).join('');
 }
@@ -1557,7 +1574,7 @@ async function resolveChannel(raw) {
 
 function saveChannels() {
   store.set(KEYS.channels, state.channels);
-  if (state.filter && !channelById(state.filter)) state.filter = null;
+  if (state.filter && !isHomeChannel(state.filter)) state.filter = null;
   renderChannelList();
   renderSidebar();
   resetFeed();
@@ -1602,6 +1619,19 @@ async function onChannelSubmit(e) {
   }
   input.value = failed.join(', ');
   input.focus();
+}
+
+function setLivesOnly(id, enabled) {
+  const ch = channelById(id);
+  if (!ch) return;
+  ch.livesOnly = enabled;
+  store.set(KEYS.channels, state.channels);
+  if (state.filter === id) state.filter = null;
+  renderSidebar();
+  resetFeed(); // as lives não mudam: a verificação de "Ao vivo" já inclui todos os canais
+  toast(enabled
+    ? `“${ch.title}” agora aparece só em “Ao vivo”, quando estiver transmitindo.`
+    : `“${ch.title}” voltou para o Início e para a lista de canais.`, 'success');
 }
 
 function removeChannel(id) {
@@ -1684,7 +1714,7 @@ function applyView(view, id, channel) {
   updateSidebarMode();
 
   if (view === 'home') {
-    const filter = channel && channelById(channel) ? channel : null;
+    const filter = channel && isHomeChannel(channel) ? channel : null;
     const filterChanged = filter !== state.filter;
     state.filter = filter;
     showHome();
@@ -1808,6 +1838,10 @@ function bindEvents() {
   });
 
   $('#channel-form').addEventListener('submit', onChannelSubmit);
+  $('#channel-list').addEventListener('change', e => {
+    const input = e.target.closest('input[data-lives-only]');
+    if (input) setLivesOnly(input.dataset.livesOnly, input.checked);
+  });
   $('#hide-shorts').addEventListener('change', e => {
     state.hideShorts = e.target.checked;
     store.set(KEYS.hideShorts, state.hideShorts);

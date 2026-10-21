@@ -133,6 +133,9 @@ const allowedChannels = () => new Set(state.channels.map(c => c.id));
 /** Canais que aparecem no Início e na lista de canais (os marcados "Apenas lives" ficam só em "Ao vivo"). */
 const homeChannels = () => state.channels.filter(c => !c.livesOnly);
 const isHomeChannel = id => homeChannels().some(c => c.id === id);
+/** Ordem alfabética em português: ignora maiúsculas/acentos e põe "Canal 2" antes de "Canal 10". */
+const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true });
+const byName = (a, b) => collator.compare(a, b);
 const hasCredentials = () => Boolean(state.config.apiKey || Auth.ytToken());
 
 /* =========================================================
@@ -777,7 +780,7 @@ const overlayQuery = matchMedia('(max-width: 1099px)');
 
 function renderSidebar() {
   const box = $('#side-channels');
-  const list = homeChannels();
+  const list = [...homeChannels()].sort((a, b) => byName(a.title, b.title));
   box.innerHTML = list.length
     ? list.map(c => `
         <a class="side-item" href="#/c/${esc(c.id)}" data-channel="${esc(c.id)}" title="${esc(c.title)}">
@@ -832,7 +835,7 @@ async function refreshLives(force = false) {
     if (gen !== Lives.gen) return;
     Lives.items = [...details.values()]
       .filter(v => v.live === 'live')
-      .sort((a, b) => Number(b.viewers || 0) - Number(a.viewers || 0));
+      .sort((a, b) => byName(channelById(a.channelId)?.title || a.channelTitle, channelById(b.channelId)?.title || b.channelTitle));
     Lives.error = null;
     Lives.lastFetch = Date.now();
   } catch (e) {
