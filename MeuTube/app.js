@@ -71,6 +71,12 @@ function fmtViews(n) {
   return `${compact.format(v)} ${v === 1 ? 'visualização' : 'visualizações'}`;
 }
 
+function isoSeconds(iso) {
+  const m = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(iso || '');
+  if (!m) return 0;
+  return ((Number(m[1] || 0) * 24 + Number(m[2] || 0)) * 60 + Number(m[3] || 0)) * 60 + Number(m[4] || 0);
+}
+
 function fmtDuration(iso) {
   const m = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(iso || '');
   if (!m) return '';
@@ -227,6 +233,7 @@ function normalizeVideo(v) {
     thumb: (t.high || t.medium || t.default)?.url || `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`,
     thumbSmall: (t.medium || t.high || t.default)?.url || `https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`,
     duration: fmtDuration(v.contentDetails?.duration),
+    durationSec: isoSeconds(v.contentDetails?.duration),
     views: v.statistics?.viewCount,
     likes: v.statistics?.likeCount,
     comments: v.statistics?.commentCount,
@@ -975,15 +982,32 @@ function updateProgressBars(id) {
 }
 
 /** Salva o ponto atual do vídeo que está carregado no player. */
+function videoForProgress(id) {
+  return findLoadedVideo(id) || (state.currentVideo?.id === id ? state.currentVideo : null);
+}
+
 function saveProgress() {
   if (!playerVideoId || !player?.getCurrentTime) return;
-  let t, d;
+  let t, d, loadedId, playerState;
   try {
     t = player.getCurrentTime();
     d = player.getDuration();
+    loadedId = player.getVideoData?.()?.video_id;
+    playerState = player.getPlayerState?.();
   } catch { return; }
-  const video = findLoadedVideo(playerVideoId) || (state.currentVideo?.id === playerVideoId ? state.currentVideo : null);
+
+  // Logo depois de trocar de vídeo (ex.: reprodução automática), o player do YouTube ainda
+  // informa por um instante o vídeo, o tempo e a duração do ANTERIOR — que acabou de
+  // terminar. Salvar nesse momento marcaria o vídeo novo como assistido. Por isso:
+  if (loadedId && loadedId !== playerVideoId) return;                 // 1) o player ainda não trocou
+  if (Date.now() - playerLoadedAt < 2000 && playerState !== window.YT?.PlayerState?.PLAYING) return; // 2) ainda carregando
+
+  const video = videoForProgress(playerVideoId);
   if (video?.live === 'live' || video?.live === 'upcoming') return; // transmissão em andamento não tem "ponto"
+  if (video?.durationSec) {
+    d = video.durationSec;                                           // 3) duração da API, não a do player
+    if (t > d + 5) return;                                           //    tempo maior que o vídeo = leitura do anterior
+  }
   recordProgress(playerVideoId, t, d);
 }
 
@@ -1005,6 +1029,7 @@ let ytApiPromise = null;
 let player = null;
 let playerReady = null;
 let playerVideoId = null; // vídeo realmente carregado no player (para salvar o progresso certo)
+let playerLoadedAt = 0;   // quando o último vídeo foi carregado (o player demora a trocar os dados)
 
 function loadYouTubeApi() {
   if (ytApiPromise) return ytApiPromise;
@@ -1040,6 +1065,7 @@ async function playVideo(id) {
   const start = Math.floor(resumeTime(id));
   if (!player) {
     playerVideoId = id;
+    playerLoadedAt = Date.now();
     playerReady = new Promise(resolve => {
       player = new YT.Player('player', {
         videoId: id,
@@ -1068,6 +1094,7 @@ async function playVideo(id) {
   if (state.currentVideoId !== id || state.view !== 'watch') return;
   if (playerVideoId && playerVideoId !== id) saveProgress();
   playerVideoId = id;
+  playerLoadedAt = Date.now();
   player.loadVideoById({ videoId: id, startSeconds: start });
 }
 
@@ -1075,7 +1102,13 @@ function onPlayerStateChange(e) {
   const S = window.YT.PlayerState;
   if (e.data === S.PAUSED) saveProgress();
   if (e.data !== S.ENDED) return;
-  try { recordProgress(playerVideoId, 0, player.getDuration(), true); } catch { /* ignora */ }
+  // Aviso de "fim" atrasado do vídeo anterior, que chega logo depois da troca: ignora
+  // (senão o vídeo novo seria marcado como assistido e pulado).
+  const loadedId = player.getVideoData?.()?.video_id;
+  if ((loadedId && loadedId !== playerVideoId) || Date.now() - playerLoadedAt < 2000) return;
+  try {
+    recordProgress(playerVideoId, 0, videoForProgress(playerVideoId)?.durationSec || player.getDuration(), true);
+  } catch { /* ignora */ }
   if (!state.autoplay || state.view !== 'watch') return;
   const next = nextVideoAfter(state.currentVideo);
   if (next) location.hash = `#/watch/${next.id}`;
