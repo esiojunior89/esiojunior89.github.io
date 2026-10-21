@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f0f12">
+  <title>MeuTube</title>
+  <link rel="preconnect" href="https://i.ytimg.com">
+  <link rel="preconnect" href="https://www.googleapis.com">
+  <link rel="stylesheet" href="styles.css">
+  <!-- Google Identity Services (login com Google) -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/" data-nav="home" aria-label="Início">
+      <svg class="brand-logo" viewBox="0 0 28 20" aria-hidden="true">
+        <rect width="28" height="20" rx="6" fill="currentColor"/>
+        <path d="M11.5 5.8v8.4L18.6 10z" fill="#fff"/>
+      </svg>
+      <span>Meu<strong>Tube</strong></span>
+    </a>
+
+    <nav class="nav" aria-label="Navegação principal">
+      <a href="#/" data-nav="home">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1z"/></svg>
+        <span>Início</span>
+      </a>
+      <a href="#/settings" data-nav="settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.3 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>
+        <span>Configurações</span>
+      </a>
+    </nav>
+
+    <div id="account" class="account"></div>
+  </header>
+
+  <main>
+    <!-- ============ INÍCIO ============ -->
+    <section id="view-home" class="view" aria-label="Vídeos dos seus canais">
+      <div id="feed" class="feed-grid"></div>
+      <div id="feed-skeletons" class="feed-grid skeleton-grid" hidden></div>
+      <div id="feed-status" class="feed-status"></div>
+      <div id="feed-sentinel" class="sentinel" aria-hidden="true"></div>
+      <button id="to-top" class="to-top" type="button" aria-label="Voltar ao topo">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5 5 12l1.4 1.4L11 8.8V20h2V8.8l4.6 4.6L19 12z"/></svg>
+      </button>
+    </section>
+
+    <!-- ============ PLAYER ============ -->
+    <section id="view-watch" class="view" hidden>
+      <div class="watch-layout">
+        <div class="watch-player">
+          <div class="player-wrap">
+            <div id="player"></div>
+            <div id="player-error" class="player-error" hidden></div>
+          </div>
+        </div>
+
+        <div id="watch-info" class="watch-info"></div>
+
+        <aside class="watch-side" aria-label="Próximos vídeos">
+          <div class="side-head">
+            <h2>A seguir</h2>
+            <label class="switch">
+              <input type="checkbox" id="autoplay">
+              <span class="switch-track" aria-hidden="true"></span>
+              <span>Reprodução automática</span>
+            </label>
+          </div>
+          <div id="upnext" class="upnext"></div>
+          <button id="upnext-more" class="btn btn-ghost btn-block" type="button" hidden>Mostrar mais</button>
+        </aside>
+
+        <section class="watch-comments" aria-label="Comentários">
+          <h2 id="comments-title">Comentários</h2>
+          <div id="comments-list" class="comments-list"></div>
+          <button id="comments-more" class="btn btn-ghost" type="button" hidden>Carregar mais comentários</button>
+        </section>
+      </div>
+    </section>
+
+    <!-- ============ CONFIGURAÇÕES ============ -->
+    <section id="view-settings" class="view" hidden>
+      <div class="settings">
+        <h1>Configurações</h1>
+
+        <article class="card">
+          <h2>Conta Google</h2>
+          <div id="account-panel"></div>
+        </article>
+
+        <article class="card">
+          <h2>Canais <span id="channel-count" class="pill"></span></h2>
+          <p class="muted">
+            Cole o link do canal, o <code>@handle</code>, o ID (<code>UC…</code>) ou o link de qualquer vídeo do canal.
+            Você pode adicionar vários de uma vez, separados por vírgula.
+            Somente vídeos destes canais aparecem no app.
+          </p>
+          <form id="channel-form" class="inline-form" autocomplete="off">
+            <input id="channel-input" type="text" placeholder="https://www.youtube.com/@canal  ou  @canal" aria-label="Canal do YouTube" required>
+            <button class="btn btn-primary" type="submit">Adicionar</button>
+          </form>
+          <ul id="channel-list" class="channel-list"></ul>
+        </article>
+
+        <article class="card">
+          <h2>Credenciais da API</h2>
+          <form id="config-form" class="config-form" autocomplete="off">
+            <label>
+              <span>Chave da YouTube Data API v3</span>
+              <input id="cfg-api-key" type="password" placeholder="AIza…" spellcheck="false">
+              <small class="muted">Usada para listar vídeos e comentários. Opcional se você entrar com o Google.</small>
+            </label>
+            <label>
+              <span>OAuth 2.0 Client ID (aplicação Web)</span>
+              <input id="cfg-client-id" type="text" placeholder="0000000000-xxxx.apps.googleusercontent.com" spellcheck="false">
+              <small class="muted">Necessário para o botão “Entrar com o Google”.</small>
+            </label>
+            <div class="form-actions">
+              <button class="btn btn-primary" type="submit">Salvar</button>
+            </div>
+          </form>
+          <details class="help">
+            <summary>Como obter essas credenciais</summary>
+            <ol>
+              <li>Acesse o Google Cloud Console e crie (ou escolha) um projeto.</li>
+              <li>Em “APIs e serviços › Biblioteca”, ative a <strong>YouTube Data API v3</strong>.</li>
+              <li>Em “Credenciais”, crie uma <strong>Chave de API</strong> (restrinja-a ao domínio do app).</li>
+              <li>Configure a “Tela de permissão OAuth” e crie um <strong>ID do cliente OAuth</strong> do tipo “Aplicativo da Web”, adicionando a URL do app (ex.: <code>http://localhost:8080</code>) em “Origens JavaScript autorizadas”.</li>
+              <li>Abra o app por <code>http://</code> ou <code>https://</code> — o login e o player não funcionam abrindo o arquivo direto (<code>file://</code>).</li>
+            </ol>
+          </details>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
