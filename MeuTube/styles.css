@@ -965,22 +965,3 @@ body.sidebar-overlay.sidebar-open .sidebar-backdrop { opacity: 1; pointer-events
 body.sidebar-mini .side-empty,
 body.sidebar-mini .side-live-viewers { display: none; }
 body.sidebar-mini .side-section-lives { min-height: 0; }
-
-/* =========================================================
-   Tela cheia suave
-   =========================================================
-   O navegador entra/sai da tela cheia instantaneamente (o botão fica
-   dentro do player do YouTube), então suavizamos a troca: o vídeo surge
-   do preto com um leve zoom ao entrar, e o mesmo ao voltar para a página.
-   ========================================================= */
-.player-wrap iframe:fullscreen { animation: fsEnter .5s var(--ease) both; }
-.player-wrap iframe:-webkit-full-screen { animation: fsEnter .5s var(--ease) both; }
-.player-wrap iframe:fullscreen::backdrop { background: #000; }
-.player-wrap.fs-exit { animation: fsExit .5s var(--ease) both; }
-
-@keyframes fsEnter {
-  from { opacity: 0; scale: .94; }
-}
-@keyframes fsExit {
-  from { opacity: 0; scale: 1.04; }
-}

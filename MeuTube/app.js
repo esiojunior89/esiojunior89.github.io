@@ -1931,27 +1931,6 @@ function bindEvents() {
     if (state.view === 'watch' && player?.getPlayerState?.() === window.YT?.PlayerState?.PLAYING) saveProgress();
   }, 5000);
   window.addEventListener('pagehide', saveProgress);
-
-  // Tela cheia: a entrada é animada só com CSS (iframe:fullscreen); a saída, por esta classe.
-  let playerWasFullscreen = false;
-  const onFullscreenChange = () => {
-    const el = document.fullscreenElement || document.webkitFullscreenElement;
-    if (el?.closest?.('.player-wrap')) {
-      playerWasFullscreen = true;
-      return;
-    }
-    if (!el && playerWasFullscreen) {
-      playerWasFullscreen = false;
-      if (reducedMotion.matches) return;
-      const wrap = $('.player-wrap');
-      wrap.classList.remove('fs-exit');
-      void wrap.offsetWidth; // reinicia a animação
-      wrap.classList.add('fs-exit');
-      wrap.addEventListener('animationend', () => wrap.classList.remove('fs-exit'), { once: true });
-    }
-  };
-  document.addEventListener('fullscreenchange', onFullscreenChange);
-  document.addEventListener('webkitfullscreenchange', onFullscreenChange);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden' && state.view === 'watch') saveProgress();
     if (document.visibilityState === 'visible') refreshLives(); // só se a última verificação tiver mais de 5 min
