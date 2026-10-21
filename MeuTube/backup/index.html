@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0f0f12">
   <title>MeuTube</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -4 28 28'%3E%3Crect width='28' height='20' rx='6' fill='%23ff3d3d'/%3E%3Cpath d='M11.5 5.8v8.4L18.6 10z' fill='%23fff'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://i.ytimg.com">
   <link rel="preconnect" href="https://www.googleapis.com">
   <link rel="stylesheet" href="styles.css">
@@ -13,6 +14,9 @@
 </head>
 <body>
   <header class="topbar">
+    <button id="menu-btn" class="menu-btn" type="button" aria-label="Mostrar ou ocultar a lista de canais" aria-controls="sidebar" aria-expanded="true">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </button>
     <a class="brand" href="#/" data-nav="home" aria-label="Início">
       <svg class="brand-logo" viewBox="0 0 28 20" aria-hidden="true">
         <rect width="28" height="20" rx="6" fill="currentColor"/>
@@ -35,13 +39,32 @@
     <div id="account" class="account"></div>
   </header>
 
+  <!-- ============ MENU LATERAL (canais) ============ -->
+  <aside id="sidebar" class="sidebar" aria-label="Seus canais">
+    <nav class="side-nav">
+      <a class="side-item" href="#/" data-channel="" title="Todos os canais">
+        <span class="side-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z"/></svg>
+        </span>
+        <span class="side-label">Todos os canais</span>
+      </a>
+      <div class="side-sep"></div>
+      <h3 class="side-title">Canais</h3>
+      <div id="side-channels"></div>
+    </nav>
+  </aside>
+  <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+
   <main>
     <!-- ============ INÍCIO ============ -->
     <section id="view-home" class="view" aria-label="Vídeos dos seus canais">
-      <div id="feed" class="feed-grid"></div>
-      <div id="feed-skeletons" class="feed-grid skeleton-grid" hidden></div>
-      <div id="feed-status" class="feed-status"></div>
-      <div id="feed-sentinel" class="sentinel" aria-hidden="true"></div>
+      <div class="home-wrap">
+        <div id="feed-header" class="feed-header" hidden></div>
+        <div id="feed" class="feed-grid"></div>
+        <div id="feed-skeletons" class="feed-grid skeleton-grid" hidden></div>
+        <div id="feed-status" class="feed-status"></div>
+        <div id="feed-sentinel" class="sentinel" aria-hidden="true"></div>
+      </div>
       <button id="to-top" class="to-top" type="button" aria-label="Voltar ao topo">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5 5 12l1.4 1.4L11 8.8V20h2V8.8l4.6 4.6L19 12z"/></svg>
       </button>
@@ -101,6 +124,11 @@
             <input id="channel-input" type="text" placeholder="https://www.youtube.com/@canal  ou  @canal" aria-label="Canal do YouTube" required>
             <button class="btn btn-primary" type="submit">Adicionar</button>
           </form>
+          <label class="switch settings-switch">
+            <input type="checkbox" id="hide-shorts">
+            <span class="switch-track" aria-hidden="true"></span>
+            <span>Ocultar Shorts (mostrar só vídeos normais e transmissões ao vivo)</span>
+          </label>
           <ul id="channel-list" class="channel-list"></ul>
         </article>
 

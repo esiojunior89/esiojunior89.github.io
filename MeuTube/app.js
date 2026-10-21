@@ -24,6 +24,7 @@ const KEYS = {
   auth: 'meutube.auth',
   account: 'meutube.account',
   seen: 'meutube.seen',
+  progress: 'meutube.progress',
   hideShorts: 'meutube.hideShorts',
   sidebar: 'meutube.sidebarMini',
 };
@@ -581,6 +582,7 @@ function tileHTML(v, i) {
       <div class="thumb">
         <img src="${esc(v.thumb)}" alt="" loading="lazy" decoding="async">
         ${thumbBadge(v)}
+        ${progressBarHTML(v.id)}
       </div>
       <div class="tile-info">
         <img class="avatar" src="${esc(ch?.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
@@ -810,11 +812,101 @@ function closeSidebarOverlay() {
 }
 
 /* =========================================================
+   Progresso dos vídeos (salvo neste navegador)
+   =========================================================
+   O Google não permite que apps de terceiros leiam ou gravem o
+   histórico do YouTube, então o ponto onde você parou fica no
+   localStorage, como { segundos, duração, concluído }.
+   ========================================================= */
+const PROGRESS_MIN_SECONDS = 10;   // antes disso não vale a pena retomar
+const PROGRESS_END_SECONDS = 20;   // nos últimos 20 s (ou 95%) conta como assistido
+const PROGRESS_MAX_ENTRIES = 1000;
+const progressStore = store.get(KEYS.progress, {});
+
+function fmtClock(sec) {
+  const s = Math.max(0, Math.floor(sec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const pad = n => String(n).padStart(2, '0');
+  return h ? `${h}:${pad(m)}:${pad(s % 60)}` : `${m}:${pad(s % 60)}`;
+}
+
+function progressPercent(id) {
+  const p = progressStore[id];
+  if (!p) return 0;
+  return p.done ? 100 : Math.min(100, (p.t / p.d) * 100);
+}
+
+function resumeTime(id) {
+  const p = progressStore[id];
+  return p && !p.done ? Math.max(0, p.t - 3) : 0; // volta 3 s para retomar o contexto
+}
+
+function recordProgress(id, t, d, done = false) {
+  if (!id || !d || !Number.isFinite(d)) return;
+  const prev = progressStore[id];
+  if (done || t >= d - PROGRESS_END_SECONDS || t / d >= 0.95) {
+    progressStore[id] = { t: 0, d: Math.round(d), done: true, at: Date.now() };
+  } else if (t >= PROGRESS_MIN_SECONDS) {
+    progressStore[id] = { t: Math.floor(t), d: Math.round(d), at: Date.now() };
+  } else if (prev && !prev.done) {
+    delete progressStore[id]; // voltou para o início: esquece o ponto salvo
+  } else {
+    return;
+  }
+  const ids = Object.keys(progressStore);
+  if (ids.length > PROGRESS_MAX_ENTRIES) {
+    ids.sort((a, b) => progressStore[a].at - progressStore[b].at)
+      .slice(0, ids.length - PROGRESS_MAX_ENTRIES)
+      .forEach(k => delete progressStore[k]);
+  }
+  store.set(KEYS.progress, progressStore);
+  updateProgressBars(id);
+}
+
+function progressBarHTML(id) {
+  const pct = progressPercent(id);
+  return pct ? `<div class="watch-progress" aria-hidden="true"><span style="width:${pct.toFixed(1)}%"></span></div>` : '';
+}
+
+function updateProgressBars(id) {
+  $$(`[data-vid="${id}"] .thumb`).forEach(thumb => {
+    thumb.querySelector('.watch-progress')?.remove();
+    thumb.insertAdjacentHTML('beforeend', progressBarHTML(id));
+  });
+}
+
+/** Salva o ponto atual do vídeo que está carregado no player. */
+function saveProgress() {
+  if (!playerVideoId || !player?.getCurrentTime) return;
+  let t, d;
+  try {
+    t = player.getCurrentTime();
+    d = player.getDuration();
+  } catch { return; }
+  const video = findLoadedVideo(playerVideoId) || (state.currentVideo?.id === playerVideoId ? state.currentVideo : null);
+  if (video?.live === 'live' || video?.live === 'upcoming') return; // transmissão em andamento não tem "ponto"
+  recordProgress(playerVideoId, t, d);
+}
+
+function showResumeChip(id) {
+  $('#resume-chip')?.remove();
+  const start = resumeTime(id);
+  if (!start) return;
+  $('#watch-info').insertAdjacentHTML('afterbegin', `
+    <div id="resume-chip" class="resume-chip">
+      <span>Continuando de <strong>${fmtClock(start)}</strong></span>
+      <button class="link-btn" type="button" data-action="restart">Começar do início</button>
+    </div>`);
+}
+
+/* =========================================================
    Player do YouTube (IFrame API)
    ========================================================= */
 let ytApiPromise = null;
 let player = null;
 let playerReady = null;
+let playerVideoId = null; // vídeo realmente carregado no player (para salvar o progresso certo)
 
 function loadYouTubeApi() {
   if (ytApiPromise) return ytApiPromise;
@@ -847,7 +939,9 @@ async function playVideo(id) {
   }
   if (state.currentVideoId !== id || state.view !== 'watch') return;
 
+  const start = Math.floor(resumeTime(id));
   if (!player) {
+    playerVideoId = id;
     playerReady = new Promise(resolve => {
       player = new YT.Player('player', {
         videoId: id,
@@ -860,6 +954,7 @@ async function playVideo(id) {
           modestbranding: 1,
           playsinline: 1,
           iv_load_policy: 3,
+          start,
           origin: location.origin,
         },
         events: {
@@ -872,11 +967,18 @@ async function playVideo(id) {
     return;
   }
   await playerReady;
-  if (state.currentVideoId === id && state.view === 'watch') player.loadVideoById(id);
+  if (state.currentVideoId !== id || state.view !== 'watch') return;
+  if (playerVideoId && playerVideoId !== id) saveProgress();
+  playerVideoId = id;
+  player.loadVideoById({ videoId: id, startSeconds: start });
 }
 
 function onPlayerStateChange(e) {
-  if (e.data !== window.YT.PlayerState.ENDED || !state.autoplay || state.view !== 'watch') return;
+  const S = window.YT.PlayerState;
+  if (e.data === S.PAUSED) saveProgress();
+  if (e.data !== S.ENDED) return;
+  try { recordProgress(playerVideoId, 0, player.getDuration(), true); } catch { /* ignora */ }
+  if (!state.autoplay || state.view !== 'watch') return;
   const next = nextVideoAfter(state.currentVideo);
   if (next) location.hash = `#/watch/${next.id}`;
 }
@@ -903,6 +1005,7 @@ function showPlayerError(message, action = '') {
 }
 
 function pausePlayer() {
+  saveProgress();
   try { player?.pauseVideo?.(); } catch { /* player ainda não pronto */ }
 }
 
@@ -985,6 +1088,7 @@ function showWatchBlocked(message) {
 }
 
 function enterWatch(id) {
+  if (playerVideoId && playerVideoId !== id) saveProgress();
   state.currentVideoId = id;
   state.currentVideo = null;
   upNextCount = PAGE_SIZE;
@@ -1026,6 +1130,7 @@ function enterWatch(id) {
     }
     state.currentVideo = video;
     markSeen(id);
+    showResumeChip(id);
     playVideo(id);
     loadComments(id, true);
     renderUpNext(video);
@@ -1057,6 +1162,7 @@ function miniHTML(v, i) {
       <div class="thumb">
         <img src="${esc(v.thumbSmall)}" alt="" loading="lazy" decoding="async">
         ${thumbBadge(v)}
+        ${progressBarHTML(v.id)}
       </div>
       <div>
         <h3 class="mini-title" title="${esc(v.title)}">${esc(v.title)}</h3>
@@ -1599,6 +1705,13 @@ function bindEvents() {
         updateFeedStatus();
         loadFeedPage();
         break;
+      case 'restart':
+        if (playerVideoId) delete progressStore[playerVideoId];
+        store.set(KEYS.progress, progressStore);
+        if (playerVideoId) updateProgressBars(playerVideoId);
+        actionEl.closest('.resume-chip')?.remove();
+        seekTo(0);
+        break;
       case 'toggle-desc': {
         const box = $('#description');
         const collapsed = box.classList.toggle('collapsed');
@@ -1656,6 +1769,15 @@ function bindEvents() {
       loadComments(state.currentVideoId);
     }
   }, { rootMargin: '0px 0px 200px 0px' }).observe($('#comments-more'));
+
+  // Progresso: salva a cada 5 s enquanto toca, e ao esconder/fechar a aba.
+  setInterval(() => {
+    if (state.view === 'watch' && player?.getPlayerState?.() === window.YT?.PlayerState?.PLAYING) saveProgress();
+  }, 5000);
+  window.addEventListener('pagehide', saveProgress);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && state.view === 'watch') saveProgress();
+  });
 
   let ticking = false;
   window.addEventListener('scroll', () => {

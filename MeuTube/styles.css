@@ -880,3 +880,34 @@ body.sidebar-overlay.sidebar-open .sidebar-backdrop { opacity: 1; pointer-events
 }
 
 .settings-switch { margin-top: 16px; font-size: 14px; color: var(--text); }
+
+/* Barra de progresso de vídeo já assistido (igual à do YouTube) */
+.watch-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: rgba(255, 255, 255, .35);
+}
+.watch-progress span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.thumb:has(.watch-progress) .badge { bottom: 10px; }
+
+.resume-chip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  width: fit-content;
+  margin-bottom: 14px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  font-size: 14px;
+  animation: viewIn .4s var(--ease) both;
+}
+.resume-chip .link-btn { color: var(--accent); }
