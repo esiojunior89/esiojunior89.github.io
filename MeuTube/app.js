@@ -22,6 +22,10 @@ const KEYS = {
   channels: 'meutube.channels',
   autoplay: 'meutube.autoplay',
   auth: 'meutube.auth',
+  account: 'meutube.account',
+  seen: 'meutube.seen',
+  hideShorts: 'meutube.hideShorts',
+  sidebar: 'meutube.sidebarMini',
 };
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -103,6 +107,7 @@ const ICONS = {
   channels: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 6h-7.6l3.3-3.3-.7-.7L12 6 8 2l-.7.7L10.6 6H3a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1zm-11 11V9l6 4z"/></svg>',
   key: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.6 10A6 6 0 1 0 12.6 14H17v4h4v-4h2v-4zM7 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg>',
   error: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-2h2zm0-4h-2V7h2z"/></svg>',
+  add: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg>',
 };
 
 /* =========================================================
@@ -112,6 +117,10 @@ const state = {
   config: { ...DEFAULT_CONFIG, ...store.get(KEYS.config, {}) },
   channels: store.get(KEYS.channels, []), // [{ id, title, handle, thumb, uploads }]
   autoplay: store.get(KEYS.autoplay, true),
+  hideShorts: store.get(KEYS.hideShorts, true),
+  sidebarMini: store.get(KEYS.sidebar, false),
+  filter: null,      // ID do canal selecionado no menu lateral (null = todos)
+  watchFeed: null,   // feed de onde saem os "vídeos seguintes"
   view: null,
   currentVideoId: null,
   currentVideo: null,
@@ -190,7 +199,7 @@ async function api(endpoint, params = {}, { retry = true, useToken = true } = {}
       return api(endpoint, params, { retry: false, useToken: false });
     }
     const googleMsg = (data?.error?.message || '').replace(/<[^>]*>/g, '');
-    console.error('[YouTube API]', endpoint, res.status, reason, data?.error || data);
+    if (res.status !== 404) console.error('[YouTube API]', endpoint, res.status, reason, data?.error || data);
     const detail = googleMsg ? ` [${reason || res.status}: ${googleMsg}]` : ` [${reason || res.status}]`;
     const message = ERROR_MESSAGES[reason] ? ERROR_MESSAGES[reason] + detail : (googleMsg || `Erro ${res.status} na API do YouTube.`);
     throw new ApiError(message, res.status, reason);
@@ -247,23 +256,39 @@ const Auth = {
   profile: null,
   ytChannel: null,
   hasYtScope: false,
+  remembered: null, // última conta usada, para oferecer "Reconectar" quando a sessão expira
   client: null,
   clientIdInUse: null,
+  expiryTimer: 0,
 
+  // Guardado no localStorage (e não por aba) para valer em todas as abas enquanto o token for válido.
   restore() {
-    try {
-      const saved = JSON.parse(sessionStorage.getItem(KEYS.auth) || 'null');
-      if (saved && saved.expiresAt > Date.now() + 60_000) Object.assign(this, saved);
-    } catch { /* ignora */ }
+    const saved = store.get(KEYS.auth, null);
+    if (saved && saved.expiresAt > Date.now() + 60_000) Object.assign(this, saved);
+    this.remembered = store.get(KEYS.account, null);
+    this.scheduleExpiry();
   },
 
   persist() {
-    try {
-      sessionStorage.setItem(KEYS.auth, JSON.stringify({
-        token: this.token, expiresAt: this.expiresAt, profile: this.profile,
-        ytChannel: this.ytChannel, hasYtScope: this.hasYtScope,
-      }));
-    } catch { /* ignora */ }
+    store.set(KEYS.auth, {
+      token: this.token, expiresAt: this.expiresAt, profile: this.profile,
+      ytChannel: this.ytChannel, hasYtScope: this.hasYtScope,
+    });
+    if (this.profile || this.ytChannel) {
+      this.remembered = { profile: this.profile, ytChannel: this.ytChannel };
+      store.set(KEYS.account, this.remembered);
+    }
+    this.scheduleExpiry();
+  },
+
+  /** O Google emite tokens de 1 hora para apps web; avisa quando expira em vez de "sumir" o login. */
+  scheduleExpiry() {
+    clearTimeout(this.expiryTimer);
+    if (!this.token) return;
+    this.expiryTimer = setTimeout(() => {
+      renderAccount();
+      if (!state.config.apiKey) toast('Sua sessão do Google expirou (o Google limita a 1 hora). Clique em “Reconectar”.', 'info', 8000);
+    }, Math.max(0, this.expiresAt - Date.now() - 30_000));
   },
 
   validToken() {
@@ -309,8 +334,9 @@ const Auth = {
       });
       this.clientIdInUse = clientId;
     }
-    // Sem o escopo do YouTube, força a tela de consentimento para o usuário marcá-lo.
-    this.client.requestAccessToken({ prompt: this.profile && this.hasYtScope ? '' : 'consent' });
+    // Reconexão de quem já autorizou: sem repetir a tela de permissões.
+    const known = (this.profile || this.remembered) && (this.hasYtScope || !this.validToken());
+    this.client.requestAccessToken({ prompt: known ? '' : 'consent' });
   },
 
   async onToken(resp) {
@@ -321,7 +347,8 @@ const Auth = {
     this.token = resp.access_token;
     this.expiresAt = Date.now() + Number(resp.expires_in || 3600) * 1000;
     // O Google permite desmarcar permissões individualmente na tela de consentimento.
-    this.hasYtScope = google.accounts.oauth2.hasGrantedAllScopes(resp, YT_SCOPE);
+    this.hasYtScope = String(resp.scope || '').split(/\s+/).includes(YT_SCOPE)
+      || google.accounts.oauth2.hasGrantedAllScopes(resp, YT_SCOPE);
     await this.loadProfile();
     this.persist();
     renderAccount();
@@ -340,18 +367,21 @@ const Auth = {
       });
       if (res.ok) this.profile = await res.json();
     } catch { /* ignora */ }
+    // Confirma a permissão do YouTube com uma chamada real, em vez de confiar só na resposta do login.
+    const claimed = this.hasYtScope;
     this.ytChannel = null;
-    if (!this.hasYtScope) return;
+    this.hasYtScope = true;
     try {
-      const data = await api('channels', { part: 'snippet', mine: true });
+      const data = await api('channels', { part: 'snippet', mine: true }, { retry: false });
       const c = data.items?.[0];
       this.ytChannel = c ? {
         id: c.id,
         title: c.snippet.title,
         thumb: c.snippet.thumbnails?.default?.url,
       } : null;
-    } catch {
-      this.ytChannel = null;
+    } catch (e) {
+      const scopeMissing = e.reason === 'insufficientPermissions' || e.reason === 'ACCESS_TOKEN_SCOPE_INSUFFICIENT';
+      this.hasYtScope = scopeMissing ? false : claimed;
     }
   },
 
@@ -362,7 +392,8 @@ const Auth = {
     this.profile = null;
     this.ytChannel = null;
     this.hasYtScope = false;
-    try { sessionStorage.removeItem(KEYS.auth); } catch { /* ignora */ }
+    clearTimeout(this.expiryTimer);
+    try { localStorage.removeItem(KEYS.auth); } catch { /* ignora */ }
     if (revoke && token && window.google?.accounts?.oauth2) {
       google.accounts.oauth2.revoke(token, () => {});
     }
@@ -370,6 +401,8 @@ const Auth = {
   },
 
   signOut() {
+    this.remembered = null;
+    try { localStorage.removeItem(KEYS.account); } catch { /* ignora */ }
     this.clear(true);
     toast('Você saiu da conta Google.');
     onCredentialsChanged();
@@ -377,40 +410,42 @@ const Auth = {
 };
 
 /* =========================================================
-   Feed: mescla os uploads de todos os canais por data
+   Feed: mescla os uploads dos canais por data
    =========================================================
-   Cada canal tem uma playlist de uploads (UU…) já ordenada do
-   mais novo para o mais antigo. Mantemos um buffer por canal e
+   Cada canal tem playlists automáticas já ordenadas do mais
+   novo para o mais antigo. Mantemos um buffer por playlist e
    fazemos uma mescla (k-way merge) sempre pegando o vídeo mais
    recente entre os topos dos buffers. Assim a ordem global por
    data é sempre correta, página após página.
-   ========================================================= */
-const Feed = {
-  gen: 0,
-  sources: [],
-  items: [],
-  seen: new Set(),
-  loading: null,
-  exhausted: true,
-  error: null,
 
-  reset() {
-    this.gen++;
-    this.sources = state.channels.map(c => ({
+   Sem Shorts: em vez da playlist de uploads completa (UU…),
+   usamos as playlists automáticas de vídeos longos (UULF…) e de
+   transmissões ao vivo (UULV…), que não incluem Shorts.
+   ========================================================= */
+class FeedStream {
+  constructor(channels) {
+    const prefixes = state.hideShorts ? ['UULF', 'UULV'] : ['UU'];
+    this.sources = channels.flatMap(c => prefixes.map(prefix => ({
       channelId: c.id,
-      playlistId: c.uploads || `UU${c.id.slice(2)}`,
+      playlistId: prefix + c.id.slice(2),
       buffer: [],
       token: null,
       done: false,
-    }));
+    })));
     this.items = [];
     this.seen = new Set();
     this.loading = null;
     this.exhausted = this.sources.length === 0;
     this.error = null;
-  },
+    this.dead = false;
+    this.uiBusy = false;
+  }
 
-  async fill(src, gen) {
+  dispose() {
+    this.dead = true;
+  }
+
+  async fill(src) {
     while (!src.buffer.length && !src.done) {
       let data;
       try {
@@ -421,10 +456,11 @@ const Feed = {
           pageToken: src.token,
         });
       } catch (e) {
+        // 404: o canal não tem essa playlist (ex.: nunca fez live).
         if (e.status === 404) { src.done = true; return; }
         throw e;
       }
-      if (gen !== this.gen) return;
+      if (this.dead) return;
       for (const it of data.items || []) {
         const id = it.contentDetails?.videoId;
         const published = it.contentDetails?.videoPublishedAt; // ausente em vídeos privados/excluídos
@@ -437,26 +473,23 @@ const Feed = {
       src.token = data.nextPageToken || null;
       if (!src.token) src.done = true;
     }
-  },
+  }
 
   loadMore(count = PAGE_SIZE) {
     if (this.loading) return this.loading;
-    if (this.exhausted) return Promise.resolve([]);
-    const gen = this.gen;
-    this.loading = this._load(count, gen).finally(() => {
-      if (gen === this.gen) this.loading = null;
-    });
+    if (this.exhausted || this.dead) return Promise.resolve([]);
+    this.loading = this._load(count).finally(() => { this.loading = null; });
     return this.loading;
-  },
+  }
 
-  async _load(count, gen) {
+  async _load(count) {
     const added = [];
     // Repete até completar a página: vídeos descartados pelo filtro de canal são repostos.
     while (added.length < count && !this.exhausted) {
       const picked = [];
       while (picked.length < count - added.length) {
-        await Promise.all(this.sources.map(s => this.fill(s, gen)));
-        if (gen !== this.gen) return [];
+        await Promise.all(this.sources.map(s => this.fill(s)));
+        if (this.dead) return [];
 
         let best = null;
         for (const s of this.sources) {
@@ -473,19 +506,59 @@ const Feed = {
       if (!picked.length) break;
 
       const details = await fetchVideos(picked.map(p => p.id));
-      if (gen !== this.gen) return [];
+      if (this.dead) return [];
       added.push(...picked.map(p => details.get(p.id)).filter(Boolean));
     }
     this.items.push(...added);
     return added;
-  },
-};
+  }
+}
+
+/** Um feed por filtro: "all" (todos os canais) ou o ID de um canal. */
+const feeds = new Map();
+
+function currentFeed() {
+  const key = state.filter || 'all';
+  if (!feeds.has(key)) {
+    const list = key === 'all' ? state.channels : state.channels.filter(c => c.id === key);
+    feeds.set(key, new FeedStream(list));
+  }
+  return feeds.get(key);
+}
+
+function findLoadedVideo(id) {
+  for (const feed of feeds.values()) {
+    const v = feed.items.find(item => item.id === id);
+    if (v) return v;
+  }
+  return null;
+}
+
+/* =========================================================
+   Vídeos "Novo" (de hoje e nunca abertos)
+   ========================================================= */
+const seenVideos = new Set(store.get(KEYS.seen, []));
+
+function isToday(ts) {
+  return new Date(ts).toDateString() === new Date().toDateString();
+}
+
+function isNewVideo(v) {
+  return !seenVideos.has(v.id) && isToday(v.publishedAt) && v.publishedAt <= Date.now();
+}
+
+function markSeen(id) {
+  if (seenVideos.has(id)) return;
+  seenVideos.add(id);
+  store.set(KEYS.seen, [...seenVideos].slice(-3000));
+  $$(`[data-vid="${id}"] .new-tag`).forEach(el => el.remove());
+}
 
 /* =========================================================
    Início (grade de vídeos com rolagem infinita)
    ========================================================= */
+let gridFeed = null;
 let renderedCount = 0;
-let homeBusy = false;
 
 function thumbBadge(v) {
   if (v.live === 'live') return '<span class="badge badge-live">AO VIVO</span>';
@@ -495,6 +568,10 @@ function thumbBadge(v) {
 
 function metaLine(v) {
   return [fmtViews(v.views), timeAgo(v.publishedAt)].filter(Boolean).join(' • ');
+}
+
+function newTag(v) {
+  return isNewVideo(v) ? ' <span class="new-tag">Novo</span>' : '';
 }
 
 function tileHTML(v, i) {
@@ -510,7 +587,7 @@ function tileHTML(v, i) {
         <div>
           <h3 class="tile-title" title="${esc(v.title)}">${esc(v.title)}</h3>
           <p class="tile-channel">${esc(v.channelTitle)}</p>
-          <p class="tile-meta">${esc(metaLine(v))}</p>
+          <p class="tile-meta">${esc(metaLine(v))}${newTag(v)}</p>
         </div>
       </div>
     </a>`;
@@ -534,25 +611,51 @@ function skeletonTileHTML() {
 function setSkeletons(show) {
   const box = $('#feed-skeletons');
   if (show && !box.childElementCount) {
-    box.innerHTML = Array.from({ length: 8 }, skeletonTileHTML).join('');
+    box.innerHTML = Array.from({ length: 10 }, skeletonTileHTML).join('');
   }
   box.hidden = !show;
 }
 
 function syncGrid() {
-  const fresh = Feed.items.slice(renderedCount);
+  const feed = currentFeed();
+  const grid = $('#feed');
+  if (gridFeed !== feed) {
+    grid.innerHTML = '';
+    renderedCount = 0;
+    gridFeed = feed;
+  }
+  const fresh = feed.items.slice(renderedCount);
   if (!fresh.length) return;
-  $('#feed').insertAdjacentHTML('beforeend', fresh.map((v, i) => tileHTML(v, i)).join(''));
-  renderedCount = Feed.items.length;
+  grid.insertAdjacentHTML('beforeend', fresh.map((v, i) => tileHTML(v, Math.min(i, PAGE_SIZE - 1))).join(''));
+  renderedCount = feed.items.length;
 }
 
 function resetFeed() {
-  Feed.reset();
-  $('#feed').innerHTML = '';
+  feeds.forEach(feed => feed.dispose());
+  feeds.clear();
+  gridFeed = null;
   renderedCount = 0;
-  homeBusy = false;
+  $('#feed').innerHTML = '';
   setSkeletons(false);
   $('#feed-status').innerHTML = '';
+}
+
+function renderFeedHeader() {
+  const box = $('#feed-header');
+  const ch = state.filter ? channelById(state.filter) : null;
+  if (!ch) {
+    box.hidden = true;
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML = `
+    <img class="avatar lg" src="${esc(ch.thumb || '')}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
+    <div>
+      <h1>${esc(ch.title)}</h1>
+      <span class="muted">${esc(ch.handle || '')}</span>
+    </div>
+    <a class="btn btn-ghost btn-sm" href="#/">Ver todos os canais</a>`;
+  box.hidden = false;
 }
 
 function emptyState(icon, title, text, action = '') {
@@ -584,39 +687,41 @@ function checkHomePrereqs() {
 }
 
 function updateFeedStatus() {
+  const feed = currentFeed();
   const status = $('#feed-status');
-  if (Feed.error) {
-    status.innerHTML = emptyState('error', 'Não foi possível carregar os vídeos', esc(Feed.error.message),
+  if (feed.error) {
+    status.innerHTML = emptyState('error', 'Não foi possível carregar os vídeos', esc(feed.error.message),
       '<button class="btn btn-ghost" type="button" data-action="retry-feed">Tentar novamente</button>');
-  } else if (Feed.exhausted && !Feed.items.length) {
-    status.innerHTML = emptyState('channels', 'Nenhum vídeo encontrado', 'Os canais adicionados ainda não têm vídeos públicos.');
-  } else if (Feed.exhausted) {
-    status.innerHTML = '<p>Você chegou ao fim. Esses são todos os vídeos dos seus canais.</p>';
+  } else if (feed.exhausted && !feed.items.length) {
+    status.innerHTML = emptyState('channels', 'Nenhum vídeo encontrado',
+      state.filter ? 'Este canal ainda não tem vídeos públicos.' : 'Os canais adicionados ainda não têm vídeos públicos.');
+  } else if (feed.exhausted) {
+    status.innerHTML = `<p>Você chegou ao fim. Esses são todos os vídeos ${state.filter ? 'deste canal' : 'dos seus canais'}.</p>`;
   } else {
     status.innerHTML = '';
   }
 }
 
 async function loadFeedPage() {
-  if (state.view !== 'home' || homeBusy || Feed.error) return;
-  if (!checkHomePrereqs()) return;
-  if (Feed.exhausted && !Feed.loading) {
+  if (state.view !== 'home' || !checkHomePrereqs()) return;
+  const feed = currentFeed();
+  if (feed.error || feed.uiBusy) return;
+  if (feed.exhausted && !feed.loading) {
     syncGrid();
     updateFeedStatus();
     return;
   }
 
-  homeBusy = true;
-  const gen = Feed.gen;
+  feed.uiBusy = true;
   $('#feed-status').innerHTML = '';
   setSkeletons(true);
   try {
-    await Feed.loadMore();
+    await feed.loadMore();
   } catch (e) {
-    if (gen === Feed.gen) Feed.error = e;
+    if (!feed.dead) feed.error = e;
   }
-  if (gen !== Feed.gen) return;
-  homeBusy = false;
+  feed.uiBusy = false;
+  if (feed.dead || feed !== currentFeed() || state.view !== 'home') return;
   setSkeletons(false);
   syncGrid();
   updateFeedStatus();
@@ -625,22 +730,83 @@ async function loadFeedPage() {
 }
 
 function checkSentinel() {
-  if (state.view !== 'home' || Feed.error || Feed.exhausted) return;
+  if (state.view !== 'home' || !state.channels.length) return;
+  const feed = currentFeed();
+  if (feed.error || feed.exhausted) return;
   const rect = $('#feed-sentinel').getBoundingClientRect();
-  if (rect.top < innerHeight + 300) loadFeedPage();
+  if (rect.top < innerHeight + 200) loadFeedPage();
 }
 
 function showHome() {
-  document.title = 'MeuTube';
+  const ch = state.filter ? channelById(state.filter) : null;
+  document.title = ch ? `${ch.title} · MeuTube` : 'MeuTube';
+  renderFeedHeader();
   if (!checkHomePrereqs()) {
     $('#feed').innerHTML = '';
+    gridFeed = null;
     renderedCount = 0;
     setSkeletons(false);
     return;
   }
+  const feed = currentFeed();
   syncGrid();
+  setSkeletons(feed.uiBusy);
   updateFeedStatus();
-  if (!Feed.exhausted) requestAnimationFrame(checkSentinel);
+  if (!feed.exhausted) requestAnimationFrame(checkSentinel);
+}
+
+/* =========================================================
+   Menu lateral (lista de canais)
+   ========================================================= */
+const overlayQuery = matchMedia('(max-width: 1099px)');
+
+function renderSidebar() {
+  const box = $('#side-channels');
+  box.innerHTML = state.channels.length
+    ? state.channels.map(c => `
+        <a class="side-item" href="#/c/${esc(c.id)}" data-channel="${esc(c.id)}" title="${esc(c.title)}">
+          <img class="side-avatar" src="${esc(c.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
+          <span class="side-label">${esc(c.title)}</span>
+        </a>`).join('')
+    : `<a class="side-item" href="#/settings" title="Adicionar canais">
+         <span class="side-icon">${ICONS.add}</span>
+         <span class="side-label">Adicionar canais</span>
+       </a>`;
+  updateSidebarActive();
+}
+
+function updateSidebarActive() {
+  const active = state.view === 'home' ? (state.filter || '') : null;
+  $$('#sidebar [data-channel]').forEach(a => a.classList.toggle('active', a.dataset.channel === active));
+}
+
+/** Telas estreitas e a página do vídeo usam o menu como gaveta sobreposta (igual ao YouTube). */
+function updateSidebarMode() {
+  const overlay = overlayQuery.matches || state.view === 'watch';
+  const body = document.body;
+  body.classList.toggle('sidebar-overlay', overlay);
+  body.classList.toggle('sidebar-mini', !overlay && state.sidebarMini);
+  if (!overlay) body.classList.remove('sidebar-open');
+  $('#menu-btn').setAttribute('aria-expanded', String(overlay
+    ? body.classList.contains('sidebar-open')
+    : !state.sidebarMini));
+}
+
+function toggleSidebar() {
+  if (document.body.classList.contains('sidebar-overlay')) {
+    document.body.classList.toggle('sidebar-open');
+  } else {
+    state.sidebarMini = !state.sidebarMini;
+    store.set(KEYS.sidebar, state.sidebarMini);
+  }
+  updateSidebarMode();
+  requestAnimationFrame(checkSentinel);
+}
+
+function closeSidebarOverlay() {
+  if (!document.body.classList.contains('sidebar-open')) return;
+  document.body.classList.remove('sidebar-open');
+  updateSidebarMode();
 }
 
 /* =========================================================
@@ -825,7 +991,8 @@ function enterWatch(id) {
   Comments.req++; // cancela respostas de comentários do vídeo anterior
   $('#player-error').hidden = true;
 
-  const known = Feed.items.find(v => v.id === id);
+  state.watchFeed = currentFeed();
+  const known = state.watchFeed.items.find(v => v.id === id) || findLoadedVideo(id);
   if (known) renderWatchInfo(known);
   else $('#watch-info').innerHTML = watchInfoSkeleton();
   $('#upnext').innerHTML = miniSkeletons(6);
@@ -858,6 +1025,7 @@ function enterWatch(id) {
       renderWatchInfo(video);
     }
     state.currentVideo = video;
+    markSeen(id);
     playVideo(id);
     loadComments(id, true);
     renderUpNext(video);
@@ -866,15 +1034,16 @@ function enterWatch(id) {
 
 /** Vídeos seguintes = os próximos do feed (mais antigos) depois do vídeo atual. */
 function upNextSlice(video) {
-  let start = Feed.items.findIndex(v => v.id === video.id);
+  const feed = state.watchFeed || currentFeed();
+  let start = feed.items.findIndex(v => v.id === video.id);
   if (start >= 0) start += 1;
   else {
-    start = Feed.items.findIndex(v => v.publishedAt < video.publishedAt);
-    if (start < 0) return { list: [], ready: Feed.exhausted, hasMore: !Feed.exhausted };
+    start = feed.items.findIndex(v => v.publishedAt < video.publishedAt);
+    if (start < 0) return { list: [], ready: feed.exhausted, hasMore: !feed.exhausted };
   }
-  const list = Feed.items.slice(start, start + upNextCount);
-  const hasMore = Feed.items.length > start + upNextCount || !Feed.exhausted;
-  return { list, ready: list.length >= upNextCount || Feed.exhausted, hasMore };
+  const list = feed.items.slice(start, start + upNextCount);
+  const hasMore = feed.items.length > start + upNextCount || !feed.exhausted;
+  return { list, ready: list.length >= upNextCount || feed.exhausted, hasMore };
 }
 
 function nextVideoAfter(video) {
@@ -892,7 +1061,7 @@ function miniHTML(v, i) {
       <div>
         <h3 class="mini-title" title="${esc(v.title)}">${esc(v.title)}</h3>
         <p class="mini-meta">${esc(v.channelTitle)}</p>
-        <p class="mini-meta">${esc(metaLine(v))}</p>
+        <p class="mini-meta">${esc(metaLine(v))}${newTag(v)}</p>
       </div>
     </a>`;
 }
@@ -907,7 +1076,7 @@ async function renderUpNext(video) {
   let failure = null;
   for (let guard = 0; !slice.ready && guard < 25; guard++) {
     try {
-      await Feed.loadMore();
+      await (state.watchFeed || currentFeed()).loadMore();
     } catch (e) {
       failure = e;
       break;
@@ -1036,55 +1205,76 @@ function premiumNote() {
   return `
     <p class="note">
       <strong>Sobre anúncios e YouTube Premium:</strong> o Google não informa o plano da conta (Premium ou não)
-      para aplicativos de terceiros — não existe API para isso. Este app não exibe nenhum anúncio próprio; os
-      anúncios dentro dos vídeos são controlados pelo player oficial do YouTube. Se a sua conta tem
-      <strong>YouTube Premium</strong> e você está conectado ao youtube.com neste navegador, os vídeos tocam sem anúncios.
+      para aplicativos de terceiros — não existe API para isso. Este app não exibe nenhum anúncio próprio, e os
+      anúncios dentro dos vídeos dependem só da sua sessão no <strong>youtube.com</strong> neste navegador (não
+      deste login): com <strong>YouTube Premium</strong> conectado lá, os vídeos tocam sem anúncios.
     </p>`;
 }
 
 function renderAccount() {
   const header = $('#account');
   const panel = $('#account-panel');
+  const connected = Boolean(Auth.validToken());
+  const account = connected ? { profile: Auth.profile, ytChannel: Auth.ytChannel } : Auth.remembered;
 
-  if (Auth.validToken()) {
-    const p = Auth.profile;
-    const name = p?.name || Auth.ytChannel?.title || 'Conta Google';
-    const pic = p?.picture || Auth.ytChannel?.thumb || '';
-    header.innerHTML = `
-      <a class="account-chip" href="#/settings" title="${esc(name)}">
-        <img src="${esc(pic)}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
-        <span>${esc(p?.given_name || name)}</span>
-      </a>`;
-    panel.innerHTML = `
-      <div class="account-panel">
-        <div class="account-card">
-          <img class="avatar lg" src="${esc(pic)}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
-          <div>
-            <strong>${esc(name)}</strong>
-            ${p?.email ? `<span>${esc(p.email)}</span>` : ''}
-            ${Auth.ytChannel ? `<span>Canal no YouTube: ${esc(Auth.ytChannel.title)}</span>` : ''}
-          </div>
-          <button class="btn btn-ghost btn-sm" type="button" data-action="signout">Sair</button>
-        </div>
-        ${Auth.hasYtScope
-          ? '<span class="tier">Conta Google conectada · sem anúncios do app</span>'
-          : `<p class="note note-warn">
-              <strong>Falta autorizar o acesso ao YouTube.</strong> Na tela do Google, marque a caixa
-              “Ver sua conta do YouTube”, senão o app não consegue listar vídeos e canais com a sua conta.
-            </p>
-            <div><button class="btn btn-primary btn-sm" type="button" data-action="signin">Autorizar acesso ao YouTube</button></div>`}
-        ${premiumNote()}
-      </div>`;
-  } else {
+  if (!account) {
     header.innerHTML = `
       <button class="btn btn-google btn-sm" type="button" data-action="signin">${ICONS.google}<span>Entrar</span></button>`;
     panel.innerHTML = `
       <div class="account-panel">
-        <p class="muted" style="margin:0">Entre com sua conta Google para usar o app com a sua conta do YouTube.</p>
+        <p class="muted" style="margin:0">Entre com sua conta Google para usar o app com a sua conta do YouTube.
+          ${state.config.apiKey ? 'Com a chave de API salva, o login é opcional.' : ''}</p>
         <div><button class="btn btn-google" type="button" data-action="signin">${ICONS.google}Entrar com o Google</button></div>
         ${premiumNote()}
       </div>`;
+    return;
   }
+
+  const p = account.profile;
+  const name = p?.name || account.ytChannel?.title || 'Conta Google';
+  const pic = p?.picture || account.ytChannel?.thumb || '';
+  const avatar = cls => `<img class="${cls}" src="${esc(pic)}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">`;
+
+  header.innerHTML = connected
+    ? `<a class="account-chip" href="#/settings" title="${esc(name)}">${avatar('')}<span>${esc(p?.given_name || name)}</span></a>`
+    : `<button class="btn btn-google btn-sm" type="button" data-action="signin" title="Sessão expirada">${ICONS.google}<span>Reconectar</span></button>`;
+
+  let status;
+  if (!connected) {
+    status = `
+      <p class="note">
+        <strong>Sessão expirada.</strong> Por segurança, o Google limita o login de apps web a 1 hora.
+        ${state.config.apiKey
+          ? 'Como você tem uma chave de API salva, o app continua funcionando normalmente — reconectar é opcional.'
+          : 'Clique em “Reconectar” para continuar carregando vídeos.'}
+      </p>`;
+  } else if (Auth.hasYtScope) {
+    const until = new Date(Auth.expiresAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    status = `<span class="tier">Conectado · acesso ao YouTube autorizado · sessão válida até ${until}</span>`;
+  } else {
+    status = `
+      <p class="note note-warn">
+        <strong>Falta autorizar o acesso ao YouTube.</strong> Na tela do Google, marque a caixa
+        “Ver sua conta do YouTube”, senão o app não consegue listar vídeos e canais com a sua conta.
+      </p>
+      <div><button class="btn btn-primary btn-sm" type="button" data-action="signin">Autorizar acesso ao YouTube</button></div>`;
+  }
+
+  panel.innerHTML = `
+    <div class="account-panel">
+      <div class="account-card">
+        ${avatar('avatar lg')}
+        <div>
+          <strong>${esc(name)}</strong>
+          ${p?.email ? `<span>${esc(p.email)}</span>` : ''}
+          ${account.ytChannel ? `<span>Canal no YouTube: ${esc(account.ytChannel.title)}</span>` : ''}
+        </div>
+        ${connected ? '' : `<button class="btn btn-google btn-sm" type="button" data-action="signin">${ICONS.google}Reconectar</button>`}
+        <button class="btn btn-ghost btn-sm" type="button" data-action="signout">Sair</button>
+      </div>
+      ${status}
+      ${premiumNote()}
+    </div>`;
 }
 
 function renderChannelList() {
@@ -1109,6 +1299,7 @@ function renderSettings() {
   document.title = 'Configurações · MeuTube';
   $('#cfg-api-key').value = state.config.apiKey;
   $('#cfg-client-id').value = state.config.clientId;
+  $('#hide-shorts').checked = state.hideShorts;
   renderAccount();
   renderChannelList();
 }
@@ -1177,7 +1368,9 @@ async function resolveChannel(raw) {
 
 function saveChannels() {
   store.set(KEYS.channels, state.channels);
+  if (state.filter && !channelById(state.filter)) state.filter = null;
   renderChannelList();
+  renderSidebar();
   resetFeed();
 }
 
@@ -1246,7 +1439,8 @@ function onConfigSubmit(e) {
 }
 
 function onCredentialsChanged() {
-  if (Feed.error || !Feed.items.length) resetFeed();
+  const feed = currentFeed();
+  if (feed.error || !feed.items.length) resetFeed();
   if (state.view === 'home') showHome();
 }
 
@@ -1260,7 +1454,8 @@ function parseRoute() {
   const watch = /^#\/watch\/([\w-]{11})$/.exec(hash);
   if (watch) return { view: 'watch', id: watch[1] };
   if (hash === '#/settings') return { view: 'settings' };
-  return { view: 'home' };
+  const channel = /^#\/c\/(UC[\w-]{22})$/.exec(hash);
+  return { view: 'home', channel: channel?.[1] || null };
 }
 
 function clearHeroNames() {
@@ -1281,7 +1476,7 @@ function inViewport(el) {
   return r.bottom > 0 && r.top < innerHeight;
 }
 
-function applyView(view, id) {
+function applyView(view, id, channel) {
   const prev = state.view;
   if (prev === 'home') state.homeScroll = scrollY;
   if (prev === 'watch' && view !== 'watch') {
@@ -1294,10 +1489,14 @@ function applyView(view, id) {
   $('#view-watch').hidden = view !== 'watch';
   $('#view-settings').hidden = view !== 'settings';
   $$('.nav a').forEach(a => a.classList.toggle('active', a.dataset.nav === view));
+  updateSidebarMode();
 
   if (view === 'home') {
+    const filter = channel && channelById(channel) ? channel : null;
+    const filterChanged = filter !== state.filter;
+    state.filter = filter;
     showHome();
-    window.scrollTo({ top: state.homeScroll, behavior: 'instant' });
+    window.scrollTo({ top: filterChanged ? 0 : state.homeScroll, behavior: 'instant' });
   } else if (view === 'watch') {
     window.scrollTo({ top: 0, behavior: 'instant' });
     enterWatch(id);
@@ -1305,12 +1504,14 @@ function applyView(view, id) {
     window.scrollTo({ top: 0, behavior: 'instant' });
     renderSettings();
   }
+  updateSidebarActive();
   updateToTop();
 }
 
 function route(animate = true) {
-  const { view, id } = parseRoute();
+  const { view, id, channel } = parseRoute();
   const prevView = state.view;
+  closeSidebarOverlay();
   const prevVideo = state.currentVideoId;
   const canAnimate = animate && !reducedMotion.matches;
 
@@ -1322,7 +1523,7 @@ function route(animate = true) {
 
   const update = () => {
     clearHeroNames();
-    applyView(view, id);
+    applyView(view, id, channel);
     if (view === 'watch') {
       setHero($('.player-wrap'));
     } else if (view === 'home' && prevView === 'watch' && prevVideo) {
@@ -1360,11 +1561,21 @@ function bindEvents() {
     const videoLink = e.target.closest('a[data-vid]');
     if (videoLink) {
       pendingHero = videoLink.querySelector('.thumb');
+      markSeen(videoLink.dataset.vid);
+      return;
+    }
+
+    // Clicar no que já está aberto apenas volta ao topo.
+    const sameLink = e.target.closest('a[href^="#/"]');
+    if (sameLink && sameLink.getAttribute('href') === (location.hash || '#/') && state.view === 'home') {
+      e.preventDefault();
+      closeSidebarOverlay();
+      window.scrollTo({ top: 0, behavior: reducedMotion.matches ? 'auto' : 'smooth' });
       return;
     }
 
     const navHome = e.target.closest('a[data-nav="home"]');
-    if (navHome && state.view === 'home') {
+    if (navHome && state.view === 'home' && !state.filter) {
       e.preventDefault();
       window.scrollTo({ top: 0, behavior: reducedMotion.matches ? 'auto' : 'smooth' });
       return;
@@ -1384,7 +1595,7 @@ function bindEvents() {
       case 'remove-channel': removeChannel(actionEl.dataset.id); break;
       case 'replies': toggleReplies(actionEl); break;
       case 'retry-feed':
-        Feed.error = null;
+        currentFeed().error = null;
         updateFeedStatus();
         loadFeedPage();
         break;
@@ -1398,6 +1609,22 @@ function bindEvents() {
   });
 
   $('#channel-form').addEventListener('submit', onChannelSubmit);
+  $('#hide-shorts').addEventListener('change', e => {
+    state.hideShorts = e.target.checked;
+    store.set(KEYS.hideShorts, state.hideShorts);
+    resetFeed();
+    toast(state.hideShorts ? 'Shorts ocultados.' : 'Shorts voltarão a aparecer.', 'success');
+  });
+
+  $('#menu-btn').addEventListener('click', toggleSidebar);
+  $('#sidebar-backdrop').addEventListener('click', closeSidebarOverlay);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeSidebarOverlay();
+  });
+  overlayQuery.addEventListener('change', () => {
+    updateSidebarMode();
+    requestAnimationFrame(checkSentinel);
+  });
   $('#config-form').addEventListener('submit', onConfigSubmit);
 
   $('#comments-more').addEventListener('click', () => loadComments(state.currentVideoId));
@@ -1421,7 +1648,7 @@ function bindEvents() {
   // Rolagem infinita: carrega mais 20 quando o fim da grade se aproxima.
   new IntersectionObserver(entries => {
     if (entries.some(en => en.isIntersecting)) loadFeedPage();
-  }, { rootMargin: '0px 0px 300px 0px' }).observe($('#feed-sentinel'));
+  }, { rootMargin: '0px 0px 200px 0px' }).observe($('#feed-sentinel'));
 
   // Comentários carregam sozinhos ao chegar no fim da lista.
   new IntersectionObserver(entries => {
@@ -1449,8 +1676,8 @@ function bindEvents() {
 function init() {
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   Auth.restore();
-  Feed.reset();
   renderAccount();
+  renderSidebar();
   bindEvents();
   route(false);
 }

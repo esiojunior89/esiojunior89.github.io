@@ -21,6 +21,8 @@
   --ease: cubic-bezier(.2, .8, .2, 1);
   --topbar-h: 60px;
   --gutter: clamp(16px, 3vw, 32px);
+  --side-w: 240px;
+  --side-mini-w: 76px;
   color-scheme: dark;
 }
 
@@ -218,7 +220,13 @@ input[type="text"]:focus, input[type="password"]:focus {
 /* =========================================================
    Views + transições
    ========================================================= */
-main { min-height: calc(100vh - var(--topbar-h)); }
+main {
+  min-height: calc(100vh - var(--topbar-h));
+  margin-left: var(--side-w);
+  transition: margin-left .3s var(--ease);
+}
+body.sidebar-mini main { margin-left: var(--side-mini-w); }
+body.sidebar-overlay main { margin-left: 0; }
 .view { padding: 24px var(--gutter) 56px; }
 .view.view-enter { animation: viewIn .42s var(--ease) both; }
 
@@ -250,11 +258,17 @@ main { min-height: calc(100vh - var(--topbar-h)); }
    ========================================================= */
 .feed-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
+  /* Colunas pela largura disponível (descontando o menu lateral): no máximo 5 por linha. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 30px 18px;
   max-width: 2200px;
   margin: 0 auto;
 }
+.home-wrap { container-type: inline-size; }
+@container (min-width: 500px)  { .feed-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (min-width: 800px)  { .feed-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@container (min-width: 1080px) { .feed-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@container (min-width: 1360px) { .feed-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 .skeleton-grid { margin-top: 30px; }
 .feed-grid:empty + .skeleton-grid { margin-top: 0; }
 
@@ -735,3 +749,134 @@ main { min-height: calc(100vh - var(--topbar-h)); }
   color: var(--text);
   border-left: 3px solid #ffb020;
 }
+
+/* =========================================================
+   Menu lateral retrátil (canais)
+   ========================================================= */
+.menu-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-left: -8px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background .2s;
+}
+.menu-btn:hover { background: var(--surface-2); }
+.menu-btn svg { width: 24px; height: 24px; fill: currentColor; }
+
+.sidebar {
+  position: fixed;
+  top: var(--topbar-h);
+  bottom: 0;
+  left: 0;
+  z-index: 45;
+  width: var(--side-w);
+  padding: 12px 12px 24px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg);
+  scrollbar-width: thin;
+  transition: width .3s var(--ease), transform .3s var(--ease), box-shadow .3s;
+  view-transition-name: sidebar;
+}
+.side-nav { display: grid; gap: 2px; }
+.side-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 14px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background .2s;
+}
+.side-item:hover { background: var(--surface-2); }
+.side-item.active { background: var(--surface-2); font-weight: 600; }
+.side-item.active .side-avatar { box-shadow: 0 0 0 2px var(--accent); }
+.side-icon { display: grid; place-items: center; width: 24px; height: 24px; flex-shrink: 0; }
+.side-icon svg { width: 22px; height: 22px; fill: currentColor; }
+.side-avatar {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--surface-2);
+  transition: box-shadow .2s;
+}
+.side-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.side-title { padding: 6px 12px 8px; font-size: 15px; font-weight: 600; }
+.side-sep { height: 1px; margin: 10px 4px; background: var(--border); }
+
+/* Recolhido (mini): só as fotos dos canais */
+body.sidebar-mini .sidebar { width: var(--side-mini-w); padding-inline: 8px; }
+body.sidebar-mini .side-label,
+body.sidebar-mini .side-title { display: none; }
+body.sidebar-mini .side-item { justify-content: center; padding: 8px 0; }
+body.sidebar-mini .side-avatar { width: 32px; height: 32px; }
+
+/* Gaveta sobreposta: telas estreitas e página do vídeo */
+body.sidebar-overlay .sidebar {
+  width: min(280px, 85vw);
+  transform: translateX(-100%);
+  border-right: 1px solid var(--border);
+}
+body.sidebar-overlay.sidebar-open .sidebar {
+  transform: none;
+  box-shadow: 0 0 60px rgba(0, 0, 0, .5);
+}
+.sidebar-backdrop {
+  position: fixed;
+  inset: var(--topbar-h) 0 0 0;
+  z-index: 44;
+  background: rgba(0, 0, 0, .5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .3s;
+}
+body.sidebar-overlay.sidebar-open .sidebar-backdrop { opacity: 1; pointer-events: auto; }
+
+::view-transition-group(sidebar),
+::view-transition-old(sidebar),
+::view-transition-new(sidebar) { animation: none; }
+
+/* Cabeçalho quando um canal está filtrado */
+.feed-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  max-width: 2200px;
+  margin: 0 auto 24px;
+  animation: viewIn .4s var(--ease) both;
+}
+.feed-header > div { min-width: 0; }
+.feed-header h1 { font-size: 22px; letter-spacing: -.01em; }
+.feed-header span { font-size: 13.5px; }
+.feed-header .btn { margin-left: auto; }
+
+/* Selo "Novo" */
+.new-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 7px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.6;
+  vertical-align: 1px;
+}
+
+.settings-switch { margin-top: 16px; font-size: 14px; color: var(--text); }
