@@ -171,9 +171,13 @@
             <summary>Como obter essas credenciais</summary>
             <ol>
               <li>Acesse o Google Cloud Console e crie (ou escolha) um projeto.</li>
-              <li>Em “APIs e serviços › Biblioteca”, ative a <strong>YouTube Data API v3</strong>.</li>
+              <li>Em “APIs e serviços › Biblioteca”, ative a <strong>YouTube Data API v3</strong> e, para a sincronização
+                na nuvem, a <strong>Google Drive API</strong>.</li>
               <li>Em “Credenciais”, crie uma <strong>Chave de API</strong> (restrinja-a ao domínio do app).</li>
               <li>Configure a “Tela de permissão OAuth” e crie um <strong>ID do cliente OAuth</strong> do tipo “Aplicativo da Web”, adicionando a URL do app (ex.: <code>http://localhost:8080</code>) em “Origens JavaScript autorizadas”.</li>
+              <li>Para entrar em outros aparelhos sem digitar nada, coloque o seu Client ID em
+                <code>DEFAULT_CONFIG.clientId</code>, no topo do <code>app.js</code>. Depois do login, canais, opções,
+                chave de API e progresso vêm da nuvem.</li>
               <li>Abra o app por <code>http://</code> ou <code>https://</code> — o login e o player não funcionam abrindo o arquivo direto (<code>file://</code>).</li>
             </ol>
           </details>

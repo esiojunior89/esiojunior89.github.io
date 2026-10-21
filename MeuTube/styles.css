@@ -1021,3 +1021,8 @@ body.hide-watched .mini.is-watched { display: none; }
 @media (max-width: 640px) {
   .topbar { gap: 8px; }
 }
+
+.sync-summary { margin: 0; font-size: 13.5px; }
+.sync-summary strong { color: var(--text); }
+#sync-status { display: grid; gap: 10px; justify-items: start; }
+#sync-status:empty { display: none; }

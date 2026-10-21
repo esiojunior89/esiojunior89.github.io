@@ -13,7 +13,8 @@ const DEFAULT_CONFIG = {
 
 const PAGE_SIZE = 20;
 const YT_SCOPE = 'https://www.googleapis.com/auth/youtube.readonly';
-const SCOPES = `openid email profile ${YT_SCOPE}`;
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata'; // pasta oculta do app no Drive (sincronização)
+const SCOPES = `openid email profile ${YT_SCOPE} ${DRIVE_SCOPE}`;
 const YT_API = 'https://www.googleapis.com/youtube/v3/';
 const VIDEO_ID_RE = /^[\w-]{11}$/;
 const CHANNEL_ID_RE = /^UC[\w-]{22}$/;
@@ -26,6 +27,7 @@ const KEYS = {
   seen: 'meutube.seen',
   progress: 'meutube.progress',
   hideWatched: 'meutube.hideWatched',
+  sync: 'meutube.sync',
   hideShorts: 'meutube.hideShorts',
   sidebar: 'meutube.sidebarMini',
 };
@@ -274,6 +276,7 @@ const Auth = {
   profile: null,
   ytChannel: null,
   hasYtScope: false,
+  hasDriveScope: false,
   remembered: null, // última conta usada, para oferecer "Reconectar" quando a sessão expira
   client: null,
   clientIdInUse: null,
@@ -290,7 +293,7 @@ const Auth = {
   persist() {
     store.set(KEYS.auth, {
       token: this.token, expiresAt: this.expiresAt, profile: this.profile,
-      ytChannel: this.ytChannel, hasYtScope: this.hasYtScope,
+      ytChannel: this.ytChannel, hasYtScope: this.hasYtScope, hasDriveScope: this.hasDriveScope,
     });
     if (this.profile || this.ytChannel) {
       this.remembered = { profile: this.profile, ytChannel: this.ytChannel };
@@ -353,7 +356,7 @@ const Auth = {
       this.clientIdInUse = clientId;
     }
     // Reconexão de quem já autorizou: sem repetir a tela de permissões.
-    const known = (this.profile || this.remembered) && (this.hasYtScope || !this.validToken());
+    const known = (this.profile || this.remembered) && ((this.hasYtScope && this.hasDriveScope) || !this.validToken());
     this.client.requestAccessToken({ prompt: known ? '' : 'consent' });
   },
 
@@ -365,8 +368,9 @@ const Auth = {
     this.token = resp.access_token;
     this.expiresAt = Date.now() + Number(resp.expires_in || 3600) * 1000;
     // O Google permite desmarcar permissões individualmente na tela de consentimento.
-    this.hasYtScope = String(resp.scope || '').split(/\s+/).includes(YT_SCOPE)
-      || google.accounts.oauth2.hasGrantedAllScopes(resp, YT_SCOPE);
+    const granted = String(resp.scope || '').split(/\s+/);
+    this.hasYtScope = granted.includes(YT_SCOPE) || google.accounts.oauth2.hasGrantedAllScopes(resp, YT_SCOPE);
+    this.hasDriveScope = granted.includes(DRIVE_SCOPE) || google.accounts.oauth2.hasGrantedAllScopes(resp, DRIVE_SCOPE);
     await this.loadProfile();
     this.persist();
     renderAccount();
@@ -376,6 +380,7 @@ const Auth = {
       toast('Você entrou, mas não autorizou o acesso ao YouTube. Clique em “Autorizar acesso ao YouTube” e marque a caixa do YouTube na tela do Google.', 'error', 9000);
     }
     onCredentialsChanged();
+    Sync.run(); // baixa/mescla/envia os dados da nuvem
   },
 
   async loadProfile() {
@@ -410,6 +415,7 @@ const Auth = {
     this.profile = null;
     this.ytChannel = null;
     this.hasYtScope = false;
+    this.hasDriveScope = false;
     clearTimeout(this.expiryTimer);
     try { localStorage.removeItem(KEYS.auth); } catch { /* ignora */ }
     if (revoke && token && window.google?.accounts?.oauth2) {
@@ -572,6 +578,7 @@ function markSeen(id) {
   seenVideos.add(id);
   store.set(KEYS.seen, [...seenVideos].slice(-3000));
   $$(`[data-vid="${id}"] .new-tag`).forEach(el => el.remove());
+  Sync.schedule(SYNC_PROGRESS_MS);
 }
 
 /* =========================================================
@@ -943,13 +950,13 @@ function fmtClock(sec) {
 
 function progressPercent(id) {
   const p = progressStore[id];
-  if (!p) return 0;
+  if (!p || p.gone) return 0;
   return p.done ? 100 : Math.min(100, (p.t / p.d) * 100);
 }
 
 function resumeTime(id) {
   const p = progressStore[id];
-  return p && !p.done ? Math.max(0, p.t - 3) : 0; // volta 3 s para retomar o contexto
+  return p && !p.done && !p.gone ? Math.max(0, p.t - 3) : 0; // volta 3 s para retomar o contexto
 }
 
 function recordProgress(id, t, d, done = false) {
@@ -959,8 +966,10 @@ function recordProgress(id, t, d, done = false) {
     progressStore[id] = { t: 0, d: Math.round(d), done: true, at: Date.now() };
   } else if (t >= PROGRESS_MIN_SECONDS) {
     progressStore[id] = { t: Math.floor(t), d: Math.round(d), at: Date.now() };
-  } else if (prev && !prev.done) {
-    delete progressStore[id]; // voltou para o início: esquece o ponto salvo
+  } else if (prev && !prev.done && !prev.gone) {
+    // Voltou para o início: esquece o ponto salvo. Fica um registro "apagado" (e não a
+    // remoção pura) para que a sincronização leve o esquecimento aos outros aparelhos.
+    progressStore[id] = { gone: true, at: Date.now() };
   } else {
     return;
   }
@@ -972,6 +981,7 @@ function recordProgress(id, t, d, done = false) {
   }
   store.set(KEYS.progress, progressStore);
   updateProgressBars(id);
+  Sync.schedule(SYNC_PROGRESS_MS);
 }
 
 function progressBarHTML(id) {
@@ -1018,6 +1028,7 @@ function applyHideWatched() {
 function toggleHideWatched() {
   state.hideWatched = !state.hideWatched;
   store.set(KEYS.hideWatched, state.hideWatched);
+  Sync.touch('prefs');
   applyHideWatched();
   if (state.view === 'home') {
     updateFeedStatus();
@@ -1509,8 +1520,10 @@ function renderAccount() {
         <p class="muted" style="margin:0">Entre com sua conta Google para usar o app com a sua conta do YouTube.
           ${state.config.apiKey ? 'Com a chave de API salva, o login é opcional.' : ''}</p>
         <div><button class="btn btn-google" type="button" data-action="signin">${ICONS.google}Entrar com o Google</button></div>
+        <div id="sync-status"></div>
         ${premiumNote()}
       </div>`;
+    renderSyncStatus();
     return;
   }
 
@@ -1557,8 +1570,10 @@ function renderAccount() {
         <button class="btn btn-ghost btn-sm" type="button" data-action="signout">Sair</button>
       </div>
       ${status}
+      <div id="sync-status"></div>
       ${premiumNote()}
     </div>`;
+  renderSyncStatus();
 }
 
 function renderChannelList() {
@@ -1655,7 +1670,8 @@ async function resolveChannel(raw) {
   };
 }
 
-function saveChannels() {
+/** Grava os canais neste aparelho e atualiza a tela (usado também quando chegam da nuvem). */
+function persistChannels() {
   store.set(KEYS.channels, state.channels);
   if (state.filter && !isHomeChannel(state.filter)) state.filter = null;
   renderChannelList();
@@ -1663,6 +1679,11 @@ function saveChannels() {
   resetFeed();
   Lives.items = Lives.items.filter(v => channelById(v.channelId));
   refreshLives(true);
+}
+
+function saveChannels() {
+  persistChannels();
+  Sync.touch('channels');
 }
 
 async function onChannelSubmit(e) {
@@ -1709,6 +1730,7 @@ function setLivesOnly(id, enabled) {
   if (!ch) return;
   ch.livesOnly = enabled;
   store.set(KEYS.channels, state.channels);
+  Sync.touch('channels');
   if (state.filter === id) state.filter = null;
   renderSidebar();
   resetFeed(); // as lives não mudam: a verificação de "Ao vivo" já inclui todos os canais
@@ -1736,8 +1758,10 @@ function onConfigSubmit(e) {
   const apiKey = $('#cfg-api-key').value.trim();
   const clientId = $('#cfg-client-id').value.trim();
   const changed = apiKey !== state.config.apiKey || clientId !== state.config.clientId;
+  const apiKeyChanged = apiKey !== state.config.apiKey;
   state.config = { apiKey, clientId };
   store.set(KEYS.config, state.config);
+  if (apiKeyChanged) Sync.touch('apiKey');
   toast('Configurações salvas.', 'success');
   if (changed) onCredentialsChanged();
 }
@@ -1747,6 +1771,305 @@ function onCredentialsChanged() {
   if (feed.error || !feed.items.length) resetFeed();
   if (Lives.error || !Lives.lastFetch) refreshLives(true);
   if (state.view === 'home') showHome();
+}
+
+/* =========================================================
+   Sincronização na nuvem (pasta oculta do app no Google Drive)
+   =========================================================
+   Um único arquivo JSON fica na "appDataFolder" do Google Drive
+   da sua conta: é privada deste app, não aparece entre os seus
+   arquivos e nenhum outro app consegue ler. A cada sincronização
+   o app baixa o arquivo, MESCLA com os dados deste aparelho e
+   envia o resultado — então nenhum aparelho apaga o outro:
+     • canais, opções e chave de API: vale a alteração mais recente;
+     • progresso: vale o registro mais recente de cada vídeo;
+     • vídeos já vistos ("Novo"): soma dos dois aparelhos.
+   ========================================================= */
+const DRIVE_FILES = 'https://www.googleapis.com/drive/v3/files';
+const DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files';
+const SYNC_FILE = 'meutube-sync.json';
+const SYNC_QUICK_MS = 1500;      // depois de mudar canais/opções
+const SYNC_PROGRESS_MS = 30_000; // progresso muda o tempo todo: no máximo a cada 30 s
+const SYNC_PULL_MS = 2 * 60_000; // busca novidades de outros aparelhos a cada 2 min
+
+async function driveFetch(url, opts = {}) {
+  const token = Auth.validToken();
+  if (!token || !Auth.hasDriveScope) throw new Error('Entre com o Google para sincronizar.');
+  let res;
+  try {
+    res = await fetch(url, { ...opts, headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) } });
+  } catch {
+    throw new Error('Sem conexão com o Google Drive.');
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const reason = data?.error?.errors?.[0]?.reason || data?.error?.status || '';
+    const message = reason === 'accessNotConfigured' || /has not been used|is disabled/i.test(data?.error?.message || '')
+      ? 'A Google Drive API não está ativada no seu projeto do Google Cloud.'
+      : reason === 'insufficientPermissions' || reason === 'ACCESS_TOKEN_SCOPE_INSUFFICIENT'
+        ? 'Falta a permissão do Google Drive.'
+        : data?.error?.message || `Erro ${res.status} no Google Drive.`;
+    const err = new Error(message);
+    err.status = res.status;
+    err.reason = reason;
+    throw err;
+  }
+  return res;
+}
+
+const Sync = {
+  meta: { fileId: null, lastSync: 0, at: {}, ...store.get(KEYS.sync, {}) },
+  timer: 0,
+  due: 0,
+  running: null,
+  again: false,
+  status: 'idle', // idle | syncing | ok | error
+  error: null,
+  lastUploaded: '',
+
+  enabled() {
+    return Boolean(Auth.validToken() && Auth.hasDriveScope);
+  },
+
+  saveMeta() {
+    store.set(KEYS.sync, this.meta);
+  },
+
+  /** Marca uma seção (channels | prefs | apiKey) como alterada agora neste aparelho. */
+  touch(section) {
+    this.meta.at[section] = Date.now();
+    this.saveMeta();
+    this.schedule(SYNC_QUICK_MS);
+  },
+
+  /** Agenda uma sincronização; um agendamento mais cedo nunca é adiado por um mais tarde. */
+  schedule(delay = SYNC_QUICK_MS) {
+    if (!this.enabled()) return;
+    const due = Date.now() + delay;
+    if (this.timer && this.due <= due) return;
+    clearTimeout(this.timer);
+    this.due = due;
+    this.timer = setTimeout(() => {
+      this.timer = 0;
+      this.run();
+    }, delay);
+  },
+
+  snapshot() {
+    // Seções que já existiam antes da sincronização (sem data) contam como "bem antigas" (1),
+    // para que qualquer alteração real feita em outro aparelho prevaleça sobre elas.
+    const at = section => this.meta.at[section] || 1;
+    return {
+      version: 1,
+      channels: { at: at('channels'), value: state.channels },
+      prefs: { at: at('prefs'), value: { hideShorts: state.hideShorts, hideWatched: state.hideWatched, autoplay: state.autoplay } },
+      apiKey: { at: state.config.apiKey ? at('apiKey') : (this.meta.at.apiKey || 0), value: state.config.apiKey },
+      progress: progressStore,
+      seen: [...seenVideos].slice(-3000),
+    };
+  },
+
+  run() {
+    if (!this.enabled()) return Promise.resolve();
+    if (this.running) {
+      this.again = true;
+      return this.running;
+    }
+    clearTimeout(this.timer);
+    this.timer = 0;
+    this.running = this._run().finally(() => {
+      this.running = null;
+      if (this.again) {
+        this.again = false;
+        this.schedule(SYNC_QUICK_MS);
+      }
+    });
+    return this.running;
+  },
+
+  async _run() {
+    this.status = 'syncing';
+    renderSyncStatus();
+    try {
+      let fileId = this.meta.fileId;
+      let remote = null;
+      if (fileId) {
+        try {
+          remote = await (await driveFetch(`${DRIVE_FILES}/${fileId}?alt=media`)).json();
+        } catch (e) {
+          if (e.status !== 404) throw e;
+          fileId = null; // o arquivo foi apagado: procura de novo / recria
+        }
+      }
+      if (!fileId) {
+        const q = encodeURIComponent(`name='${SYNC_FILE}'`);
+        const list = await (await driveFetch(
+          `${DRIVE_FILES}?spaces=appDataFolder&q=${q}&orderBy=modifiedTime%20desc&fields=files(id)`)).json();
+        fileId = list.files?.[0]?.id || null;
+        if (fileId) remote = await (await driveFetch(`${DRIVE_FILES}/${fileId}?alt=media`)).json();
+      }
+
+      const changed = remote ? this.merge(remote) : false;
+      const remoteBody = remote ? JSON.stringify({ ...remote, updatedAt: undefined }) : '';
+      const body = JSON.stringify(this.snapshot());
+
+      if (body !== remoteBody && body !== this.lastUploaded) {
+        const payload = JSON.stringify({ ...JSON.parse(body), updatedAt: Date.now() });
+        if (fileId) {
+          await driveFetch(`${DRIVE_UPLOAD}/${fileId}?uploadType=media`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+          });
+        } else {
+          const boundary = `meutube${Math.random().toString(36).slice(2)}`;
+          const metadata = { name: SYNC_FILE, parents: ['appDataFolder'], mimeType: 'application/json' };
+          const multipart = [
+            `--${boundary}`, 'Content-Type: application/json; charset=UTF-8', '', JSON.stringify(metadata),
+            `--${boundary}`, 'Content-Type: application/json', '', payload,
+            `--${boundary}--`,
+          ].join('\r\n');
+          const res = await driveFetch(`${DRIVE_UPLOAD}?uploadType=multipart&fields=id`, {
+            method: 'POST',
+            headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+            body: multipart,
+          });
+          fileId = (await res.json()).id;
+        }
+        this.lastUploaded = body;
+      }
+
+      const firstSync = !this.meta.lastSync;
+      this.meta.fileId = fileId;
+      this.meta.lastSync = Date.now();
+      this.saveMeta();
+      this.status = 'ok';
+      this.error = null;
+      if (changed && firstSync) toast('Seus canais, opções e progresso foram carregados da nuvem.', 'success', 6000);
+    } catch (e) {
+      this.status = 'error';
+      this.error = e;
+      if (e.reason === 'insufficientPermissions' || e.reason === 'ACCESS_TOKEN_SCOPE_INSUFFICIENT') {
+        Auth.hasDriveScope = false;
+        Auth.persist();
+        renderAccount();
+      }
+    }
+    renderSyncStatus();
+  },
+
+  /** Junta os dados da nuvem com os deste aparelho. Retorna true se algo local mudou. */
+  merge(remote) {
+    const changes = {};
+    const local = this.meta.at;
+
+    const rc = remote.channels;
+    if (rc && Array.isArray(rc.value)) {
+      if (!local.channels && state.channels.length && rc.value.length) {
+        // Primeira sincronização deste aparelho, que já tinha canais: junta as duas listas.
+        const ids = new Set(rc.value.map(c => c.id));
+        const extra = state.channels.filter(c => !ids.has(c.id));
+        if (extra.length || rc.value.length !== state.channels.length) changes.channels = [...rc.value, ...extra];
+        local.channels = extra.length ? Date.now() : rc.at;
+      } else if ((rc.at || 0) > (local.channels || 0)) {
+        changes.channels = rc.value;
+        local.channels = rc.at;
+      }
+    }
+    if (remote.prefs?.value && (remote.prefs.at || 0) > (local.prefs || 0)) {
+      changes.prefs = remote.prefs.value;
+      local.prefs = remote.prefs.at;
+    }
+    if (typeof remote.apiKey?.value === 'string' && (remote.apiKey.at || 0) > (local.apiKey || 0)
+        && (remote.apiKey.value || !state.config.apiKey)) {
+      changes.apiKey = remote.apiKey.value;
+      local.apiKey = remote.apiKey.at;
+    }
+
+    const progressIds = [];
+    for (const [id, r] of Object.entries(remote.progress || {})) {
+      const l = progressStore[id];
+      if (r && (!l || (r.at || 0) > (l.at || 0))) {
+        progressStore[id] = r;
+        progressIds.push(id);
+      }
+    }
+    const seenIds = (remote.seen || []).filter(id => !seenVideos.has(id));
+
+    this.saveMeta();
+    this.apply(changes, progressIds, seenIds);
+    return Boolean(Object.keys(changes).length || progressIds.length || seenIds.length);
+  },
+
+  apply(changes, progressIds, seenIds) {
+    if (changes.channels) {
+      state.channels = changes.channels;
+      persistChannels();
+    }
+    if (changes.prefs) {
+      const p = changes.prefs;
+      if (typeof p.hideShorts === 'boolean' && p.hideShorts !== state.hideShorts) {
+        state.hideShorts = p.hideShorts;
+        store.set(KEYS.hideShorts, state.hideShorts);
+        resetFeed();
+      }
+      if (typeof p.hideWatched === 'boolean') {
+        state.hideWatched = p.hideWatched;
+        store.set(KEYS.hideWatched, state.hideWatched);
+        applyHideWatched();
+      }
+      if (typeof p.autoplay === 'boolean') {
+        state.autoplay = p.autoplay;
+        store.set(KEYS.autoplay, state.autoplay);
+        $('#autoplay').checked = state.autoplay;
+      }
+    }
+    if (typeof changes.apiKey === 'string' && changes.apiKey !== state.config.apiKey) {
+      state.config.apiKey = changes.apiKey;
+      store.set(KEYS.config, state.config);
+      onCredentialsChanged();
+    }
+    if (progressIds.length) {
+      store.set(KEYS.progress, progressStore);
+      progressIds.forEach(updateProgressBars);
+    }
+    if (seenIds.length) {
+      seenIds.forEach(id => seenVideos.add(id));
+      store.set(KEYS.seen, [...seenVideos].slice(-3000));
+      seenIds.forEach(id => $$(`[data-vid="${id}"] .new-tag`).forEach(el => el.remove()));
+    }
+    if (state.view === 'settings' && (changes.channels || changes.prefs || changes.apiKey !== undefined)) renderSettings();
+    else if (state.view === 'home' && (changes.channels || changes.prefs || progressIds.length)) showHome();
+  },
+};
+
+function renderSyncStatus() {
+  const box = $('#sync-status');
+  if (!box) return;
+  const time = ts => new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  let html;
+  if (!Auth.validToken()) {
+    html = `<p class="note"><strong>Sincronização na nuvem:</strong> entre com o Google para salvar canais, opções e
+      progresso na sua conta e carregá-los em outros aparelhos.
+      ${Sync.meta.lastSync ? `Última sincronização: ${new Date(Sync.meta.lastSync).toLocaleString('pt-BR')}.` : ''}</p>`;
+  } else if (!Auth.hasDriveScope) {
+    html = `
+      <p class="note note-warn"><strong>Sincronização na nuvem desligada.</strong> Na tela do Google, marque a permissão
+        do Google Drive (“ver, criar e excluir os próprios dados de configuração”). O app só usa uma pasta oculta,
+        exclusiva dele — não vê nem mexe nos seus arquivos.</p>
+      <div><button class="btn btn-primary btn-sm" type="button" data-action="signin">Ativar sincronização</button></div>`;
+  } else if (Sync.status === 'error') {
+    html = `
+      <p class="note note-warn"><strong>Não foi possível sincronizar:</strong> ${esc(Sync.error?.message || 'erro desconhecido')}
+        ${Sync.meta.lastSync ? ` Última sincronização: ${time(Sync.meta.lastSync)}.` : ''}</p>
+      <div><button class="btn btn-ghost btn-sm" type="button" data-action="sync-now">Tentar de novo</button></div>`;
+  } else {
+    const text = Sync.status === 'syncing'
+      ? 'sincronizando…'
+      : Sync.meta.lastSync ? `ativa · última sincronização às ${time(Sync.meta.lastSync)}` : 'ativa';
+    html = `<span class="tier sync-ok">☁ Sincronização na nuvem ${text}</span>`;
+  }
+  box.innerHTML = html;
 }
 
 /* =========================================================
@@ -1898,6 +2221,7 @@ function bindEvents() {
       case 'signin': Auth.signIn(); break;
       case 'signout': Auth.signOut(); break;
       case 'remove-channel': removeChannel(actionEl.dataset.id); break;
+      case 'sync-now': Sync.run(); break;
       case 'replies': toggleReplies(actionEl); break;
       case 'retry-feed':
         currentFeed().error = null;
@@ -1905,9 +2229,10 @@ function bindEvents() {
         loadFeedPage();
         break;
       case 'restart':
-        if (playerVideoId) delete progressStore[playerVideoId];
+        if (playerVideoId) progressStore[playerVideoId] = { gone: true, at: Date.now() };
         store.set(KEYS.progress, progressStore);
         if (playerVideoId) updateProgressBars(playerVideoId);
+        Sync.schedule(SYNC_QUICK_MS);
         actionEl.closest('.resume-chip')?.remove();
         seekTo(0);
         break;
@@ -1928,6 +2253,7 @@ function bindEvents() {
   $('#hide-shorts').addEventListener('change', e => {
     state.hideShorts = e.target.checked;
     store.set(KEYS.hideShorts, state.hideShorts);
+    Sync.touch('prefs');
     resetFeed();
     toast(state.hideShorts ? 'Shorts ocultados.' : 'Shorts voltarão a aparecer.', 'success');
   });
@@ -1956,6 +2282,7 @@ function bindEvents() {
   autoplay.addEventListener('change', () => {
     state.autoplay = autoplay.checked;
     store.set(KEYS.autoplay, state.autoplay);
+    Sync.touch('prefs');
   });
 
   $('#to-top').addEventListener('click', () => {
@@ -2003,7 +2330,13 @@ function bindEvents() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden' && state.view === 'watch') saveProgress();
     if (document.visibilityState === 'visible') refreshLives(); // só se a última verificação tiver mais de 5 min
+    // Nuvem: envia ao sair da aba; ao voltar, busca o que mudou em outros aparelhos.
+    if (document.visibilityState === 'hidden') Sync.run();
+    else if (Date.now() - Sync.meta.lastSync > 60_000) Sync.run();
   });
+  setInterval(() => {
+    if (document.visibilityState === 'visible' && Date.now() - Sync.meta.lastSync >= SYNC_PULL_MS - 5000) Sync.run();
+  }, 30_000);
   // Lives: verifica a cada 5 minutos enquanto a aba estiver visível.
   setInterval(() => {
     if (document.visibilityState === 'visible') refreshLives();
@@ -2035,6 +2368,7 @@ function init() {
   bindEvents();
   route(false);
   refreshLives(true);
+  Sync.run();
 }
 
 init();
