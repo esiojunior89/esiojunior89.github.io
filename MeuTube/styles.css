@@ -443,7 +443,7 @@ body.sidebar-overlay main { margin-left: 0; }
 
 .watch-layout {
   display: grid;
-  grid-template-columns: minmax(0, var(--player-max-w)) var(--side-col);
+  grid-template-columns: minmax(0, var(--player-max-w)) minmax(var(--side-col), 1fr);
   grid-template-areas:
     "player   side"
     "info     side"
@@ -1102,3 +1102,45 @@ body.sidebar-mini .app-version { padding-inline: 0; text-align: center; font-siz
 /* Menu recolhido: as lives não são verificadas, então a seção "Ao vivo" some */
 body.sidebar-mini .side-section-lives,
 body.sidebar-mini .side-sep-lives { display: none; }
+
+/* =========================================================
+   "A seguir" no estilo do YouTube (telas largas)
+   =========================================================
+   Título "A seguir" + 3 tiles grandes ocupam exatamente a altura do player
+   (a altura vem do app.js, em --player-h). A coluna usa a largura que sobra
+   à direita; em telas muito largas o player é limitado para que caibam a
+   miniatura e o texto ao lado (sem isso, os tiles não acompanhariam o player).
+   ========================================================= */
+@media (min-width: 1001px) {
+  #view-watch {
+    --upnext-head: 40px;
+    --upnext-gap: 12px;
+    --player-max-w: max(560px, min(
+      calc((100vh - var(--topbar-h) - var(--watch-top) - var(--below-player)) * 16 / 9),
+      calc((100vw - 266px) * .75)));
+  }
+  .watch-side .side-head { height: var(--upnext-head); margin: 0; }
+  .upnext { gap: var(--upnext-gap); margin-bottom: 16px; }
+  .upnext .mini {
+    --tile-h: calc((var(--player-h, 405px) - var(--upnext-head) - 2 * var(--upnext-gap)) / 3);
+    /* miniatura 16:9 na altura do tile, deixando pelo menos ~210 px para o texto */
+    grid-template-columns: min(calc(var(--tile-h) * 16 / 9), calc(100% - 212px)) minmax(0, 1fr);
+    align-items: start;
+    height: var(--tile-h);
+    overflow: hidden;
+    gap: 12px;
+    padding: 0;
+    margin: 0;
+    border-radius: 12px;
+  }
+  .upnext .mini:hover { background: transparent; }
+  .upnext .mini .thumb { border-radius: 12px; }
+  .upnext .mini-title { font-size: 16px; line-height: 22px; -webkit-line-clamp: 3; }
+  .upnext .mini-meta { font-size: 13px; line-height: 20px; }
+  .upnext .mini-meta:first-of-type { margin-top: 4px; }
+  .upnext .mini .badge { font-size: 12px; right: 8px; bottom: 8px; }
+  .upnext .sk-mini { grid-template-columns: min(calc(var(--tile-h, 107px) * 16 / 9), calc(100% - 212px)) 1fr; }
+}
+@media (min-width: 1001px) and (max-width: 1279px) {
+  .upnext .mini-title { -webkit-line-clamp: 2; } /* tiles mais baixos: título em 2 linhas */
+}

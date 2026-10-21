@@ -427,16 +427,18 @@ body.sidebar-overlay main { margin-left: 0; }
    Página do vídeo
    ========================================================= */
 /* Página do vídeo com as medidas do YouTube:
-   • margens de 24 px até a borda da tela;
+   • 24 px até a borda esquerda e 12 px acima do player;
    • coluna da direita ("A seguir") com ~400 px;
-   • a ALTURA do player é limitada à da janela, deixando espaço embaixo para o título e o
-     canal aparecerem sem rolar. Quando isso limita o player, as colunas ficam centralizadas. */
+   • a ALTURA do player é limitada à da janela, deixando espaço embaixo para o título, o
+     canal e a 1ª linha da descrição aparecerem sem rolar. O conjunto fica encostado à
+     esquerda (a sobra de largura vai para a direita). */
 #view-watch {
   --watch-pad: 24px;
+  --watch-top: 12px;
   --side-col: clamp(300px, 22vw, 402px);
-  --below-player: 132px; /* título + linha do canal */
-  --player-max-w: max(560px, calc((100vh - var(--topbar-h) - var(--watch-pad) - var(--below-player)) * 16 / 9));
-  padding: var(--watch-pad) var(--watch-pad) 56px;
+  --below-player: 168px; /* título + linha do canal + 1ª linha da descrição */
+  --player-max-w: max(560px, calc((100vh - var(--topbar-h) - var(--watch-top) - var(--below-player)) * 16 / 9));
+  padding: var(--watch-top) var(--watch-pad) 56px;
 }
 
 .watch-layout {
@@ -447,7 +449,7 @@ body.sidebar-overlay main { margin-left: 0; }
     "info     side"
     "comments side";
   grid-template-rows: auto auto 1fr;
-  justify-content: center;
+  justify-content: start;
   column-gap: 24px;
   align-items: start;
 }
