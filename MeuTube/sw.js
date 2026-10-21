@@ -1,11 +1,14 @@
 'use strict';
 
+const VERSION = '1.0.0'; // mudar este número faz o navegador atualizar o service worker
+
 /* =========================================================
    Service worker mínimo do MeuTube
    =========================================================
    Existe só para o Chrome do Android aceitar instalar o site
    como app (que abre em tela cheia). NÃO guarda nada em cache:
-   tudo continua vindo do servidor, sempre na versão mais nova.
+   a página é sempre conferida no servidor (cache: 'no-cache'),
+   então uma versão nova aparece no próximo carregamento.
    Sem internet, mostra um aviso em vez da tela de erro.
    ========================================================= */
 const OFFLINE_HTML = `<!doctype html>
@@ -34,8 +37,9 @@ self.addEventListener('activate', event => event.waitUntil(self.clients.claim())
 self.addEventListener('fetch', event => {
   if (event.request.mode !== 'navigate') return; // o resto vai direto para a rede, sem passar por aqui
   event.respondWith(
-    fetch(event.request).catch(() => new Response(OFFLINE_HTML, {
-      headers: { 'Content-Type': 'text/html; charset=utf-8' },
-    })),
+    fetch(event.request.url, { cache: 'no-cache', credentials: 'same-origin' })
+      // Navegações não aceitam resposta "já redirecionada": devolve o redirecionamento ao navegador.
+      .then(res => (res.redirected ? Response.redirect(res.url, 302) : res))
+      .catch(() => new Response(OFFLINE_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })),
   );
 });
