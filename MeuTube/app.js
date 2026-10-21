@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -30,6 +30,7 @@ const KEYS = {
   seen: 'meutube.seen',
   progress: 'meutube.progress',
   hideWatched: 'meutube.hideWatched',
+  chstats: 'meutube.channelStats',
   sync: 'meutube.sync',
   hideShorts: 'meutube.hideShorts',
   sidebar: 'meutube.sidebarMini',
@@ -1095,17 +1096,6 @@ function saveProgress() {
   recordProgress(playerVideoId, t, d);
 }
 
-function showResumeChip(id) {
-  $('#resume-chip')?.remove();
-  const start = resumeTime(id);
-  if (!start) return;
-  $('#watch-info').insertAdjacentHTML('afterbegin', `
-    <div id="resume-chip" class="resume-chip">
-      <span>Continuando de <strong>${fmtClock(start)}</strong></span>
-      <button class="link-btn" type="button" data-action="restart">Começar do início</button>
-    </div>`);
-}
-
 /* =========================================================
    Player do YouTube (IFrame API)
    ========================================================= */
@@ -1367,31 +1357,80 @@ function commentSkeletons(n) {
     </div>`).join('');
 }
 
+/* Inscritos dos canais (para "13,4 mi de inscritos"): uma chamada para todos os canais,
+   guardada por 24 h — custa ~1 unidade de cota por dia. */
+const CHANNEL_STATS_TTL = 24 * 60 * 60 * 1000;
+const channelStats = store.get(KEYS.chstats, {});
+let channelStatsLoading = null;
+
+function subscribersText(channelId) {
+  const subs = channelStats[channelId]?.subs;
+  if (subs == null) return '';
+  return `${compact.format(subs)} ${subs === 1 ? 'inscrito' : 'de inscritos'}`;
+}
+
+async function ensureChannelStats(channelId) {
+  const cached = channelStats[channelId];
+  if (cached && Date.now() - cached.at < CHANNEL_STATS_TTL) return;
+  if (!channelStatsLoading) {
+    const ids = state.channels.map(c => c.id).slice(0, 50);
+    if (!ids.includes(channelId)) ids[ids.length ? ids.length - 1 : 0] = channelId;
+    channelStatsLoading = api('channels', { part: 'statistics', id: ids.join(','), maxResults: 50 })
+      .then(data => {
+        for (const c of data.items || []) {
+          const s = c.statistics || {};
+          channelStats[c.id] = { subs: s.hiddenSubscriberCount ? null : Number(s.subscriberCount), at: Date.now() };
+        }
+        store.set(KEYS.chstats, channelStats);
+      })
+      .catch(() => { /* sem o número de inscritos, mostra o @ do canal */ })
+      .finally(() => { channelStatsLoading = null; });
+  }
+  await channelStatsLoading;
+}
+
 function renderWatchInfo(v) {
   const ch = channelById(v.channelId);
-  const stats = [
-    v.views != null ? `<span>${esc(fmtViews(v.views))}</span>` : '',
-    `<span title="${esc(new Date(v.publishedAt).toLocaleString('pt-BR'))}">${esc(dateFmt.format(v.publishedAt))}</span>`,
-    v.likes != null ? `<span>👍 ${esc(compact.format(Number(v.likes)))}</span>` : '',
-  ].join('');
+  const published = new Date(v.publishedAt).toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'short' });
 
   $('#watch-info').innerHTML = `
     <h1 class="watch-title">${esc(v.title)}</h1>
     <div class="watch-meta">
       <div class="watch-channel">
-        <img class="avatar lg" src="${esc(ch?.thumb || '')}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
+        <img class="avatar watch-avatar" src="${esc(ch?.thumb || '')}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
         <div>
           <strong>${esc(v.channelTitle)}</strong>
-          <span class="muted">${esc(ch?.handle || '')}</span>
+          <span class="muted" id="watch-subs">${esc(subscribersText(v.channelId) || ch?.handle || '')}</span>
         </div>
       </div>
-      <div class="watch-stats">${stats}</div>
     </div>
-    ${v.description.trim() ? `
-      <div class="description collapsed" id="description">
-        <div class="description-text">${richText(v.description)}</div>
-        <button class="link-btn" type="button" data-action="toggle-desc">Mostrar mais</button>
-      </div>` : ''}`;
+    <div class="description collapsed" id="description" data-action="expand-desc">
+      <div class="description-stats">
+        ${v.views != null ? `<span>${esc(fmtViews(v.views))}</span>` : ''}
+        <span title="${esc(published)}">${esc(timeAgo(v.publishedAt))}</span>
+      </div>
+      ${v.description.trim() ? `<div class="description-text">${richText(v.description)}</div>` : ''}
+      <button class="link-btn desc-toggle" type="button" data-action="toggle-desc">mais</button>
+    </div>`;
+
+  // Sem texto escondido (descrição curta), não há o que expandir.
+  requestAnimationFrame(() => {
+    const box = $('#description');
+    const text = box?.querySelector('.description-text');
+    if (box && (!text || text.scrollHeight <= text.clientHeight + 1)) {
+      box.classList.remove('collapsed');
+      box.classList.add('short');
+      box.querySelector('.desc-toggle').hidden = true;
+    }
+  });
+
+  if (!subscribersText(v.channelId)) {
+    ensureChannelStats(v.channelId).then(() => {
+      const el = $('#watch-subs');
+      const text = subscribersText(v.channelId);
+      if (el && text && state.currentVideoId === v.id) el.textContent = text;
+    });
+  }
 
   $('#comments-title').textContent = v.comments != null
     ? `Comentários · ${compact.format(Number(v.comments))}`
@@ -1453,7 +1492,6 @@ function enterWatch(id) {
     }
     state.currentVideo = video;
     markSeen(id);
-    showResumeChip(id);
     playVideo(id);
     loadComments(id, true);
     renderUpNext(video);
@@ -2390,25 +2428,13 @@ function bindEvents() {
         updateFeedStatus();
         loadFeedPage();
         break;
-      case 'restart': {
-        // Zera só o ponto onde parou; um vídeo já assistido continua marcado como assistido.
-        const prev = playerVideoId && progressStore[playerVideoId];
-        if (playerVideoId) {
-          progressStore[playerVideoId] = prev?.done && !prev.gone
-            ? { t: 0, d: prev.d, done: true, at: Date.now() }
-            : { gone: true, at: Date.now() };
-        }
-        store.set(KEYS.progress, progressStore);
-        if (playerVideoId) updateProgressBars(playerVideoId);
-        Sync.schedule(SYNC_QUICK_MS);
-        actionEl.closest('.resume-chip')?.remove();
-        seekTo(0);
-        break;
-      }
-      case 'toggle-desc': {
+      case 'toggle-desc':
+      case 'expand-desc': {
         const box = $('#description');
+        if (actionEl.dataset.action === 'expand-desc' && !box.classList.contains('collapsed')) break;
+        if (getSelection()?.toString()) break; // estava selecionando texto, não clicando
         const collapsed = box.classList.toggle('collapsed');
-        actionEl.textContent = collapsed ? 'Mostrar mais' : 'Mostrar menos';
+        box.querySelector('.desc-toggle').textContent = collapsed ? 'mais' : 'Mostrar menos';
         break;
       }
     }
