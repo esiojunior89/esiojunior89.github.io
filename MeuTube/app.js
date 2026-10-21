@@ -12,7 +12,8 @@ const DEFAULT_CONFIG = {
 };
 
 const PAGE_SIZE = 20;
-const SCOPES = 'openid email profile https://www.googleapis.com/auth/youtube.readonly';
+const YT_SCOPE = 'https://www.googleapis.com/auth/youtube.readonly';
+const SCOPES = `openid email profile ${YT_SCOPE}`;
 const YT_API = 'https://www.googleapis.com/youtube/v3/';
 const VIDEO_ID_RE = /^[\w-]{11}$/;
 const CHANNEL_ID_RE = /^UC[\w-]{22}$/;
@@ -119,7 +120,7 @@ const state = {
 
 const channelById = id => state.channels.find(c => c.id === id);
 const allowedChannels = () => new Set(state.channels.map(c => c.id));
-const hasCredentials = () => Boolean(state.config.apiKey || Auth.validToken());
+const hasCredentials = () => Boolean(state.config.apiKey || Auth.ytToken());
 
 /* =========================================================
    Cliente da YouTube Data API
@@ -142,10 +143,12 @@ const ERROR_MESSAGES = {
   playlistNotFound: 'Lista de uploads do canal não encontrada.',
   forbidden: 'Acesso negado pela API do YouTube.',
   ipRefererBlocked: 'A chave de API não permite requisições a partir deste endereço.',
+  insufficientPermissions: 'Sua conta Google não autorizou o acesso ao YouTube. Em Configurações, clique em “Autorizar acesso ao YouTube” e marque a permissão do YouTube na tela do Google.',
+  ACCESS_TOKEN_SCOPE_INSUFFICIENT: 'Sua conta Google não autorizou o acesso ao YouTube. Em Configurações, clique em “Autorizar acesso ao YouTube” e marque a permissão do YouTube na tela do Google.',
 };
 
 async function api(endpoint, params = {}, retry = true) {
-  const token = Auth.validToken();
+  const token = Auth.ytToken();
   const { apiKey } = state.config;
   if (!token && !apiKey) {
     throw new ApiError('Configure uma chave de API ou entre com sua conta Google em Configurações.', 0, 'noCredentials');
@@ -172,7 +175,12 @@ async function api(endpoint, params = {}, retry = true) {
       toast('Sua sessão do Google expirou. Entre novamente.', 'error');
       if (apiKey) return api(endpoint, params, false);
     }
-    const reason = data?.error?.errors?.[0]?.reason || '';
+    const reason = data?.error?.errors?.[0]?.reason || data?.error?.details?.[0]?.reason || '';
+    if (res.status === 403 && token && (reason === 'insufficientPermissions' || reason === 'ACCESS_TOKEN_SCOPE_INSUFFICIENT')) {
+      // O token não tem o escopo do YouTube: para de usá-lo e, se houver chave de API, tenta com ela.
+      Auth.setYtScope(false);
+      if (apiKey && retry) return api(endpoint, params, false);
+    }
     const message = ERROR_MESSAGES[reason] || data?.error?.message || `Erro ${res.status} na API do YouTube.`;
     throw new ApiError(message, res.status, reason);
   }
@@ -227,6 +235,7 @@ const Auth = {
   expiresAt: 0,
   profile: null,
   ytChannel: null,
+  hasYtScope: false,
   client: null,
   clientIdInUse: null,
 
@@ -240,13 +249,26 @@ const Auth = {
   persist() {
     try {
       sessionStorage.setItem(KEYS.auth, JSON.stringify({
-        token: this.token, expiresAt: this.expiresAt, profile: this.profile, ytChannel: this.ytChannel,
+        token: this.token, expiresAt: this.expiresAt, profile: this.profile,
+        ytChannel: this.ytChannel, hasYtScope: this.hasYtScope,
       }));
     } catch { /* ignora */ }
   },
 
   validToken() {
     return this.token && this.expiresAt > Date.now() + 30_000 ? this.token : null;
+  },
+
+  /** Token só é usado na YouTube API se o usuário concedeu o escopo do YouTube. */
+  ytToken() {
+    return this.hasYtScope ? this.validToken() : null;
+  },
+
+  setYtScope(granted) {
+    if (this.hasYtScope === granted) return;
+    this.hasYtScope = granted;
+    this.persist();
+    renderAccount();
   },
 
   async waitForGis() {
@@ -283,7 +305,8 @@ const Auth = {
       });
       this.clientIdInUse = clientId;
     }
-    this.client.requestAccessToken({ prompt: this.profile ? '' : 'consent' });
+    // Sem o escopo do YouTube, força a tela de consentimento para o usuário marcá-lo.
+    this.client.requestAccessToken({ prompt: this.profile && this.hasYtScope ? '' : 'consent' });
   },
 
   async onToken(resp) {
@@ -293,10 +316,16 @@ const Auth = {
     }
     this.token = resp.access_token;
     this.expiresAt = Date.now() + Number(resp.expires_in || 3600) * 1000;
+    // O Google permite desmarcar permissões individualmente na tela de consentimento.
+    this.hasYtScope = google.accounts.oauth2.hasGrantedAllScopes(resp, YT_SCOPE);
     await this.loadProfile();
     this.persist();
     renderAccount();
-    toast(`Conectado como ${this.profile?.name || 'usuário Google'}.`, 'success');
+    if (this.hasYtScope) {
+      toast(`Conectado como ${this.profile?.name || 'usuário Google'}.`, 'success');
+    } else {
+      toast('Você entrou, mas não autorizou o acesso ao YouTube. Clique em “Autorizar acesso ao YouTube” e marque a caixa do YouTube na tela do Google.', 'error', 9000);
+    }
     onCredentialsChanged();
   },
 
@@ -307,6 +336,8 @@ const Auth = {
       });
       if (res.ok) this.profile = await res.json();
     } catch { /* ignora */ }
+    this.ytChannel = null;
+    if (!this.hasYtScope) return;
     try {
       const data = await api('channels', { part: 'snippet', mine: true });
       const c = data.items?.[0];
@@ -326,6 +357,7 @@ const Auth = {
     this.expiresAt = 0;
     this.profile = null;
     this.ytChannel = null;
+    this.hasYtScope = false;
     try { sessionStorage.removeItem(KEYS.auth); } catch { /* ignora */ }
     if (revoke && token && window.google?.accounts?.oauth2) {
       google.accounts.oauth2.revoke(token, () => {});
@@ -1030,7 +1062,13 @@ function renderAccount() {
           </div>
           <button class="btn btn-ghost btn-sm" type="button" data-action="signout">Sair</button>
         </div>
-        <span class="tier">Conta Google conectada · sem anúncios do app</span>
+        ${Auth.hasYtScope
+          ? '<span class="tier">Conta Google conectada · sem anúncios do app</span>'
+          : `<p class="note note-warn">
+              <strong>Falta autorizar o acesso ao YouTube.</strong> Na tela do Google, marque a caixa
+              “Ver sua conta do YouTube”, senão o app não consegue listar vídeos e canais com a sua conta.
+            </p>
+            <div><button class="btn btn-primary btn-sm" type="button" data-action="signin">Autorizar acesso ao YouTube</button></div>`}
         ${premiumNote()}
       </div>`;
   } else {
