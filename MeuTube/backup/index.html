@@ -5,16 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0f0f12">
   <title>MeuTube</title>
+  <!-- Versão do app (SemVer). Mantida igual ao APP_VERSION do app.js e ao "?v=" dos arquivos abaixo:
+       o número no endereço faz o navegador baixar a versão nova em vez de usar o cache. -->
+  <meta name="app-version" content="1.0.0">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -4 28 28'%3E%3Crect width='28' height='20' rx='6' fill='%23ff3d3d'/%3E%3Cpath d='M11.5 5.8v8.4L18.6 10z' fill='%23fff'/%3E%3C/svg%3E">
   <!-- App instalável (abre em tela cheia no celular) -->
-  <link rel="manifest" href="manifest.json">
+  <link rel="manifest" href="manifest.json?v=1.0.0">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="preconnect" href="https://i.ytimg.com">
   <link rel="preconnect" href="https://www.googleapis.com">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=1.0.0">
   <!-- Google Identity Services (login com Google) -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -75,6 +78,8 @@
       </h3>
       <div id="side-lives" class="side-scroll"></div>
     </section>
+
+    <div id="app-version" class="app-version" title="Versão do MeuTube"></div>
   </aside>
   <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
 
@@ -193,12 +198,14 @@
             </ol>
           </details>
         </article>
+
+        <footer id="settings-footer" class="settings-footer"></footer>
       </div>
     </section>
   </main>
 
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=1.0.0"></script>
 </body>
 </html>

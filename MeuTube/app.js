@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -952,28 +952,36 @@ function fmtClock(sec) {
   return h ? `${h}:${pad(m)}:${pad(s % 60)}` : `${m}:${pad(s % 60)}`;
 }
 
+/*
+ * Cada registro de progresso: { t: ponto onde parou (0 = nenhum), d: duração, done, at }.
+ * "done" (assistido) é uma marca permanente: rever o vídeo não a apaga. Assim um vídeo já
+ * assistido continua oculto pelo "Ocultar assistidos", mas ainda lembra onde você parou.
+ */
 function progressPercent(id) {
   const p = progressStore[id];
   if (!p || p.gone) return 0;
-  return p.done ? 100 : Math.min(100, (p.t / p.d) * 100);
+  if (p.t > 0) return Math.min(100, (p.t / p.d) * 100); // assistindo (ou revendo): ponto atual
+  return p.done ? 100 : 0;
 }
 
 function resumeTime(id) {
   const p = progressStore[id];
-  return p && !p.done && !p.gone ? Math.max(0, p.t - 3) : 0; // volta 3 s para retomar o contexto
+  return p && !p.gone && p.t > 0 ? Math.max(0, p.t - 3) : 0; // volta 3 s para retomar o contexto
 }
 
 function recordProgress(id, t, d, done = false) {
   if (!id || !d || !Number.isFinite(d)) return;
   const prev = progressStore[id];
+  const wasWatched = Boolean(prev?.done && !prev.gone);
   if (done || t >= d - PROGRESS_END_SECONDS || t / d >= 0.95) {
     progressStore[id] = { t: 0, d: Math.round(d), done: true, at: Date.now() };
   } else if (t >= PROGRESS_MIN_SECONDS) {
-    progressStore[id] = { t: Math.floor(t), d: Math.round(d), at: Date.now() };
-  } else if (prev && !prev.done && !prev.gone) {
-    // Voltou para o início: esquece o ponto salvo. Fica um registro "apagado" (e não a
-    // remoção pura) para que a sincronização leve o esquecimento aos outros aparelhos.
-    progressStore[id] = { gone: true, at: Date.now() };
+    // Rever um vídeo assistido mantém a marca de assistido.
+    progressStore[id] = { t: Math.floor(t), d: Math.round(d), ...(wasWatched && { done: true }), at: Date.now() };
+  } else if (prev && !prev.gone && prev.t > 0) {
+    // Voltou para o início: esquece o ponto salvo (mas não a marca de assistido). Sem a marca,
+    // fica um registro "apagado" para a sincronização levar o esquecimento aos outros aparelhos.
+    progressStore[id] = wasWatched ? { t: 0, d: prev.d, done: true, at: Date.now() } : { gone: true, at: Date.now() };
   } else {
     return;
   }
@@ -2258,14 +2266,21 @@ function bindEvents() {
         updateFeedStatus();
         loadFeedPage();
         break;
-      case 'restart':
-        if (playerVideoId) progressStore[playerVideoId] = { gone: true, at: Date.now() };
+      case 'restart': {
+        // Zera só o ponto onde parou; um vídeo já assistido continua marcado como assistido.
+        const prev = playerVideoId && progressStore[playerVideoId];
+        if (playerVideoId) {
+          progressStore[playerVideoId] = prev?.done && !prev.gone
+            ? { t: 0, d: prev.d, done: true, at: Date.now() }
+            : { gone: true, at: Date.now() };
+        }
         store.set(KEYS.progress, progressStore);
         if (playerVideoId) updateProgressBars(playerVideoId);
         Sync.schedule(SYNC_QUICK_MS);
         actionEl.closest('.resume-chip')?.remove();
         seekTo(0);
         break;
+      }
       case 'toggle-desc': {
         const box = $('#description');
         const collapsed = box.classList.toggle('collapsed');

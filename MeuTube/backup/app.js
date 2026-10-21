@@ -1,5 +1,8 @@
 'use strict';
 
+/** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
+const APP_VERSION = '1.0.0';
+
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
    =========================================================
@@ -1606,6 +1609,7 @@ function renderSettings() {
   $('#cfg-client-id').value = state.config.clientId;
   $('#hide-shorts').checked = state.hideShorts;
   renderInstallPanel();
+  renderVersionInfo();
   renderAccount();
   renderChannelList();
 }
@@ -2340,7 +2344,14 @@ function bindEvents() {
     const el = document.fullscreenElement || document.webkitFullscreenElement;
     if (el?.closest?.('.player-wrap')) {
       playerWasFullscreen = true;
-      if (isMobile()) screen.orientation?.lock?.('landscape').catch(() => { /* aparelho não permite */ });
+      if (isMobile()) {
+        if (!screen.orientation?.lock) lastRotation = 'não suportada neste navegador';
+        else {
+          screen.orientation.lock('landscape')
+            .then(() => { lastRotation = 'girou para horizontal'; renderVersionInfo(); })
+            .catch(err => { lastRotation = `recusada (${err?.name || 'erro'})`; renderVersionInfo(); });
+        }
+      }
       return;
     }
     // Saiu do vídeo em tela cheia (a página pode continuar em tela cheia no celular).
@@ -2396,6 +2407,7 @@ function bindEvents() {
      (o navegador não permite fazer isso sem um toque).
    ========================================================= */
 let installPrompt = null;
+let lastRotation = 'ainda não testada'; // resultado da última tentativa de girar a tela (diagnóstico)
 
 function isMobile() {
   const mobile = navigator.userAgentData?.mobile ?? /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
@@ -2447,6 +2459,22 @@ function setupMobileApp() {
   }, true);
 }
 
+/** Versão discreta no menu lateral e, em Configurações, versão + diagnóstico do celular. */
+function renderVersionInfo() {
+  const side = $('#app-version');
+  if (side) side.textContent = `v${APP_VERSION}`;
+  const footer = $('#settings-footer');
+  if (!footer) return;
+  const htmlVersion = document.querySelector('meta[name="app-version"]')?.content;
+  const sw = navigator.serviceWorker?.controller ? 'ativo' : 'inativo';
+  const mode = isInstalledApp() ? 'app instalado' : 'navegador';
+  footer.innerHTML = `
+    <span>MeuTube <strong>v${APP_VERSION}</strong></span>
+    <span>Celular: ${isMobile() ? 'sim' : 'não'} · Aberto como: ${mode} · Service worker: ${sw} · Rotação: ${esc(lastRotation)}</span>
+    ${htmlVersion && htmlVersion !== APP_VERSION
+      ? `<span class="error">Arquivos de versões diferentes (página v${esc(htmlVersion)}). Recarregue a página.</span>` : ''}`;
+}
+
 async function installApp() {
   if (!installPrompt) return;
   installPrompt.prompt();
@@ -2465,6 +2493,8 @@ function init() {
   renderSidebar();
   renderLives();
   applyHideWatched();
+  renderVersionInfo();
+  console.info(`MeuTube v${APP_VERSION}`);
   setupMobileApp();
   bindEvents();
   route(false);

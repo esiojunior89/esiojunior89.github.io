@@ -1026,3 +1026,24 @@ body.hide-watched .mini.is-watched { display: none; }
 .sync-summary strong { color: var(--text); }
 #sync-status { display: grid; gap: 10px; justify-items: start; }
 #sync-status:empty { display: none; }
+
+/* Versão do app (discreta) */
+.app-version {
+  flex-shrink: 0;
+  margin-top: auto;
+  padding: 10px 12px 0;
+  font-size: 11px;
+  color: var(--muted);
+  opacity: .6;
+  letter-spacing: .02em;
+}
+body.sidebar-mini .app-version { padding-inline: 0; text-align: center; font-size: 10px; }
+.settings-footer {
+  display: grid;
+  gap: 4px;
+  padding: 4px 4px 0;
+  font-size: 12px;
+  color: var(--muted);
+  opacity: .75;
+}
+.settings-footer strong { color: var(--text); }
