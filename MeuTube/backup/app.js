@@ -225,6 +225,8 @@ function normalizeVideo(v) {
     likes: v.statistics?.likeCount,
     comments: v.statistics?.commentCount,
     live: s.liveBroadcastContent || 'none',
+    viewers: v.liveStreamingDetails?.concurrentViewers,
+    liveSince: v.liveStreamingDetails?.actualStartTime ? Date.parse(v.liveStreamingDetails.actualStartTime) : null,
   };
 }
 
@@ -237,7 +239,7 @@ async function fetchVideos(ids) {
   const result = new Map();
   for (let i = 0; i < ids.length; i += 50) {
     const data = await api('videos', {
-      part: 'snippet,contentDetails,statistics',
+      part: 'snippet,contentDetails,statistics,liveStreamingDetails',
       id: ids.slice(i, i + 50).join(','),
       maxResults: 50,
     });
@@ -419,13 +421,14 @@ const Auth = {
    recente entre os topos dos buffers. Assim a ordem global por
    data é sempre correta, página após página.
 
-   Sem Shorts: em vez da playlist de uploads completa (UU…),
-   usamos as playlists automáticas de vídeos longos (UULF…) e de
-   transmissões ao vivo (UULV…), que não incluem Shorts.
+   Sem lives na página inicial: em vez da playlist de uploads
+   completa (UU…), usamos as playlists automáticas de vídeos
+   longos (UULF…) e, se os Shorts estiverem ligados, a de Shorts
+   (UUSH…). As lives (UULV…) ficam no menu lateral.
    ========================================================= */
 class FeedStream {
   constructor(channels) {
-    const prefixes = state.hideShorts ? ['UULF', 'UULV'] : ['UU'];
+    const prefixes = state.hideShorts ? ['UULF'] : ['UULF', 'UUSH'];
     this.sources = channels.flatMap(c => prefixes.map(prefix => ({
       channelId: c.id,
       playlistId: prefix + c.id.slice(2),
@@ -508,7 +511,8 @@ class FeedStream {
 
       const details = await fetchVideos(picked.map(p => p.id));
       if (this.dead) return [];
-      added.push(...picked.map(p => details.get(p.id)).filter(Boolean));
+      // Garantia extra: nada que esteja ao vivo ou agendado entra na página inicial.
+      added.push(...picked.map(p => details.get(p.id)).filter(v => v && v.live === 'none'));
     }
     this.items.push(...added);
     return added;
@@ -532,7 +536,7 @@ function findLoadedVideo(id) {
     const v = feed.items.find(item => item.id === id);
     if (v) return v;
   }
-  return null;
+  return Lives.items.find(item => item.id === id) || null;
 }
 
 /* =========================================================
@@ -780,6 +784,85 @@ function renderSidebar() {
 function updateSidebarActive() {
   const active = state.view === 'home' ? (state.filter || '') : null;
   $$('#sidebar [data-channel]').forEach(a => a.classList.toggle('active', a.dataset.channel === active));
+  const watching = state.view === 'watch' ? state.currentVideoId : null;
+  $$('#side-lives [data-vid]').forEach(a => a.classList.toggle('active', a.dataset.vid === watching));
+}
+
+/* =========================================================
+   Lives ativas (metade de baixo do menu lateral)
+   =========================================================
+   A busca oficial de lives custa 100 de cota por canal, então
+   lemos a playlist automática de lives de cada canal (UULV…,
+   1 de cota) e confirmamos quais estão ao vivo agora pelo status
+   do vídeo. Atualiza a cada 5 minutos, só com a aba visível.
+   ========================================================= */
+const LIVE_REFRESH_MS = 5 * 60 * 1000;
+const Lives = { items: [], loading: false, checked: false, lastFetch: 0, error: null, gen: 0 };
+
+async function refreshLives(force = false) {
+  if (!state.channels.length || !hasCredentials()) {
+    Object.assign(Lives, { items: [], checked: true, error: null });
+    renderLives();
+    return;
+  }
+  if (Lives.loading) return;
+  if (!force && Date.now() - Lives.lastFetch < LIVE_REFRESH_MS - 5000) return;
+
+  Lives.loading = true;
+  const gen = ++Lives.gen;
+  try {
+    const perChannel = await Promise.all(state.channels.map(c =>
+      api('playlistItems', { part: 'contentDetails', playlistId: `UULV${c.id.slice(2)}`, maxResults: 10 })
+        .then(d => (d.items || []).map(it => it.contentDetails?.videoId).filter(Boolean))
+        .catch(e => { if (e.status === 404) return []; throw e; }))); // 404: canal nunca fez live
+    const ids = [...new Set(perChannel.flat())];
+    const details = ids.length ? await fetchVideos(ids) : new Map();
+    if (gen !== Lives.gen) return;
+    Lives.items = [...details.values()]
+      .filter(v => v.live === 'live')
+      .sort((a, b) => Number(b.viewers || 0) - Number(a.viewers || 0));
+    Lives.error = null;
+    Lives.lastFetch = Date.now();
+  } catch (e) {
+    if (gen === Lives.gen) Lives.error = e;
+  } finally {
+    if (gen === Lives.gen) {
+      Lives.loading = false;
+      Lives.checked = true;
+      renderLives();
+    }
+  }
+}
+
+function renderLives() {
+  const box = $('#side-lives');
+  $('#lives-count').textContent = Lives.items.length || '';
+  if (Lives.items.length) {
+    box.innerHTML = Lives.items.map(v => {
+      const ch = channelById(v.channelId);
+      const viewers = v.viewers != null ? compact.format(Number(v.viewers)) : '';
+      return `
+        <a class="side-item side-live" href="#/watch/${v.id}" data-vid="${v.id}"
+           title="${esc(`${v.channelTitle} — ${v.title}${viewers ? ` (${viewers} assistindo)` : ''}`)}">
+          <span class="live-avatar">
+            <img class="side-avatar" src="${esc(ch?.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
+            <span class="live-dot"></span>
+          </span>
+          <span class="side-label">
+            <span class="side-live-name">${esc(v.channelTitle)}</span>
+            <span class="side-live-title">${esc(v.title)}</span>
+          </span>
+          ${viewers ? `<span class="side-live-viewers">${viewers}</span>` : ''}
+        </a>`;
+    }).join('');
+  } else if (!state.channels.length) {
+    box.innerHTML = '<p class="side-empty">Adicione canais para ver as lives.</p>';
+  } else if (Lives.error) {
+    box.innerHTML = `<p class="side-empty">Não foi possível verificar as lives.</p>`;
+  } else {
+    box.innerHTML = `<p class="side-empty">${Lives.checked ? 'Nenhum canal ao vivo agora.' : 'Verificando…'}</p>`;
+  }
+  updateSidebarActive();
 }
 
 /** Telas estreitas e a página do vídeo usam o menu como gaveta sobreposta (igual ao YouTube). */
@@ -1478,6 +1561,8 @@ function saveChannels() {
   renderChannelList();
   renderSidebar();
   resetFeed();
+  Lives.items = Lives.items.filter(v => channelById(v.channelId));
+  refreshLives(true);
 }
 
 async function onChannelSubmit(e) {
@@ -1547,6 +1632,7 @@ function onConfigSubmit(e) {
 function onCredentialsChanged() {
   const feed = currentFeed();
   if (feed.error || !feed.items.length) resetFeed();
+  if (Lives.error || !Lives.lastFetch) refreshLives(true);
   if (state.view === 'home') showHome();
 }
 
@@ -1777,7 +1863,12 @@ function bindEvents() {
   window.addEventListener('pagehide', saveProgress);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden' && state.view === 'watch') saveProgress();
+    if (document.visibilityState === 'visible') refreshLives(); // só se a última verificação tiver mais de 5 min
   });
+  // Lives: verifica a cada 5 minutos enquanto a aba estiver visível.
+  setInterval(() => {
+    if (document.visibilityState === 'visible') refreshLives();
+  }, 60_000);
 
   let ticking = false;
   window.addEventListener('scroll', () => {
@@ -1800,8 +1891,10 @@ function init() {
   Auth.restore();
   renderAccount();
   renderSidebar();
+  renderLives();
   bindEvents();
   route(false);
+  refreshLives(true);
 }
 
 init();

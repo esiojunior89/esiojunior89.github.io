@@ -655,13 +655,18 @@ body.sidebar-overlay main { margin-left: 0; }
 .channel-item:hover { background: var(--surface-2); }
 .channel-item.removing { opacity: 0; transform: translateX(16px); }
 .channel-item > div { flex: 1; min-width: 0; }
-.channel-item strong, .channel-item span {
+.channel-item > div > strong, .channel-item > div > span {
   display: block;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.channel-item span { font-size: 13px; color: var(--muted); }
+.channel-item > div > span { font-size: 13px; color: var(--muted); }
+.channel-switch { flex-shrink: 0; font-size: 13px; }
+.channel-switch input:checked ~ .switch-label { color: var(--text); font-weight: 600; }
+@media (max-width: 480px) {
+  .channel-switch .switch-label { font-size: 12px; }
+}
 .channel-empty { color: var(--muted); padding: 10px 0 0; }
 
 .config-form { display: grid; gap: 16px; }
