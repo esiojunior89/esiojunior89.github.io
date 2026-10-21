@@ -965,3 +965,59 @@ body.sidebar-overlay.sidebar-open .sidebar-backdrop { opacity: 1; pointer-events
 body.sidebar-mini .side-empty,
 body.sidebar-mini .side-live-viewers { display: none; }
 body.sidebar-mini .side-section-lives { min-height: 0; }
+
+/* =========================================================
+   Tela cheia suave
+   =========================================================
+   O navegador entra/sai da tela cheia instantaneamente (o botão fica
+   dentro do player do YouTube), então suavizamos a troca: o vídeo surge
+   do preto com um leve zoom ao entrar, e o mesmo ao voltar para a página.
+   ========================================================= */
+.player-wrap iframe:fullscreen { animation: fsEnter .5s var(--ease) both; }
+.player-wrap iframe:-webkit-full-screen { animation: fsEnter .5s var(--ease) both; }
+.player-wrap iframe:fullscreen::backdrop { background: #000; }
+.player-wrap.fs-exit { animation: fsExit .5s var(--ease) both; }
+
+@keyframes fsEnter {
+  from { opacity: 0; scale: .94; }
+}
+@keyframes fsExit {
+  from { opacity: 0; scale: 1.04; }
+}
+
+/* =========================================================
+   Ocultar assistidos (botão ao lado do logo)
+   ========================================================= */
+.watched-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .25s, color .25s, border-color .25s;
+}
+.watched-toggle svg { width: 18px; height: 18px; fill: currentColor; flex-shrink: 0; }
+.watched-toggle:hover { background: var(--surface-2); color: var(--text); }
+.watched-toggle[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+body.hide-watched .tile.is-watched,
+body.hide-watched .mini.is-watched { display: none; }
+
+@media (max-width: 900px) {
+  .watched-toggle span { display: none; }
+  .watched-toggle { padding: 7px; }
+}
+@media (max-width: 640px) {
+  .topbar { gap: 8px; }
+}
