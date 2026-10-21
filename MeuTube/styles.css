@@ -1090,3 +1090,7 @@ body.sidebar-mini .app-version { padding-inline: 0; text-align: center; font-siz
 .player-wrap:fullscreen { border-radius: 0; box-shadow: none; animation: fsEnter .5s var(--ease) both; }
 .player-wrap:fullscreen::backdrop { background: #000; }
 .player-wrap:fullscreen .player-overlay { inset: max(64px, 10%) 0 max(96px, 16%) 0; }
+
+/* Menu recolhido: as lives não são verificadas, então a seção "Ao vivo" some */
+body.sidebar-mini .side-section-lives,
+body.sidebar-mini .side-sep-lives { display: none; }

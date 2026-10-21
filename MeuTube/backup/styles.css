@@ -1047,3 +1047,46 @@ body.sidebar-mini .app-version { padding-inline: 0; text-align: center; font-siz
   opacity: .75;
 }
 .settings-footer strong { color: var(--text); }
+
+/* =========================================================
+   Camada de cliques sobre o vídeo (só computador)
+   ========================================================= */
+.player-overlay {
+  position: absolute;
+  /* Deixa livres as faixas de controles do YouTube: em cima (título, volume, legendas,
+     configurações) e embaixo (progresso, tela cheia, "Mais vídeos"). */
+  inset: max(48px, 12%) 0 max(72px, 18%) 0;
+  z-index: 1;
+  display: none;
+  place-items: center;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.player-wrap { user-select: none; -webkit-user-select: none; }
+@media (hover: hover) and (pointer: fine) {
+  .player-overlay { display: grid; }
+}
+.player-overlay.idle { cursor: none; }
+.player-flash {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .55);
+  color: #fff;
+  pointer-events: none;
+  animation: playerFlash .6s ease-out forwards;
+}
+.player-flash svg { width: 34px; height: 34px; fill: currentColor; }
+@keyframes playerFlash {
+  from { opacity: 1; transform: scale(.8); }
+  to { opacity: 0; transform: scale(1.4); }
+}
+
+/* Tela cheia pelo clique duplo/tecla F: o quadro inteiro do player vai para a tela cheia */
+.player-wrap:fullscreen { border-radius: 0; box-shadow: none; animation: fsEnter .5s var(--ease) both; }
+.player-wrap:fullscreen::backdrop { background: #000; }
+.player-wrap:fullscreen .player-overlay { inset: max(64px, 10%) 0 max(96px, 16%) 0; }

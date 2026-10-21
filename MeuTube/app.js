@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.1.2';
+const APP_VERSION = '1.2.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -832,7 +832,8 @@ function updateSidebarActive() {
    A busca oficial de lives custa 100 de cota por canal, então
    lemos a playlist automática de lives de cada canal (UULV…,
    1 de cota) e confirmamos quais estão ao vivo agora pelo status
-   do vídeo. Atualiza a cada 5 minutos, só com a aba visível.
+   do vídeo. Atualiza a cada 5 minutos, mas SÓ com o menu lateral
+   expandido e o app visível (menu recolhido = nenhuma verificação).
    ========================================================= */
 const LIVE_REFRESH_MS = 5 * 60 * 1000;
 const Lives = { items: [], loading: false, checked: false, lastFetch: 0, error: null, gen: 0 };
@@ -841,6 +842,12 @@ async function refreshLives(force = false) {
   if (!state.channels.length || !hasCredentials()) {
     Object.assign(Lives, { items: [], checked: true, error: null });
     renderLives();
+    return;
+  }
+  // Economia de cota: só verifica com o menu lateral expandido e o app visível. Com o menu
+  // recolhido, nunca verifica; um pedido "forçado" (ex.: canais mudaram) fica para quando expandir.
+  if (!isSidebarExpanded() || document.visibilityState !== 'visible') {
+    if (force) Lives.lastFetch = 0;
     return;
   }
   if (Lives.loading) return;
@@ -913,6 +920,14 @@ function updateSidebarMode() {
   $('#menu-btn').setAttribute('aria-expanded', String(overlay
     ? body.classList.contains('sidebar-open')
     : !state.sidebarMini));
+  // Ao expandir o menu, verifica as lives na hora se a última verificação tiver mais de 5 min.
+  if (isSidebarExpanded()) refreshLives();
+}
+
+/** Menu lateral expandido: no PC, aberto com os nomes; no celular/página do vídeo, gaveta aberta. */
+function isSidebarExpanded() {
+  const body = document.body;
+  return body.classList.contains('sidebar-overlay') ? body.classList.contains('sidebar-open') : !state.sidebarMini;
 }
 
 function toggleSidebar() {
@@ -1326,7 +1341,8 @@ function setupPlayerControls() {
 /* =========================================================
    Página do vídeo
    ========================================================= */
-let upNextCount = PAGE_SIZE;
+const UPNEXT_PAGE = 4; // "A seguir" mostra 4 vídeos; "Mostrar mais" acrescenta outros 4
+let upNextCount = UPNEXT_PAGE;
 
 function watchInfoSkeleton() {
   return `
@@ -1398,7 +1414,7 @@ function enterWatch(id) {
   if (playerVideoId && playerVideoId !== id) saveProgress();
   state.currentVideoId = id;
   state.currentVideo = null;
-  upNextCount = PAGE_SIZE;
+  upNextCount = UPNEXT_PAGE;
   Comments.req++; // cancela respostas de comentários do vídeo anterior
   $('#player-error').hidden = true;
 
@@ -1406,7 +1422,7 @@ function enterWatch(id) {
   const known = state.watchFeed.items.find(v => v.id === id) || findLoadedVideo(id);
   if (known) renderWatchInfo(known);
   else $('#watch-info').innerHTML = watchInfoSkeleton();
-  $('#upnext').innerHTML = miniSkeletons(6);
+  $('#upnext').innerHTML = miniSkeletons(UPNEXT_PAGE);
   $('#upnext-more').hidden = true;
   $('#comments-list').innerHTML = commentSkeletons(3);
   $('#comments-more').hidden = true;
@@ -1488,7 +1504,8 @@ async function renderUpNext(video) {
 
   let slice = upNextSlice(video);
   let failure = null;
-  for (let guard = 0; !slice.ready && guard < 25; guard++) {
+  // No máximo 5 páginas por vez (economiza cota quando "Ocultar assistidos" esconde muita coisa).
+  for (let guard = 0; !slice.ready && guard < 5; guard++) {
     try {
       await (state.watchFeed || currentFeed()).loadMore();
     } catch (e) {
@@ -2425,7 +2442,7 @@ function bindEvents() {
   $('#comments-more').addEventListener('click', () => loadComments(state.currentVideoId));
   $('#upnext-more').addEventListener('click', () => {
     if (!state.currentVideo) return;
-    upNextCount += PAGE_SIZE;
+    upNextCount += UPNEXT_PAGE;
     renderUpNext(state.currentVideo);
   });
 
@@ -2502,7 +2519,7 @@ function bindEvents() {
   setInterval(() => {
     if (document.visibilityState === 'visible' && Date.now() - Sync.meta.lastSync >= SYNC_PULL_MS - 5000) Sync.run();
   }, 30_000);
-  // Lives: verifica a cada 5 minutos enquanto a aba estiver visível.
+  // Lives: a cada 5 minutos, só com o menu lateral expandido (a checagem fica em refreshLives).
   setInterval(() => {
     if (document.visibilityState === 'visible') refreshLives();
   }, 60_000);
