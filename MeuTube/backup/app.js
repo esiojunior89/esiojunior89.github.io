@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.1';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -1152,6 +1152,7 @@ async function playVideo(id) {
           modestbranding: 1,
           playsinline: 1,
           iv_load_policy: 3,
+          fs: 0,              // esconde o botão de tela cheia do YouTube; o app usa o dele (#player-fs)
           start,
           origin: location.origin,
         },
@@ -1274,12 +1275,33 @@ function togglePlayerFullscreen() {
   else wrap.requestFullscreen?.().catch(() => { /* navegador recusou */ });
 }
 
+const FS_ICONS = {
+  enter: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7h-2V6.4l-4.3 4.3-1.4-1.4L17.6 5H14zM3 14h2v3.6l4.3-4.3 1.4 1.4L6.4 19H10v2H3z"/></svg>',
+  exit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 4.4 19.6 3 15 7.6V4h-2v7h7V9h-3.6zM3 19.6 4.4 21 9 16.4V20h2v-7H4v2h3.6z"/></svg>',
+};
+
+/** Atualiza o ícone do botão de tela cheia do app (entrar/sair). */
+function updateFullscreenButton() {
+  const btn = $('#player-fs');
+  const inside = Boolean(document.fullscreenElement?.closest?.('.player-wrap'));
+  btn.innerHTML = inside ? FS_ICONS.exit : FS_ICONS.enter;
+  btn.title = inside ? 'Sair da tela cheia (f)' : 'Tela cheia (f)';
+  btn.setAttribute('aria-label', btn.title);
+}
+
 function seekBy(delta) {
   if (!player?.getCurrentTime) return;
   player.seekTo(Math.max(0, player.getCurrentTime() + delta), true);
 }
 
 function setupPlayerControls() {
+  $('#player-fs').addEventListener('click', e => {
+    togglePlayerFullscreen();
+    if (e.detail > 0) e.currentTarget.blur(); // clique com mouse: sem contorno de foco sobre o vídeo
+  });
+  updateFullscreenButton();
+  document.addEventListener('fullscreenchange', updateFullscreenButton);
+
   // A altura do player define o tamanho dos tiles de "A seguir" (3 tiles = altura do player).
   new ResizeObserver(([entry]) => {
     $('#view-watch').style.setProperty('--player-h', `${Math.round(entry.contentRect.height)}px`);
@@ -1315,7 +1337,9 @@ function setupPlayerControls() {
 
   document.addEventListener('keydown', e => {
     if (state.view !== 'watch' || e.ctrlKey || e.metaKey || e.altKey) return;
-    if (e.target.closest?.('input, textarea, select, button, [contenteditable="true"]')) return;
+    if (e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+    // Botões fora do player mantêm o comportamento normal; os do player (ex.: tela cheia) não bloqueiam os atalhos.
+    if (e.target.closest?.('button') && !e.target.closest('.player-wrap')) return;
     const actions = {
       ' ': togglePlay,
       k: togglePlay,
