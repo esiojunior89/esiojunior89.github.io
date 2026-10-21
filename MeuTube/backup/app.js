@@ -25,6 +25,7 @@ const KEYS = {
   account: 'meutube.account',
   seen: 'meutube.seen',
   progress: 'meutube.progress',
+  hideWatched: 'meutube.hideWatched',
   hideShorts: 'meutube.hideShorts',
   sidebar: 'meutube.sidebarMini',
 };
@@ -126,6 +127,7 @@ const state = {
   autoplay: store.get(KEYS.autoplay, true),
   hideShorts: store.get(KEYS.hideShorts, true),
   sidebarMini: store.get(KEYS.sidebar, false),
+  hideWatched: store.get(KEYS.hideWatched, false), // esconde os vídeos assistidos até o fim
   filter: null,      // ID do canal selecionado no menu lateral (null = todos)
   watchFeed: null,   // feed de onde saem os "vídeos seguintes"
   view: null,
@@ -595,7 +597,7 @@ function newTag(v) {
 function tileHTML(v, i) {
   const ch = channelById(v.channelId);
   return `
-    <a class="tile" href="#/watch/${v.id}" data-vid="${v.id}" style="--i:${i}">
+    <a class="tile${isWatched(v.id) ? ' is-watched' : ''}" href="#/watch/${v.id}" data-vid="${v.id}" style="--i:${i}">
       <div class="thumb">
         <img src="${esc(v.thumb)}" alt="" loading="lazy" decoding="async">
         ${thumbBadge(v)}
@@ -720,6 +722,9 @@ function updateFeedStatus() {
   } else if (feed.exhausted && !feed.items.length) {
     status.innerHTML = emptyState('channels', 'Nenhum vídeo encontrado',
       state.filter ? 'Este canal ainda não tem vídeos públicos.' : 'Os canais adicionados ainda não têm vídeos públicos.');
+  } else if (feed.exhausted && state.hideWatched && feed.items.every(v => isWatched(v.id))) {
+    status.innerHTML = emptyState('channels', 'Você já assistiu tudo',
+      'Todos os vídeos daqui foram assistidos até o fim. Clique em “Assistidos ocultos”, ao lado do logo, para vê-los de novo.');
   } else if (feed.exhausted) {
     status.innerHTML = `<p>Você chegou ao fim. Esses são todos os vídeos ${state.filter ? 'deste canal' : 'dos seus canais'}.</p>`;
   } else {
@@ -974,11 +979,52 @@ function progressBarHTML(id) {
   return pct ? `<div class="watch-progress" aria-hidden="true"><span style="width:${pct.toFixed(1)}%"></span></div>` : '';
 }
 
+function isWatched(id) {
+  return Boolean(progressStore[id]?.done);
+}
+
 function updateProgressBars(id) {
   $$(`[data-vid="${id}"] .thumb`).forEach(thumb => {
     thumb.querySelector('.watch-progress')?.remove();
     thumb.insertAdjacentHTML('beforeend', progressBarHTML(id));
   });
+  $$(`.tile[data-vid="${id}"], .mini[data-vid="${id}"]`).forEach(el => el.classList.toggle('is-watched', isWatched(id)));
+}
+
+/* =========================================================
+   Ocultar assistidos
+   =========================================================
+   Esconde (sem reordenar) os vídeos assistidos até o fim; os "em
+   progresso" e os não assistidos continuam. Na página inicial é só
+   CSS (body.hide-watched), então ligar/desligar é instantâneo; em
+   "A seguir" e na reprodução automática eles são pulados.
+   ========================================================= */
+const EYE_ICONS = {
+  on: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.8 4.2 4.2 2.8l17 17-1.4 1.4-3.3-3.3A10.8 10.8 0 0 1 12 19C6.5 19 2.7 15 1 12a14.7 14.7 0 0 1 4-4.9zM12 5c5.5 0 9.3 4 11 7a14.4 14.4 0 0 1-2.9 3.7l-3.2-3.2A5 5 0 0 0 11.5 7.1L9.3 4.9A11 11 0 0 1 12 5zM7 12a5 5 0 0 0 6.5 4.8l-1.6-1.6A3 3 0 0 1 8.8 12l-1.6-1.6A5 5 0 0 0 7 12z"/></svg>',
+  off: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c5.5 0 9.3 4 11 7-1.7 3-5.5 7-11 7S2.7 15 1 12c1.7-3 5.5-7 11-7zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/></svg>',
+};
+
+function applyHideWatched() {
+  const on = state.hideWatched;
+  document.body.classList.toggle('hide-watched', on);
+  const btn = $('#watched-toggle');
+  btn.setAttribute('aria-pressed', String(on));
+  btn.title = on
+    ? 'Mostrando só os vídeos não assistidos e em progresso. Clique para mostrar todos.'
+    : 'Ocultar os vídeos que você já assistiu até o fim';
+  btn.innerHTML = `${on ? EYE_ICONS.on : EYE_ICONS.off}<span>${on ? 'Assistidos ocultos' : 'Ocultar assistidos'}</span>`;
+}
+
+function toggleHideWatched() {
+  state.hideWatched = !state.hideWatched;
+  store.set(KEYS.hideWatched, state.hideWatched);
+  applyHideWatched();
+  if (state.view === 'home') {
+    updateFeedStatus();
+    requestAnimationFrame(checkSentinel); // se sobrou pouco na tela, carrega mais
+  } else if (state.view === 'watch' && state.currentVideo) {
+    renderUpNext(state.currentVideo);
+  }
 }
 
 /** Salva o ponto atual do vídeo que está carregado no player. */
@@ -1277,8 +1323,9 @@ function upNextSlice(video) {
     start = feed.items.findIndex(v => v.publishedAt < video.publishedAt);
     if (start < 0) return { list: [], ready: feed.exhausted, hasMore: !feed.exhausted };
   }
-  const list = feed.items.slice(start, start + upNextCount);
-  const hasMore = feed.items.length > start + upNextCount || !feed.exhausted;
+  const rest = feed.items.slice(start).filter(v => !state.hideWatched || !isWatched(v.id));
+  const list = rest.slice(0, upNextCount);
+  const hasMore = rest.length > upNextCount || !feed.exhausted;
   return { list, ready: list.length >= upNextCount || feed.exhausted, hasMore };
 }
 
@@ -1289,7 +1336,7 @@ function nextVideoAfter(video) {
 
 function miniHTML(v, i) {
   return `
-    <a class="mini" href="#/watch/${v.id}" data-vid="${v.id}" style="--i:${i}">
+    <a class="mini${isWatched(v.id) ? ' is-watched' : ''}" href="#/watch/${v.id}" data-vid="${v.id}" style="--i:${i}">
       <div class="thumb">
         <img src="${esc(v.thumbSmall)}" alt="" loading="lazy" decoding="async">
         ${thumbBadge(v)}
@@ -1886,6 +1933,7 @@ function bindEvents() {
   });
 
   $('#menu-btn').addEventListener('click', toggleSidebar);
+  $('#watched-toggle').addEventListener('click', toggleHideWatched);
   $('#sidebar-backdrop').addEventListener('click', closeSidebarOverlay);
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') closeSidebarOverlay();
@@ -1931,6 +1979,27 @@ function bindEvents() {
     if (state.view === 'watch' && player?.getPlayerState?.() === window.YT?.PlayerState?.PLAYING) saveProgress();
   }, 5000);
   window.addEventListener('pagehide', saveProgress);
+
+  // Tela cheia: a entrada é animada só com CSS (iframe:fullscreen); a saída, por esta classe.
+  let playerWasFullscreen = false;
+  const onFullscreenChange = () => {
+    const el = document.fullscreenElement || document.webkitFullscreenElement;
+    if (el?.closest?.('.player-wrap')) {
+      playerWasFullscreen = true;
+      return;
+    }
+    if (!el && playerWasFullscreen) {
+      playerWasFullscreen = false;
+      if (reducedMotion.matches) return;
+      const wrap = $('.player-wrap');
+      wrap.classList.remove('fs-exit');
+      void wrap.offsetWidth; // reinicia a animação
+      wrap.classList.add('fs-exit');
+      wrap.addEventListener('animationend', () => wrap.classList.remove('fs-exit'), { once: true });
+    }
+  };
+  document.addEventListener('fullscreenchange', onFullscreenChange);
+  document.addEventListener('webkitfullscreenchange', onFullscreenChange);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden' && state.view === 'watch') saveProgress();
     if (document.visibilityState === 'visible') refreshLives(); // só se a última verificação tiver mais de 5 min
@@ -1962,6 +2031,7 @@ function init() {
   renderAccount();
   renderSidebar();
   renderLives();
+  applyHideWatched();
   bindEvents();
   route(false);
   refreshLives(true);
