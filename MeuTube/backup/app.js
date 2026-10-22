@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.8.2';
+const APP_VERSION = '1.8.3';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -3200,8 +3200,15 @@ async function installApp() {
    Cada aparelho guarda o próprio registro e a sincronização junta
    os de todos (o total é a soma dos aparelhos). O que aconteceu
    antes de o registro existir é estimado pelo progresso salvo.
+   Canais marcados como "Apenas lives" ficam de fora: não contam e não
+   aparecem. Ao desmarcar, voltam a contar e aparecem nas estatísticas.
    ========================================================= */
 const STATS_TICK_MS = 5000;
+
+/** Canais "Apenas lives" (fora das estatísticas). */
+function livesOnlyIds() {
+  return new Set(state.channels.filter(c => c.livesOnly).map(c => c.id));
+}
 const DEVICE_ID = (() => {
   let id = store.get(KEYS.device, '');
   if (!id) {
@@ -3244,7 +3251,7 @@ function tickWatchTime() {
   const now = Date.now();
   const v = state.currentVideo;
   const same = Boolean(v && v.id === playerVideoId && v.channelId);
-  if (watchTick && same) {
+  if (watchTick && same && !livesOnlyIds().has(v.channelId)) {
     const sec = Math.min(now - watchTick, 3 * STATS_TICK_MS) / 1000;
     const log = todayLog();
     log.s[v.channelId] = Math.round(((log.s[v.channelId] || 0) + sec) * 10) / 10;
@@ -3260,7 +3267,7 @@ function tickWatchTime() {
 /** Registra que o vídeo foi assistido até o fim hoje (uma vez por dia). */
 function logCompletion(id) {
   const ch = videoForProgress(id)?.channelId || videoChannels[id];
-  if (!ch) return;
+  if (!ch || livesOnlyIds().has(ch)) return;
   if (videoChannels[id] !== ch) {
     videoChannels[id] = ch;
     store.set(KEYS.videoChannels, videoChannels);
@@ -3334,6 +3341,7 @@ function ensureVideoChannels() {
 /** Junta o registro de todos os aparelhos + a estimativa do período anterior a ele. */
 function computeStats() {
   const since = Math.min(...Object.values(watchLog).map(d => d.since || Date.now()));
+  const hidden = livesOnlyIds();
   const daySec = new Map();     // dia -> segundos
   const dayChSec = new Map();   // dia -> Map(canal -> segundos)
   const dayVids = new Map();    // dia -> Set(vídeos assistidos até o fim)
@@ -3351,8 +3359,8 @@ function computeStats() {
   };
   for (const dev of Object.values(watchLog)) {
     for (const [day, d] of Object.entries(dev.days || {})) {
-      for (const [ch, sec] of Object.entries(d.s || {})) addTime(day, ch, sec);
-      for (const id of Object.keys(d.v || {})) addVid(day, id);
+      for (const [ch, sec] of Object.entries(d.s || {})) if (!hidden.has(ch)) addTime(day, ch, sec);
+      for (const [id, ch] of Object.entries(d.v || {})) if (!hidden.has(ch)) addVid(day, id);
     }
   }
   const doneByCh = new Map();
@@ -3362,6 +3370,7 @@ function computeStats() {
   for (const [id, p] of Object.entries(progressStore)) {
     if (!p || p.gone) continue;
     const ch = videoChannels[id] || '';
+    if (hidden.has(ch)) continue;
     started++;
     if (p.done) {
       done++;
@@ -3693,7 +3702,7 @@ function renderStats({ refresh = true } = {}) {
   statsData = data;
   const period = statsPeriod;
   const P = STATS_PERIODS[period];
-  const channels = state.channels;
+  const channels = homeChannels(); // sem os "Apenas lives"
   const chName = id => channels.find(c => c.id === id)?.title || 'Outros canais';
 
   // Período atual x anterior
@@ -3874,7 +3883,7 @@ function drawStatsCharts() {
   }
   const radar = $('#st-radar');
   if (radar) {
-    const items = state.channels
+    const items = homeChannels()
       .map(c => ({ label: c.title, value: data.chSec.get(c.id) || 0 }))
       .filter(i => i.value > 0)
       .sort((a, b) => b.value - a.value)
