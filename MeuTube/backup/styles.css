@@ -1199,6 +1199,9 @@ body.sidebar-mini .app-version { margin: 2px 0 0; padding: 0; font-size: 10px; }
 .pc-btn:hover { background: rgba(255, 255, 255, .1); }
 .pc-round:hover { background: rgba(0, 0, 0, .6); }
 .pc-btn:active { transform: scale(.92); }
+.pc-btn:disabled { opacity: .4; cursor: default; }
+.pc-btn:disabled:hover { background: transparent; }
+.pc-btn:disabled:active { transform: none; }
 
 /* Volume: o controle deslizante aparece ao lado do alto-falante */
 .pc-volume { padding-right: 6px; }
@@ -1426,6 +1429,17 @@ body.sidebar-mini .app-version { margin: 2px 0 0; padding: 0; font-size: 10px; }
   .pc-progress { margin-bottom: 2px; }
   .pc-quality { top: 10%; right: 2%; font-size: 8px; line-height: 10px; }
 }
+/* Celular estreito: barra mais compacta para caber anterior/próximo. O botão de som some
+   (no celular o volume fica nos botões do aparelho). */
+@container (max-width: 480px) {
+  @media (hover: none) {
+    .pc-volume { display: none; }
+  }
+  .player-ui { --pc-size: 34px; --pc-icon: 19px; }
+  .pc-bar { gap: 5px; }
+  .pc-time { padding: 0 9px; }
+  .pc-switch { width: 42px; }
+}
 @media (hover: none) {
   .pc-slider { display: none; }
   .pc-volume { padding-right: 0; }
@@ -1479,4 +1493,9 @@ body.sidebar-mini .side-sep-lives { display: none; }
 }
 @media (min-width: 1001px) and (max-width: 1279px) {
   .upnext .mini-title { -webkit-line-clamp: 2; } /* tiles mais baixos: título em 2 linhas */
+}
+@container (max-width: 380px) {
+  .pc-bar { gap: 3px; }
+  .pc-pill { padding: 0 1px; }
+  .pc-time { padding: 0 7px; font-size: 11px; }
 }
