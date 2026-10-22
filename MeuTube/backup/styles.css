@@ -110,23 +110,8 @@ h1, h2, h3 { margin: 0; line-height: 1.25; }
 .brand-logo { width: 30px; height: 22px; color: var(--accent); transition: transform .3s var(--ease); }
 .brand:hover .brand-logo { transform: scale(1.08) rotate(-4deg); }
 
-.nav { display: flex; gap: 4px; margin-left: auto; }
-.nav a {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  border-radius: 999px;
-  text-decoration: none;
-  color: var(--muted);
-  font-weight: 500;
-  transition: background .2s, color .2s;
-}
-.nav a svg { width: 20px; height: 20px; fill: currentColor; }
-.nav a:hover { background: var(--surface-2); color: var(--text); }
-.nav a.active { background: var(--surface-2); color: var(--text); }
 
-.account { display: flex; align-items: center; flex-shrink: 0; }
+.account { display: flex; align-items: center; flex-shrink: 0; margin-left: auto; }
 .account-chip {
   display: flex;
   align-items: center;
@@ -142,9 +127,8 @@ h1, h2, h3 { margin: 0; line-height: 1.25; }
 .account-chip span { font-weight: 500; max-width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 @media (max-width: 640px) {
-  .nav a span, .account-chip span, .brand span { display: none; }
+  .account-chip span, .brand span { display: none; }
   .account-chip { padding: 4px; }
-  .nav a { padding: 8px 10px; }
 }
 
 /* =========================================================
@@ -993,39 +977,10 @@ body.sidebar-mini .side-section-lives { min-height: 0; }
   from { opacity: 0; scale: 1.04; }
 }
 
-/* =========================================================
-   Ocultar assistidos (botão ao lado do logo)
-   ========================================================= */
-.watched-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-  padding: 7px 14px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 13.5px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background .25s, color .25s, border-color .25s;
-}
-.watched-toggle svg { width: 18px; height: 18px; fill: currentColor; flex-shrink: 0; }
-.watched-toggle:hover { background: var(--surface-2); color: var(--text); }
-.watched-toggle[aria-pressed="true"] {
-  border-color: transparent;
-  background: var(--accent-soft);
-  color: var(--accent);
-}
+/* Ocultar assistidos: o botão fica no rodapé do menu lateral (.side-footer) */
 body.hide-watched .tile.is-watched,
 body.hide-watched .mini.is-watched { display: none; }
 
-@media (max-width: 900px) {
-  .watched-toggle span { display: none; }
-  .watched-toggle { padding: 7px; }
-}
 @media (max-width: 640px) {
   .topbar { gap: 8px; }
 }
@@ -1035,17 +990,43 @@ body.hide-watched .mini.is-watched { display: none; }
 #sync-status { display: grid; gap: 10px; justify-items: start; }
 #sync-status:empty { display: none; }
 
-/* Versão do app (discreta) */
-.app-version {
+/* Rodapé do menu lateral: olho (ocultar assistidos), engrenagem (configurações) e versão */
+.side-footer {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   flex-shrink: 0;
   margin-top: auto;
-  padding: 10px 12px 0;
+  padding: 10px 4px 0;
+  border-top: 1px solid var(--border);
+}
+.side-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background .2s, color .2s;
+}
+.side-icon-btn svg { width: 20px; height: 20px; fill: currentColor; }
+.side-icon-btn:hover { background: var(--surface-2); color: var(--text); }
+.side-icon-btn.active { color: var(--text); background: var(--surface-2); }
+#watched-toggle[aria-pressed="true"] { color: var(--accent); }
+.app-version {
+  margin-left: auto;
+  padding-right: 6px;
   font-size: 11px;
   color: var(--muted);
   opacity: .6;
   letter-spacing: .02em;
 }
-body.sidebar-mini .app-version { padding-inline: 0; text-align: center; font-size: 10px; }
+/* Menu recolhido: ícones um embaixo do outro */
+body.sidebar-mini .side-footer { flex-direction: column; padding-inline: 0; }
+body.sidebar-mini .app-version { margin: 2px 0 0; padding: 0; font-size: 10px; }
 .settings-footer {
   display: grid;
   gap: 4px;

@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.4.1';
+const APP_VERSION = '1.5.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -736,7 +736,7 @@ function updateFeedStatus() {
       state.filter ? 'Este canal ainda não tem vídeos públicos.' : 'Os canais adicionados ainda não têm vídeos públicos.');
   } else if (feed.exhausted && state.hideWatched && feed.items.every(v => isWatched(v.id))) {
     status.innerHTML = emptyState('channels', 'Você já assistiu tudo',
-      'Todos os vídeos daqui foram assistidos até o fim. Clique em “Assistidos ocultos”, ao lado do logo, para vê-los de novo.');
+      'Todos os vídeos daqui foram assistidos até o fim. Clique no ícone de olho, no rodapé do menu lateral, para vê-los de novo.');
   } else if (feed.exhausted) {
     status.innerHTML = `<p>Você chegou ao fim. Esses são todos os vídeos ${state.filter ? 'deste canal' : 'dos seus canais'}.</p>`;
   } else {
@@ -1048,9 +1048,10 @@ function applyHideWatched() {
   const btn = $('#watched-toggle');
   btn.setAttribute('aria-pressed', String(on));
   btn.title = on
-    ? 'Mostrando só os vídeos não assistidos e em progresso. Clique para mostrar todos.'
+    ? 'Assistidos ocultos (mostrando só os não assistidos e em progresso). Clique para mostrar todos.'
     : 'Ocultar os vídeos que você já assistiu até o fim';
-  btn.innerHTML = `${on ? EYE_ICONS.on : EYE_ICONS.off}<span>${on ? 'Assistidos ocultos' : 'Ocultar assistidos'}</span>`;
+  btn.setAttribute('aria-label', btn.title);
+  btn.innerHTML = on ? EYE_ICONS.on : EYE_ICONS.off;
 }
 
 function toggleHideWatched() {
@@ -2344,7 +2345,7 @@ function applyView(view, id, channel) {
   $('#view-home').hidden = view !== 'home';
   $('#view-watch').hidden = view !== 'watch';
   $('#view-settings').hidden = view !== 'settings';
-  $$('.nav a').forEach(a => a.classList.toggle('active', a.dataset.nav === view));
+  $$('.side-footer [data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === view));
   updateSidebarMode();
 
   if (view === 'home') {
