@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -34,6 +34,7 @@ const KEYS = {
   sync: 'meutube.sync',
   hideShorts: 'meutube.hideShorts',
   sidebar: 'meutube.sidebarMini',
+  player: 'meutube.player',
 };
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -1153,12 +1154,14 @@ async function playVideo(id) {
           modestbranding: 1,
           playsinline: 1,
           iv_load_policy: 3,
-          fs: 0,              // esconde o botão de tela cheia do YouTube; o app usa o dele (#player-fs)
+          controls: 0,        // sem os controles do YouTube: o app desenha os dele (#player-ui)
+          disablekb: 1,       // os atalhos de teclado também são do app
+          fs: 0,
           start,
           origin: location.origin,
         },
         events: {
-          onReady: e => { e.target.playVideo(); resolve(); },
+          onReady: e => { onPlayerControlsReady(); e.target.playVideo(); resolve(); },
           onStateChange: onPlayerStateChange,
           onError: onPlayerError,
         },
@@ -1176,6 +1179,7 @@ async function playVideo(id) {
 
 function onPlayerStateChange(e) {
   const S = window.YT.PlayerState;
+  onPlayerControlsState(e.data);
   if (e.data === S.PAUSED) saveProgress();
   if (e.data !== S.ENDED) return;
   // Aviso de "fim" atrasado do vídeo anterior, que chega logo depois da troca: ignora
@@ -1224,18 +1228,58 @@ function seekTo(seconds) {
 }
 
 /* =========================================================
-   Controles do computador: camada sobre o vídeo + teclado
+   Controles do player (desenhados pelo app)
    =========================================================
-   O player é um iframe do YouTube, e a página não recebe os
-   cliques feitos dentro dele. Por isso, no computador, uma camada
-   transparente cobre o vídeo (menos a barra de controles embaixo):
-   clique pausa/continua e clique duplo entra/sai da tela cheia,
-   como no YouTube. Os atalhos de teclado também foram recriados.
+   Os controles do YouTube ficam desligados (controls: 0) e o app
+   desenha os dele por cima do vídeo, usando os comandos oficiais do
+   player: play/pause, volume, tempo, barra de progresso, reprodução
+   automática, legendas, velocidade e tela cheia. Como tudo fica numa
+   camada do app, nenhum menu fica "atrás" de nada.
+
+   • Mouse: clique pausa/continua; clique duplo entra/sai da tela cheia.
+   • Toque: toque mostra/esconde os controles (no centro, pausa/continua);
+     toque duplo nas laterais volta/avança 10 s; no centro, tela cheia.
+   • Teclado: espaço/K, F, ←/→ (5 s), J/L (10 s), ↑/↓ (volume), M, C.
+
+   Legendas usam um comando não documentado do YouTube (módulo
+   "captions"): funciona hoje, mas pode parar se o YouTube mudar.
+   A qualidade é escolhida pelo YouTube; o app só a mostra.
    ========================================================= */
+const ICON = (d, extra = '') => `<svg viewBox="0 0 24 24" aria-hidden="true"${extra}><path d="${d}"/></svg>`;
 const PLAY_ICONS = {
-  play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
-  pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>',
+  play: ICON('M8 5v14l11-7z'),
+  pause: ICON('M6 5h4v14H6zm8 0h4v14h-4z'),
+  replay: ICON('M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z'),
 };
+const VOL_ICONS = {
+  high: ICON('M3 9v6h4l5 5V4L7 9zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z'),
+  low: ICON('M5 9v6h4l5 5V4L9 9zm13.5 3A4.5 4.5 0 0 0 16 8v8a4.5 4.5 0 0 0 2.5-4z'),
+  muted: ICON('M3 9v6h4l5 5V4L7 9zm18.3 1.7-1.4-1.4L17.6 11.6 15.3 9.3l-1.4 1.4 2.3 2.3-2.3 2.3 1.4 1.4 2.3-2.3 2.3 2.3 1.4-1.4-2.3-2.3z'),
+};
+const CC_ICON = ICON('M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1zm7 0h-1.5v-.5h-2v3h2V13H18v1a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1z');
+const GEAR_ICON = ICON('M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.3 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z');
+const MENU_ICONS = {
+  speed: ICON('M12 4a8 8 0 1 0 8 8h-2a6 6 0 1 1-6-6zm7.1-.5-6.5 6.5a2 2 0 1 0 1.4 1.4l6.5-6.5z'),
+  cc: CC_ICON,
+  quality: ICON('M3 5v14h18V5zm16 12H5V7h14zM7 9h4v2H7zm0 4h6v2H7z'),
+  back: ICON('M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z'),
+  check: ICON('M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z'),
+};
+const FS_ICONS = {
+  enter: ICON('M14 3h7v7h-2V6.4l-4.3 4.3-1.4-1.4L17.6 5H14zM3 14h2v3.6l4.3-4.3 1.4 1.4L6.4 19H10v2H3z'),
+  exit: ICON('M21 4.4 19.6 3 15 7.6V4h-2v7h7V9h-3.6zM3 19.6 4.4 21 9 16.4V20h2v-7H4v2h3.6z'),
+};
+const QUALITY_LABELS = {
+  highres: ['Máxima', '8K'], hd2880: ['2880p', '5K'], hd2160: ['2160p', '4K'], hd1440: ['1440p', 'HD'],
+  hd1080: ['1080p', 'HD'], hd720: ['720p', 'HD'], large: ['480p', ''], medium: ['360p', ''], small: ['240p', ''], tiny: ['144p', ''],
+};
+
+/** Preferências do player guardadas neste aparelho: volume, mudo, legendas. */
+const playerPrefs = { volume: 100, muted: false, cc: false, ccLang: 'pt', ...store.get(KEYS.player, {}) };
+const savePlayerPrefs = () => store.set(KEYS.player, playerPrefs);
+let playbackRate = 1;       // vale para os próximos vídeos desta sessão
+let ccAppliedFor = null;    // vídeo em que as legendas já foram aplicadas
+let draggingProgress = false;
 
 function isPlaying() {
   const S = window.YT?.PlayerState;
@@ -1244,10 +1288,11 @@ function isPlaying() {
 }
 
 /** Ícone que aparece e some no centro do vídeo, como no YouTube. */
-function flashPlayerIcon(kind) {
+function flashPlayerIcon(kind, text = '') {
   const overlay = $('#player-overlay');
   overlay.querySelector('.player-flash')?.remove();
-  overlay.insertAdjacentHTML('beforeend', `<span class="player-flash">${PLAY_ICONS[kind]}</span>`);
+  overlay.insertAdjacentHTML('beforeend',
+    `<span class="player-flash${text ? ' player-flash-text' : ''}">${text ? esc(text) : PLAY_ICONS[kind]}</span>`);
   overlay.querySelector('.player-flash').addEventListener('animationend', e => e.target.remove(), { once: true });
 }
 
@@ -1267,6 +1312,8 @@ function togglePlay() {
     player.playVideo();
     flashPlayerIcon('play');
   }
+  updatePlayButton(!playing);
+  pokeControls();
 }
 
 function togglePlayerFullscreen() {
@@ -1276,10 +1323,284 @@ function togglePlayerFullscreen() {
   else wrap.requestFullscreen?.().catch(() => { /* navegador recusou */ });
 }
 
-const FS_ICONS = {
-  enter: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7h-2V6.4l-4.3 4.3-1.4-1.4L17.6 5H14zM3 14h2v3.6l4.3-4.3 1.4 1.4L6.4 19H10v2H3z"/></svg>',
-  exit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 4.4 19.6 3 15 7.6V4h-2v7h7V9h-3.6zM3 19.6 4.4 21 9 16.4V20h2v-7H4v2h3.6z"/></svg>',
-};
+function seekBy(delta) {
+  if (!player?.getCurrentTime) return;
+  player.seekTo(Math.max(0, player.getCurrentTime() + delta), true);
+  pokeControls();
+  updateProgressUI();
+}
+
+/* ---------- Visibilidade dos controles ---------- */
+let controlsTimer = 0;
+let pointerOnBar = false;
+
+function setControlsVisible(visible) {
+  $('.player-wrap').classList.toggle('pc-hidden', !visible);
+}
+
+/** Mostra os controles e agenda o sumiço (só enquanto toca, sem menu aberto e sem o mouse na barra). */
+function pokeControls() {
+  setControlsVisible(true);
+  clearTimeout(controlsTimer);
+  controlsTimer = setTimeout(() => {
+    if (isPlaying() && !pointerOnBar && $('#pc-menu').hidden && !draggingProgress) setControlsVisible(false);
+  }, 2500);
+}
+
+/* ---------- Estado visual da barra ---------- */
+function updatePlayButton(playing = isPlaying()) {
+  const S = window.YT?.PlayerState;
+  const ended = S && player?.getPlayerState?.() === S.ENDED;
+  const btn = $('#pc-play');
+  btn.innerHTML = ended ? PLAY_ICONS.replay : (playing ? PLAY_ICONS.pause : PLAY_ICONS.play);
+  btn.title = playing ? 'Pausar (k)' : 'Reproduzir (k)';
+  btn.setAttribute('aria-label', btn.title);
+  if (!playing) setControlsVisible(true);
+}
+
+function updateVolumeUI() {
+  const muted = player?.isMuted?.() ?? playerPrefs.muted;
+  const volume = player?.getVolume?.() ?? playerPrefs.volume;
+  const btn = $('#pc-mute');
+  btn.innerHTML = muted || volume === 0 ? VOL_ICONS.muted : volume < 50 ? VOL_ICONS.low : VOL_ICONS.high;
+  btn.title = muted ? 'Ativar o som (m)' : 'Desativar o som (m)';
+  btn.setAttribute('aria-label', btn.title);
+  const slider = $('#pc-volume');
+  slider.value = muted ? 0 : volume;
+  slider.style.setProperty('--fill', `${muted ? 0 : volume}%`);
+}
+
+function setVolume(value) {
+  const v = Math.max(0, Math.min(100, Math.round(value)));
+  player?.setVolume?.(v);
+  if (v > 0) player?.unMute?.(); else player?.mute?.();
+  playerPrefs.volume = v || playerPrefs.volume;
+  playerPrefs.muted = v === 0;
+  savePlayerPrefs();
+  updateVolumeUI();
+}
+
+function toggleMute() {
+  if (!player?.isMuted) return;
+  if (player.isMuted()) {
+    player.unMute();
+    if (!player.getVolume?.()) player.setVolume?.(playerPrefs.volume || 50);
+  } else {
+    player.mute();
+  }
+  playerPrefs.muted = !playerPrefs.muted;
+  savePlayerPrefs();
+  setTimeout(updateVolumeUI, 50);
+  pokeControls();
+}
+
+function updateAutoplayButton() {
+  const btn = $('#pc-autoplay');
+  btn.setAttribute('aria-checked', String(state.autoplay));
+  btn.title = state.autoplay ? 'Reprodução automática ativada' : 'Reprodução automática desativada';
+  btn.setAttribute('aria-label', btn.title);
+}
+
+function toggleAutoplay() {
+  state.autoplay = !state.autoplay;
+  store.set(KEYS.autoplay, state.autoplay);
+  Sync.touch('prefs');
+  updateAutoplayButton();
+  flashPlayerIcon('play', state.autoplay ? 'Reprodução automática ativada' : 'Reprodução automática desativada');
+}
+
+/* ---------- Legendas (comando não documentado do YouTube) ---------- */
+function captionTracks() {
+  try { return player?.getOption?.('captions', 'tracklist') || []; } catch { return []; }
+}
+
+function trackName(t) {
+  return t?.displayName || t?.languageName || t?.languageCode || 'Legenda';
+}
+
+function applyCaptions() {
+  if (!player?.loadModule) return;
+  try {
+    if (!playerPrefs.cc) {
+      player.setOption?.('captions', 'track', {});
+      player.unloadModule?.('captions');
+      return;
+    }
+    player.loadModule('captions');
+    // A lista de legendas chega um instante depois de carregar o módulo.
+    setTimeout(() => {
+      const tracks = captionTracks();
+      const pick = tracks.find(t => t.languageCode === playerPrefs.ccLang)
+        || tracks.find(t => String(t.languageCode).startsWith('pt'))
+        || tracks[0];
+      if (pick) player.setOption?.('captions', 'track', { languageCode: pick.languageCode });
+      renderMenu();
+    }, 700);
+  } catch { /* o YouTube mudou o comando: as legendas só não funcionam */ }
+}
+
+function toggleCaptions() {
+  playerPrefs.cc = !playerPrefs.cc;
+  savePlayerPrefs();
+  applyCaptions();
+  updateCcButton();
+  flashPlayerIcon('play', playerPrefs.cc ? 'Legendas ativadas' : 'Legendas desativadas');
+  pokeControls();
+}
+
+function updateCcButton() {
+  const btn = $('#pc-cc');
+  btn.classList.toggle('on', playerPrefs.cc);
+  btn.setAttribute('aria-pressed', String(playerPrefs.cc));
+  btn.title = playerPrefs.cc ? 'Desativar legendas (c)' : 'Ativar legendas (c)';
+  btn.setAttribute('aria-label', btn.title);
+}
+
+/* ---------- Menu da engrenagem ---------- */
+let menuPage = 'main';
+
+function currentQuality() {
+  const q = player?.getPlaybackQuality?.();
+  return QUALITY_LABELS[q] ? { label: QUALITY_LABELS[q][0], badge: QUALITY_LABELS[q][1] } : { label: 'Automática', badge: '' };
+}
+
+function speedLabel(rate) {
+  return rate === 1 ? 'Normal' : `${String(rate).replace('.', ',')}×`;
+}
+
+function renderMenu() {
+  const menu = $('#pc-menu');
+  if (menu.hidden) return;
+  const row = (action, icon, label, value = '', extra = '') =>
+    `<button class="pc-menu-row${extra}" type="button" data-pc="${action}">${icon}<span>${label}</span>${value ? `<span class="pc-menu-value">${esc(value)}</span>` : ''}</button>`;
+  if (menuPage === 'speed') {
+    const rates = player?.getAvailablePlaybackRates?.() || [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+    menu.innerHTML = row('menu:main', MENU_ICONS.back, 'Velocidade', '', ' pc-menu-head')
+      + rates.map(r => row(`speed:${r}`, r === playbackRate ? MENU_ICONS.check : '<span class="pc-menu-gap"></span>', speedLabel(r))).join('');
+  } else if (menuPage === 'cc') {
+    const tracks = captionTracks();
+    menu.innerHTML = row('menu:main', MENU_ICONS.back, 'Legendas', '', ' pc-menu-head')
+      + row('cc:off', !playerPrefs.cc ? MENU_ICONS.check : '<span class="pc-menu-gap"></span>', 'Desativadas')
+      + (tracks.length
+        ? tracks.map(t => row(`cc:${t.languageCode}`, playerPrefs.cc && t.languageCode === playerPrefs.ccLang ? MENU_ICONS.check : '<span class="pc-menu-gap"></span>', trackName(t))).join('')
+        : `<p class="pc-menu-note">${playerPrefs.cc ? 'Carregando as legendas…' : 'Ative as legendas para ver os idiomas disponíveis.'}</p>`);
+  } else {
+    const tracks = captionTracks();
+    const ccTrack = tracks.find(t => t.languageCode === playerPrefs.ccLang);
+    menu.innerHTML = row('menu:speed', MENU_ICONS.speed, 'Velocidade', `${speedLabel(playbackRate)} ›`)
+      + row('menu:cc', MENU_ICONS.cc, 'Legendas', `${playerPrefs.cc ? trackName(ccTrack) || 'Ativadas' : 'Desativadas'} ›`)
+      + row('noop', MENU_ICONS.quality, 'Qualidade', `${currentQuality().label} (automática)`, ' pc-menu-static')
+      + '<p class="pc-menu-note">O YouTube escolhe a qualidade sozinho; o app só mostra a atual.</p>';
+  }
+}
+
+function openMenu(open = $('#pc-menu').hidden) {
+  const menu = $('#pc-menu');
+  menu.hidden = !open;
+  $('#pc-settings').setAttribute('aria-expanded', String(open));
+  if (open) {
+    menuPage = 'main';
+    renderMenu();
+    setControlsVisible(true);
+  } else {
+    pokeControls();
+  }
+}
+
+function onMenuAction(action) {
+  const [kind, value] = action.split(':');
+  if (kind === 'menu') { menuPage = value; renderMenu(); return; }
+  if (kind === 'speed') {
+    playbackRate = Number(value);
+    player?.setPlaybackRate?.(playbackRate);
+    menuPage = 'main';
+  }
+  if (kind === 'cc') {
+    if (value === 'off') playerPrefs.cc = false;
+    else { playerPrefs.cc = true; playerPrefs.ccLang = value; }
+    savePlayerPrefs();
+    applyCaptions();
+    updateCcButton();
+    menuPage = 'main';
+  }
+  renderMenu();
+}
+
+/* ---------- Barra de progresso e tempo ---------- */
+function progressFraction(e) {
+  const r = $('#pc-progress').getBoundingClientRect();
+  return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+}
+
+function updateProgressUI(previewFraction = null) {
+  if (!player?.getDuration) return;
+  const live = state.currentVideo?.live === 'live';
+  const d = player.getDuration() || 0;
+  const t = previewFraction != null ? previewFraction * d : (player.getCurrentTime?.() || 0);
+  const played = d ? Math.min(100, (t / d) * 100) : 0;
+  const loaded = Math.min(100, (player.getVideoLoadedFraction?.() || 0) * 100);
+  const bar = $('#pc-progress');
+  bar.style.setProperty('--played', `${live ? 100 : played}%`);
+  bar.style.setProperty('--loaded', `${live ? 100 : loaded}%`);
+  $('#pc-time').innerHTML = live
+    ? '<span class="pc-live-dot"></span>AO VIVO'
+    : `${fmtClock(t)} <span>/ ${fmtClock(d)}</span>`;
+  const q = currentQuality().badge;
+  const badge = $('#pc-quality');
+  badge.textContent = q;
+  badge.hidden = !q;
+}
+
+function setupProgressBar() {
+  const bar = $('#pc-progress');
+  const tip = $('#pc-tip');
+  bar.addEventListener('pointermove', e => {
+    const d = player?.getDuration?.() || 0;
+    if (!d) return;
+    const f = progressFraction(e);
+    tip.textContent = fmtClock(f * d);
+    tip.style.left = `${f * 100}%`;
+    tip.hidden = false;
+    if (draggingProgress) updateProgressUI(f);
+  });
+  bar.addEventListener('pointerleave', () => { if (!draggingProgress) tip.hidden = true; });
+  bar.addEventListener('pointerdown', e => {
+    if (!player?.getDuration) return;
+    draggingProgress = true;
+    bar.setPointerCapture(e.pointerId);
+    bar.classList.add('dragging');
+    updateProgressUI(progressFraction(e));
+  });
+  const finish = e => {
+    if (!draggingProgress) return;
+    draggingProgress = false;
+    bar.classList.remove('dragging');
+    tip.hidden = true;
+    const d = player?.getDuration?.() || 0;
+    player?.seekTo?.(progressFraction(e) * d, true);
+    pokeControls();
+  };
+  bar.addEventListener('pointerup', finish);
+  bar.addEventListener('pointercancel', finish);
+}
+
+/** Chamado quando o player fica pronto: aplica volume salvo e atualiza a barra. */
+function onPlayerControlsReady() {
+  if (playerPrefs.muted) player.mute?.(); else { player.unMute?.(); player.setVolume?.(playerPrefs.volume); }
+  updateVolumeUI();
+  updatePlayButton();
+  updateProgressUI();
+}
+
+/** Chamado a cada mudança de estado do player (tocando, pausado, fim...). */
+function onPlayerControlsState(stateCode) {
+  updatePlayButton(stateCode === window.YT.PlayerState.PLAYING || stateCode === window.YT.PlayerState.BUFFERING);
+  if (stateCode === window.YT.PlayerState.PLAYING) {
+    if (playbackRate !== 1) player.setPlaybackRate?.(playbackRate);
+    if (playerPrefs.cc && ccAppliedFor !== playerVideoId) { ccAppliedFor = playerVideoId; applyCaptions(); }
+    pokeControls();
+  }
+}
 
 /** Atualiza o ícone do botão de tela cheia do app (entrar/sair). */
 function updateFullscreenButton() {
@@ -1290,71 +1611,147 @@ function updateFullscreenButton() {
   btn.setAttribute('aria-label', btn.title);
 }
 
-function seekBy(delta) {
-  if (!player?.getCurrentTime) return;
-  player.seekTo(Math.max(0, player.getCurrentTime() + delta), true);
-}
-
 function setupPlayerControls() {
-  $('#player-fs').addEventListener('click', e => {
-    togglePlayerFullscreen();
-    if (e.detail > 0) e.currentTarget.blur(); // clique com mouse: sem contorno de foco sobre o vídeo
-  });
+  // Ícones fixos e estado inicial da barra.
+  $('#pc-settings').insertAdjacentHTML('afterbegin', GEAR_ICON);
+  $('#pc-cc').innerHTML = CC_ICON;
+  updatePlayButton(false);
+  updateVolumeUI();
+  updateAutoplayButton();
+  updateCcButton();
   updateFullscreenButton();
-  document.addEventListener('fullscreenchange', updateFullscreenButton);
+  setupProgressBar();
+
+  // Botões da barra (o clique com mouse tira o foco, para não ficar contorno sobre o vídeo).
+  const onClick = (sel, fn) => $(sel).addEventListener('click', e => {
+    e.stopPropagation();
+    fn(e);
+    if (e.detail > 0) e.currentTarget.blur();
+  });
+  onClick('#pc-play', togglePlay);
+  onClick('#pc-mute', toggleMute);
+  onClick('#pc-autoplay', toggleAutoplay);
+  onClick('#pc-cc', toggleCaptions);
+  onClick('#pc-settings', () => openMenu());
+  onClick('#player-fs', togglePlayerFullscreen);
+  $('#pc-volume').addEventListener('input', e => setVolume(Number(e.target.value)));
+  $('#pc-menu').addEventListener('click', e => {
+    e.stopPropagation();
+    const row = e.target.closest('[data-pc]');
+    if (row && row.dataset.pc !== 'noop') onMenuAction(row.dataset.pc);
+  });
+  // Fecha o menu ao clicar fora dele.
+  document.addEventListener('click', e => {
+    if (!$('#pc-menu').hidden && !e.target.closest('#pc-menu, #pc-settings')) openMenu(false);
+  });
+
+  // Mantém os controles visíveis enquanto o mouse está sobre a barra. Trocar um ícone que está
+  // sob o cursor faz o navegador avisar uma "saída" falsa, então a saída é conferida pela posição.
+  const inside = (el, e) => {
+    const r = el.getBoundingClientRect();
+    return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+  };
+  for (const el of [$('.pc-bar'), $('#pc-progress')]) {
+    el.addEventListener('pointerenter', () => { pointerOnBar = true; setControlsVisible(true); });
+    el.addEventListener('pointerleave', e => {
+      if (inside(el, e)) return;
+      pointerOnBar = false;
+      pokeControls();
+    });
+  }
+  $('.player-wrap').addEventListener('pointerleave', e => {
+    if (e.pointerType !== 'mouse' || inside(e.currentTarget, e)) return;
+    pointerOnBar = false;
+    if (isPlaying() && $('#pc-menu').hidden) setControlsVisible(false);
+  });
+
+  // Atualiza tempo e barra de progresso enquanto a página do vídeo está aberta.
+  setInterval(() => {
+    if (state.view === 'watch' && !draggingProgress) updateProgressUI();
+  }, 250);
+
+  document.addEventListener('fullscreenchange', () => { updateFullscreenButton(); pokeControls(); });
 
   // A altura do player define o tamanho dos tiles de "A seguir" (3 tiles = altura do player).
   new ResizeObserver(([entry]) => {
     $('#view-watch').style.setProperty('--player-h', `${Math.round(entry.contentRect.height)}px`);
   }).observe($('.player-wrap'));
 
+  // Camada sobre o vídeo: clique (mouse) ou toque, simples ou duplo.
   const overlay = $('#player-overlay');
-  // Clique simples espera um instante: se vier o segundo clique, é clique duplo e só a tela
-  // cheia muda (sem pausar o vídeo).
-  let singleClickTimer = 0;
-  overlay.addEventListener('click', e => {
-    clearTimeout(singleClickTimer);
-    if (e.detail > 1) return;
-    singleClickTimer = setTimeout(togglePlay, 250);
-  });
-  overlay.addEventListener('dblclick', e => {
-    clearTimeout(singleClickTimer);
-    e.preventDefault();
+  let lastPointerType = 'mouse';
+  let tapTimer = 0;
+  let lastTapAt = 0;
+  overlay.addEventListener('pointerdown', e => { lastPointerType = e.pointerType || 'mouse'; });
+  const zoneOf = e => {
+    const r = overlay.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width;
+    return x < 1 / 3 ? 'left' : x > 2 / 3 ? 'right' : 'center';
+  };
+  const single = zone => {
+    if (lastPointerType === 'touch') {
+      const hidden = $('.player-wrap').classList.contains('pc-hidden');
+      if (hidden) pokeControls();
+      else if (zone === 'center') togglePlay();
+      else setControlsVisible(false);
+    } else {
+      togglePlay();
+    }
+  };
+  const double = zone => {
     window.getSelection()?.removeAllRanges();
-    togglePlayerFullscreen();
+    if (lastPointerType === 'touch' && zone !== 'center') {
+      seekBy(zone === 'left' ? -10 : 10);
+      flashPlayerIcon('play', zone === 'left' ? '« 10 s' : '10 s »');
+    } else {
+      togglePlayerFullscreen();
+    }
+  };
+  overlay.addEventListener('click', e => {
+    if (!$('#pc-menu').hidden) { openMenu(false); return; }
+    const zone = zoneOf(e);
+    const now = Date.now();
+    if (now - lastTapAt < 300) {
+      clearTimeout(tapTimer);
+      lastTapAt = 0;
+      double(zone);
+      return;
+    }
+    lastTapAt = now;
+    tapTimer = setTimeout(() => single(zone), 260);
   });
+  overlay.addEventListener('dblclick', e => e.preventDefault());
   // Impede que o clique duplo selecione texto (a "marcação azul").
   overlay.addEventListener('mousedown', e => {
     if (e.detail > 1) e.preventDefault();
   });
-
-  // Esconde o cursor parado sobre o vídeo enquanto ele toca (útil na tela cheia).
-  let idleTimer = 0;
-  overlay.addEventListener('mousemove', () => {
-    overlay.classList.remove('idle');
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => { if (isPlaying()) overlay.classList.add('idle'); }, 2500);
-  });
+  // Só o mouse de verdade (o toque também gera "mousemove", que mostraria os controles antes da hora).
+  overlay.addEventListener('pointermove', e => { if (e.pointerType === 'mouse') pokeControls(); });
 
   document.addEventListener('keydown', e => {
     if (state.view !== 'watch' || e.ctrlKey || e.metaKey || e.altKey) return;
-    if (e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
-    // Botões fora do player mantêm o comportamento normal; os do player (ex.: tela cheia) não bloqueiam os atalhos.
+    if (e.target.closest?.('input:not(#pc-volume), textarea, select, [contenteditable="true"]')) return;
+    // Botões fora do player mantêm o comportamento normal; os do player não bloqueiam os atalhos.
     if (e.target.closest?.('button') && !e.target.closest('.player-wrap')) return;
+    if (e.key === 'Escape' && !$('#pc-menu').hidden) { openMenu(false); return; }
     const actions = {
       ' ': togglePlay,
       k: togglePlay,
       f: togglePlayerFullscreen,
+      c: toggleCaptions,
       ArrowLeft: () => seekBy(-5),
       ArrowRight: () => seekBy(5),
+      ArrowUp: () => setVolume((player?.isMuted?.() ? 0 : player?.getVolume?.() ?? 0) + 5),
+      ArrowDown: () => setVolume((player?.getVolume?.() ?? 0) - 5),
       j: () => seekBy(-10),
       l: () => seekBy(10),
-      m: () => (player?.isMuted?.() ? player.unMute() : player?.mute?.()),
+      m: toggleMute,
     };
     const action = actions[e.key.length === 1 ? e.key.toLowerCase() : e.key];
     if (!action) return;
     e.preventDefault();
     action();
+    pokeControls();
   });
 }
 
@@ -2244,7 +2641,7 @@ const Sync = {
       if (typeof p.autoplay === 'boolean') {
         state.autoplay = p.autoplay;
         store.set(KEYS.autoplay, state.autoplay);
-        $('#autoplay').checked = state.autoplay;
+        updateAutoplayButton();
       }
     }
     if (typeof changes.apiKey === 'string' && changes.apiKey !== state.config.apiKey) {
@@ -2500,14 +2897,6 @@ function bindEvents() {
     if (!state.currentVideo) return;
     upNextCount += UPNEXT_PAGE;
     renderUpNext(state.currentVideo);
-  });
-
-  const autoplay = $('#autoplay');
-  autoplay.checked = state.autoplay;
-  autoplay.addEventListener('change', () => {
-    state.autoplay = autoplay.checked;
-    store.set(KEYS.autoplay, state.autoplay);
-    Sync.touch('prefs');
   });
 
   $('#to-top').addEventListener('click', () => {
