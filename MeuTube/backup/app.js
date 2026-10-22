@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.6.1';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -1489,8 +1489,7 @@ function renderMenu() {
     const ccTrack = tracks.find(t => t.languageCode === playerPrefs.ccLang);
     menu.innerHTML = row('menu:speed', MENU_ICONS.speed, 'Velocidade', `${speedLabel(playbackRate)} ›`)
       + row('menu:cc', MENU_ICONS.cc, 'Legendas', `${playerPrefs.cc ? trackName(ccTrack) || 'Ativadas' : 'Desativadas'} ›`)
-      + row('noop', MENU_ICONS.quality, 'Qualidade', `${currentQuality().label} (automática)`, ' pc-menu-static')
-      + '<p class="pc-menu-note">O YouTube escolhe a qualidade sozinho; o app só mostra a atual.</p>';
+      + row('noop', MENU_ICONS.quality, 'Qualidade', `${currentQuality().label} (automática)`, ' pc-menu-static');
   }
 }
 

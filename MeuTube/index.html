@@ -7,17 +7,17 @@
   <title>MeuTube</title>
   <!-- Versão do app (SemVer). Mantida igual ao APP_VERSION do app.js e ao "?v=" dos arquivos abaixo:
        o número no endereço faz o navegador baixar a versão nova em vez de usar o cache. -->
-  <meta name="app-version" content="1.6.1">
+  <meta name="app-version" content="1.7.0">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -4 28 28'%3E%3Crect width='28' height='20' rx='6' fill='%23ff3d3d'/%3E%3Cpath d='M11.5 5.8v8.4L18.6 10z' fill='%23fff'/%3E%3C/svg%3E">
   <!-- App instalável (abre em tela cheia no celular) -->
-  <link rel="manifest" href="manifest.json?v=1.6.1">
+  <link rel="manifest" href="manifest.json?v=1.7.0">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="preconnect" href="https://i.ytimg.com">
   <link rel="preconnect" href="https://www.googleapis.com">
-  <link rel="stylesheet" href="styles.css?v=1.6.1">
+  <link rel="stylesheet" href="styles.css?v=1.7.0">
   <!-- Google Identity Services (login com Google) -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -99,6 +99,8 @@
             <div id="player"></div>
             <!-- Camada sobre o vídeo: clique/toque pausa ou continua, clique duplo alterna a tela cheia. -->
             <div id="player-overlay" class="player-overlay" aria-hidden="true"></div>
+            <!-- Faixa de título (logo do canal, título e canal): aparece junto com a barra de baixo. -->
+            <div id="pc-top" class="pc-top" aria-hidden="true"></div>
             <!-- Controles do app (os do YouTube ficam desligados): nenhum menu fica atrás da camada. -->
             <div id="player-ui" class="player-ui">
               <div id="pc-menu" class="pc-menu" role="menu" hidden></div>
@@ -227,6 +229,6 @@
 
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
-  <script src="app.js?v=1.6.1"></script>
+  <script src="app.js?v=1.7.0"></script>
 </body>
 </html>

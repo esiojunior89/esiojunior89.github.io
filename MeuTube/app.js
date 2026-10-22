@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.6.1';
+const APP_VERSION = '1.7.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -1338,6 +1338,26 @@ function setControlsVisible(visible) {
   $('.player-wrap').classList.toggle('pc-hidden', !visible);
 }
 
+/* ---------- Faixa de título (em cima do vídeo) ---------- */
+// O YouTube desenha o título dele dentro do vídeo quando pausa e por alguns segundos ao
+// voltar a tocar. Nesses momentos a faixa do app fica escondida, para não aparecerem dois.
+const YT_TITLE_MS = 3500;
+let ytTitleTimer = 0;
+
+function setYouTubeTitleShowing(showing) {
+  $('.player-wrap').classList.toggle('yt-title', showing);
+}
+
+function renderPlayerTitle(v) {
+  const ch = channelById(v.channelId);
+  $('#pc-top').innerHTML = `
+    <img class="pc-top-avatar" src="${esc(ch?.thumb || '')}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
+    <div class="pc-top-text">
+      <div class="pc-top-title">${esc(v.title)}</div>
+      <div class="pc-top-channel">${esc(v.channelTitle)}</div>
+    </div>`;
+}
+
 /** Mostra os controles e agenda o sumiço (só enquanto toca, sem menu aberto e sem o mouse na barra). */
 function pokeControls() {
   setControlsVisible(true);
@@ -1593,8 +1613,14 @@ function onPlayerControlsReady() {
 
 /** Chamado a cada mudança de estado do player (tocando, pausado, fim...). */
 function onPlayerControlsState(stateCode) {
-  updatePlayButton(stateCode === window.YT.PlayerState.PLAYING || stateCode === window.YT.PlayerState.BUFFERING);
-  if (stateCode === window.YT.PlayerState.PLAYING) {
+  const S = window.YT.PlayerState;
+  updatePlayButton(stateCode === S.PLAYING || stateCode === S.BUFFERING);
+  if (stateCode !== S.BUFFERING) {
+    clearTimeout(ytTitleTimer);
+    setYouTubeTitleShowing(true);
+    if (stateCode === S.PLAYING) ytTitleTimer = setTimeout(() => setYouTubeTitleShowing(false), YT_TITLE_MS);
+  }
+  if (stateCode === S.PLAYING) {
     if (playbackRate !== 1) player.setPlaybackRate?.(playbackRate);
     if (playerPrefs.cc && ccAppliedFor !== playerVideoId) { ccAppliedFor = playerVideoId; applyCaptions(); }
     pokeControls();
@@ -1611,7 +1637,8 @@ function updateFullscreenButton() {
 }
 
 function setupPlayerControls() {
-  // Ícones fixos e estado inicial da barra.
+  // Ícones fixos e estado inicial da barra (antes de tocar, o YouTube mostra o título dele).
+  setYouTubeTitleShowing(true);
   $('#pc-settings').insertAdjacentHTML('afterbegin', GEAR_ICON);
   $('#pc-cc').innerHTML = CC_ICON;
   updatePlayButton(false);
@@ -1819,6 +1846,7 @@ function renderWatchInfo(v) {
   const ch = channelById(v.channelId);
   const published = new Date(v.publishedAt).toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'short' });
 
+  renderPlayerTitle(v);
   $('#watch-info').innerHTML = `
     <h1 class="watch-title">${esc(v.title)}</h1>
     <div class="watch-meta">
