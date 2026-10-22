@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0f0f12">
   <title>Changelog — MeuTube</title>
-  <meta name="description" content="Tudo o que mudou no MeuTube, da primeira publicação até a v1.8.0.">
+  <meta name="description" content="Tudo o que mudou no MeuTube, da primeira publicação até a v1.6.0.">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -4 28 28'%3E%3Crect width='28' height='20' rx='6' fill='%23ff3d3d'/%3E%3Cpath d='M11.5 5.8v8.4L18.6 10z' fill='%23fff'/%3E%3C/svg%3E">
   <style>
     :root {
@@ -126,6 +126,13 @@
     .prelist time { margin:0; }
     .prelist .txt { min-width:0; }
 
+    .map { margin-top:36px; border:1px solid var(--border); border-radius:16px; background:var(--surface); padding:4px 20px; }
+    .map summary { cursor:pointer; padding:14px 0; font-weight:600; }
+    .map p { margin:0 0 12px; color:var(--muted); }
+    .map p strong { color:var(--text); }
+    .map table { width:100%; border-collapse:collapse; margin:4px 0 16px; font-variant-numeric:tabular-nums; }
+    .map th, .map td { text-align:left; padding:8px 10px; border-top:1px solid var(--border); font-size:14px; }
+    .map th { color:var(--muted); font-weight:600; border-top:0; }
     footer { margin-top:48px; padding-top:20px; border-top:1px solid var(--border); color:var(--muted); font-size:13px; }
 
     @keyframes rise { from { opacity:0; transform:translateY(14px); } }
@@ -156,28 +163,23 @@
       <h1>O que mudou no MeuTube</h1>
       <p>Da primeira publicação à versão atual: menu de canais, sincronização na nuvem, app instalável e um player com controles próprios.</p>
       <div class="stats">
-        <div class="stat"><b>v1.8.0</b><span>versão atual</span></div>
-        <div class="stat"><b>15</b><span>versões numeradas</span></div>
-        <div class="stat"><b>31</b><span>entregas registradas</span></div>
+        <div class="stat"><b>v1.6.0</b><span>versão atual</span></div>
+        <div class="stat"><b>14</b><span>versões numeradas</span></div>
+        <div class="stat"><b>28</b><span>entregas registradas</span></div>
         <div class="stat"><b>2</b><span>dias de história</span></div>
       </div>
       <div class="legend" aria-label="Legenda">
-        <span class="tag new">Novo</span><span class="tag imp">Melhoria</span><span class="tag fix">Correção</span><span class="tag rev">Revertida</span>
+        <span class="tag new">Novo</span><span class="tag imp">Melhoria</span><span class="tag fix">Correção</span>
       </div>
     </section>
 
-    <nav class="tabs" aria-label="Seções">
-      <a href="#versoes" class="on">Versões</a>
-      <a href="#antes">Antes da v1.0.0</a>
-    </nav>
-
-    <h2 class="sec" id="versoes">Desde a v1.0.0 <small>2026, mais recente primeiro</small></h2>
+    <h2 class="sec" id="versoes">Versões <small>mais recente primeiro</small></h2>
     <ol class="timeline">
     <li class="entry" style="--i:0">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
-          <h3><span class="ver">v1.8.0</span> <span class="now">atual</span></h3>
+          <h3><span class="ver">v1.6.0</span> <span class="now">atual</span></h3>
           <span class="tag new">Novo</span>
           <time>21/10 · 21:44</time>
         </header>
@@ -189,7 +191,7 @@
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
-          <h3><span class="ver">v1.7.0</span></h3>
+          <h3><span class="ver">v1.5.0</span></h3>
           <span class="tag new">Novo</span>
           <time>21/10 · 21:39</time>
         </header>
@@ -201,7 +203,7 @@
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
-          <h3><span class="ver">v1.6.1</span></h3>
+          <h3><span class="ver">v1.4.1</span></h3>
           <span class="tag fix">Correção</span>
           <time>21/10 · 21:24</time>
         </header>
@@ -213,7 +215,7 @@
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
-          <h3><span class="ver">v1.6.0</span></h3>
+          <h3><span class="ver">v1.4.0</span></h3>
           <span class="tag new">Novo</span>
           <time>21/10 · 21:22</time>
         </header>
@@ -225,7 +227,7 @@
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
-          <h3><span class="ver">v1.5.0</span></h3>
+          <h3><span class="ver">v1.3.2</span></h3>
           <span class="tag imp">Melhoria</span>
           <time>21/10 · 20:39</time>
         </header>
@@ -237,7 +239,7 @@
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
-          <h3><span class="ver">v1.4.1</span></h3>
+          <h3><span class="ver">v1.3.1</span></h3>
           <span class="tag imp">Melhoria</span>
           <time>21/10 · 20:30</time>
         </header>
@@ -249,8 +251,8 @@
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
-          <h3><span class="ver">v1.4.0</span></h3>
-          <span class="tag imp">Melhoria</span>
+          <h3><span class="ver">v1.3.0</span></h3>
+          <span class="tag new">Novo</span>
           <time>21/10 · 20:19</time>
         </header>
         <p class="title">“A seguir” no estilo do YouTube</p>
@@ -261,7 +263,7 @@
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
-          <h3><span class="ver">v1.3.2</span></h3>
+          <h3><span class="ver">v1.2.2</span></h3>
           <span class="tag imp">Melhoria</span>
           <time>21/10 · 20:06</time>
         </header>
@@ -273,7 +275,7 @@
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
-          <h3><span class="ver">v1.3.1</span></h3>
+          <h3><span class="ver">v1.2.1</span></h3>
           <span class="tag imp">Melhoria</span>
           <time>21/10 · 20:01</time>
         </header>
@@ -285,7 +287,7 @@
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
-          <h3><span class="ver">v1.3.0</span></h3>
+          <h3><span class="ver">v1.2.0</span></h3>
           <span class="tag new">Novo</span>
           <time>21/10 · 19:43</time>
         </header>
@@ -297,8 +299,8 @@
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
-          <h3><span class="ver">v1.2.0</span></h3>
-          <span class="tag imp">Melhoria</span>
+          <h3><span class="ver">v1.1.1</span></h3>
+          <span class="tag fix">Correção</span>
           <time>21/10 · 19:29</time>
         </header>
         <p class="title">Economia de cota da API</p>
@@ -309,27 +311,15 @@
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
-          <h3><span class="ver">v1.1.2</span></h3>
+          <h3><span class="ver">v1.1.0</span></h3>
           <span class="tag new">Novo</span>
           <time>21/10 · 19:02</time>
         </header>
         <p class="title">Clique no vídeo e tela cheia</p>
-        <ul><li>Clique pausa e continua; clique duplo alterna a tela cheia sem pausar; tecla F.</li><li>Cursor some parado sobre o vídeo.</li><li>Correções de estado do player em cliques seguidos e clique duplo sem selecionar texto.</li></ul>
+        <ul><li>Clique pausa e continua; clique duplo alterna a tela cheia sem pausar; tecla F.</li><li>Cursor some parado sobre o vídeo.</li><li>Correções de estado do player em cliques seguidos e clique duplo sem selecionar texto.</li><li>A primeira tentativa (18:56) foi revertida dois minutos depois e reentregue já corrigida.</li></ul>
       </article>
     </li>
     <li class="entry" style="--i:12">
-      <div class="dot" aria-hidden="true"></div>
-      <article class="card">
-        <header>
-          <h3><span class="ver">v1.1.1</span></h3>
-          <span class="tag rev">Revertida</span>
-          <time>21/10 · 18:56</time>
-        </header>
-        <p class="title">Primeira entrega do clique no vídeo</p>
-        <ul><li>Revertida dois minutos depois e reentregue como 1.1.2.</li></ul>
-      </article>
-    </li>
-    <li class="entry" style="--i:13">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -341,59 +331,45 @@
         <ul><li>Vídeo já assistido mantém a marca ao ser revisto.</li><li>Voltar ao início zera só o ponto onde parou, sem tirar a marca de assistido.</li><li>Barra de progresso acompanha o ponto atual.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:14">
+    <li class="entry" style="--i:13">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
           <h3><span class="ver">v1.0.0</span></h3>
           <span class="tag new">Novo</span>
-          <time>21/10 · 11:37</time>
+          <time>20/10 → 21/10 · 11:37</time>
         </header>
-        <p class="title">Versionamento</p>
-        <ul><li>Versão visível no app (menu lateral e Configurações).</li><li>Arquivos carregados com ?v= para forçar a atualização.</li><li>Service worker sem cache.</li></ul>
+        <p class="title">Primeira versão</p>
+        <ul><li>Publicação no GitHub Pages, login com Google (com verificação do escopo do YouTube) e mensagens de erro da YouTube Data API mais detalhadas.</li><li>Menu lateral de canais com filtro por canal, canais e lives em ordem alfabética e a seção “Ao vivo”; opção “Apenas lives” por canal e opção de ocultar Shorts.</li><li>Barra de progresso nos vídeos já assistidos, retomada de onde parou e botão para ocultar vídeos assistidos.</li><li>Comentários usam só a chave de API; um erro de escopo repete a chamada sem derrubar o login.</li><li>Sincronização na nuvem por uma pasta oculta do Google Drive (canais, opções, chave de API e progresso), com resumo nas Configurações, aviso ao sair e “Reconectar”.</li><li>Transição suave da tela cheia; a reprodução automática não marca o vídeo novo como assistido com dados do anterior.</li><li>App instalável: manifest, service worker e ícones dentro da pasta MeuTube.</li><li>Versão visível no app (menu lateral e Configurações), arquivos carregados com ?v= para forçar a atualização e service worker sem cache.</li></ul>
       </article>
     </li>
     </ol>
 
-    <h2 class="sec" id="antes">Antes do versionamento <small>20/10 e manhã de 21/10</small></h2>
-    <ul class="prelist">
-      <li><time>21/10 · 11:24</time><span class="tag new">Novo</span><span class="txt">App instalável: manifest, service worker e ícones dentro da pasta MeuTube.</span></li>
-      <li><time>21/10 · 11:07</time><span class="tag imp">Melhoria</span><span class="txt">Login: aviso ao sair da conta neste aparelho e, quando o Google encerra a sessão, o painel oferece “Reconectar”.</span></li>
-      <li><time>21/10 · 11:02</time><span class="tag imp">Melhoria</span><span class="txt">Resumo da sincronização nas Configurações, mostrando o que ficou na nuvem.</span></li>
-      <li><time>21/10 · 10:50</time><span class="tag new">Novo</span><span class="txt">Sincronização na nuvem por uma pasta oculta do Google Drive: canais, opções, chave de API e progresso entre aparelhos.</span></li>
-      <li><time>21/10 · 10:31</time><span class="tag new">Novo</span><span class="txt">Botão para ocultar vídeos já assistidos.</span></li>
-      <li><time>21/10 · 00:26</time><span class="tag imp">Melhoria</span><span class="txt">Transição suave ao entrar e sair da tela cheia.</span></li>
-      <li><time>21/10 · 00:15</time><span class="tag fix">Correção</span><span class="txt">Ao trocar de vídeo pela reprodução automática, o vídeo novo não é mais marcado como assistido por dados do vídeo anterior.</span></li>
-      <li><time>21/10 · 00:06</time><span class="tag imp">Melhoria</span><span class="txt">Canais e lives em ordem alfabética.</span></li>
-      <li><time>20/10 · 23:50</time><span class="tag new">Novo</span><span class="txt">Opção “Apenas lives” por canal: ele só aparece em “Ao vivo”, quando está transmitindo.</span></li>
-      <li><time>20/10 · 23:35</time><span class="tag imp">Melhoria</span><span class="txt">Menu lateral dividido: canais em cima e lives embaixo, cada um com a própria rolagem.</span></li>
-      <li><time>20/10 · 23:23</time><span class="tag new">Novo</span><span class="txt">Barra de progresso nos vídeos já assistidos e retomada de onde parou.</span></li>
-      <li><time>20/10 · 22:52</time><span class="tag new">Novo</span><span class="txt">Menu lateral de canais, filtro por canal e opção de ocultar Shorts.</span></li>
-      <li><time>20/10 · 21:58</time><span class="tag fix">Correção</span><span class="txt">Comentários usam só a chave de API; um erro de escopo repete a chamada com a chave, sem derrubar o login.</span></li>
-      <li><time>20/10 · 21:31</time><span class="tag imp">Melhoria</span><span class="txt">Mensagens de erro da YouTube Data API mais detalhadas; avisos de erro de canais ficam mais tempo na tela.</span></li>
-      <li><time>20/10 · 21:25</time><span class="tag fix">Correção</span><span class="txt">O app verifica se o escopo do YouTube foi concedido no login e orienta a autorizar quando faltar.</span></li>
-      <li><time>20/10 · 21:08</time><span class="tag new">Novo</span><span class="txt">Primeira publicação do MeuTube no GitHub Pages.</span></li>
-    </ul>
+    <details class="map">
+      <summary>Como a numeração foi revista</summary>
+      <p>A numeração segue o padrão SemVer: <strong>MAJOR</strong> para quebra de compatibilidade (nenhuma até agora: dados salvos, sincronização e endereços continuam valendo), <strong>MINOR</strong> para função nova e <strong>PATCH</strong> para correções e ajustes sem função nova.</p>
+      <p>Tudo o que veio antes do versionamento foi reunido na v1.0.0, e a entrega revertida às 18:56 foi reunida à v1.1.0.</p>
+      <table>
+        <thead><tr><th>Antes</th><th>Agora</th></tr></thead>
+        <tbody>
+          <tr><td>Antes do versionamento + 1.0.0</td><td>1.0.0</td></tr>
+          <tr><td>1.0.1</td><td>1.0.1</td></tr>
+          <tr><td>1.1.1 (revertida) + 1.1.2</td><td>1.1.0</td></tr>
+          <tr><td>1.2.0</td><td>1.1.1</td></tr>
+          <tr><td>1.3.0</td><td>1.2.0</td></tr>
+          <tr><td>1.3.1 · 1.3.2</td><td>1.2.1 · 1.2.2</td></tr>
+          <tr><td>1.4.0</td><td>1.3.0</td></tr>
+          <tr><td>1.4.1 · 1.5.0</td><td>1.3.1 · 1.3.2</td></tr>
+          <tr><td>1.6.0 · 1.6.1</td><td>1.4.0 · 1.4.1</td></tr>
+          <tr><td>1.7.0 · 1.8.0</td><td>1.5.0 · 1.6.0</td></tr>
+        </tbody>
+      </table>
+    </details>
 
     <footer>
-      Datas e horários em Brasília, vindos do histórico do repositório. Houve rollbacks às 00:28 de 21/10 e às 18:58, quando a v1.1.1 foi revertida e voltou como v1.1.2.
+      Datas e horários em Brasília, vindos do histórico do repositório. Numeração revista em 21/10, depois da v1.8.0 da numeração antiga. Houve rollbacks às 00:28 e às 18:58 de 21/10.
     </footer>
   </main>
 
-  <script>
-    // Destaca a aba da seção que está na tela
-    (function () {
-      var links = document.querySelectorAll('.tabs a');
-      var secs = [document.getElementById('versoes'), document.getElementById('antes')];
-      if (!('IntersectionObserver' in window)) return;
-      var io = new IntersectionObserver(function (entries) {
-        entries.forEach(function (en) {
-          if (!en.isIntersecting) return;
-          links.forEach(function (a) { a.classList.toggle('on', a.getAttribute('href') === '#' + en.target.id); });
-        });
-      }, { rootMargin: '-30% 0px -60% 0px' });
-      secs.forEach(function (s) { if (s) io.observe(s); });
-    })();
-  </script>
 </body>
 </html>

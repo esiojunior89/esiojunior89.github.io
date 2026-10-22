@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.6.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
