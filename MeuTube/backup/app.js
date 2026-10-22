@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.1';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -35,6 +35,10 @@ const KEYS = {
   hideShorts: 'meutube.hideShorts',
   sidebar: 'meutube.sidebarMini',
   player: 'meutube.player',
+  device: 'meutube.device',
+  watchLog: 'meutube.watchLog',
+  videoChannels: 'meutube.videoChannels',
+  statsPeriod: 'meutube.statsPeriod',
 };
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -992,6 +996,7 @@ function recordProgress(id, t, d, done = false) {
   const wasWatched = Boolean(prev?.done && !prev.gone);
   if (done || t >= d - PROGRESS_END_SECONDS || t / d >= 0.95) {
     progressStore[id] = { t: 0, d: Math.round(d), done: true, at: Date.now() };
+    logCompletion(id);
   } else if (t >= PROGRESS_MIN_SECONDS) {
     // Rever um vídeo assistido mantém a marca de assistido.
     progressStore[id] = { t: Math.floor(t), d: Math.round(d), ...(wasWatched && { done: true }), at: Date.now() };
@@ -1674,6 +1679,7 @@ function onPlayerControlsReady() {
 /** Chamado a cada mudança de estado do player (tocando, pausado, fim...). */
 function onPlayerControlsState(stateCode) {
   const S = window.YT.PlayerState;
+  tickWatchTime();
   updatePlayButton(stateCode === S.PLAYING || stateCode === S.BUFFERING);
   if (stateCode !== S.BUFFERING) {
     clearTimeout(ytTitleTimer);
@@ -1894,7 +1900,7 @@ function subscribersText(channelId) {
 
 async function ensureChannelStats(channelId) {
   const cached = channelStats[channelId];
-  if (cached && Date.now() - cached.at < CHANNEL_STATS_TTL) return;
+  if (cached && cached.videos != null && Date.now() - cached.at < CHANNEL_STATS_TTL) return;
   if (!channelStatsLoading) {
     const ids = state.channels.map(c => c.id).slice(0, 50);
     if (!ids.includes(channelId)) ids[ids.length ? ids.length - 1 : 0] = channelId;
@@ -1902,7 +1908,11 @@ async function ensureChannelStats(channelId) {
       .then(data => {
         for (const c of data.items || []) {
           const s = c.statistics || {};
-          channelStats[c.id] = { subs: s.hiddenSubscriberCount ? null : Number(s.subscriberCount), at: Date.now() };
+          channelStats[c.id] = {
+            subs: s.hiddenSubscriberCount ? null : Number(s.subscriberCount),
+            videos: Number(s.videoCount) || 0, // total de vídeos públicos (para as Estatísticas)
+            at: Date.now(),
+          };
         }
         store.set(KEYS.chstats, channelStats);
       })
@@ -2486,6 +2496,7 @@ function onCredentialsChanged() {
    envia o resultado — então nenhum aparelho apaga o outro:
      • canais, opções e chave de API: vale a alteração mais recente;
      • progresso: vale o registro mais recente de cada vídeo;
+     • estatísticas: cada aparelho tem o seu registro; juntam-se todos;
      • vídeos já vistos ("Novo"): soma dos dois aparelhos.
    ========================================================= */
 const DRIVE_FILES = 'https://www.googleapis.com/drive/v3/files';
@@ -2578,6 +2589,8 @@ const Sync = {
       apiKey: { at: state.config.apiKey ? at('apiKey') : (this.meta.at.apiKey || 0), value: state.config.apiKey },
       progress: progressStore,
       seen: [...seenVideos].slice(-3000),
+      watchLog,
+      videoChannels,
     };
   },
 
@@ -2716,9 +2729,12 @@ const Sync = {
     }
     const seenIds = (remote.seen || []).filter(id => !seenVideos.has(id));
 
+    const statsChanged = mergeWatchLog(remote.watchLog, remote.videoChannels);
+
     this.saveMeta();
     this.apply(changes, progressIds, seenIds);
-    return Boolean(Object.keys(changes).length || progressIds.length || seenIds.length);
+    if ((statsChanged || progressIds.length || changes.channels) && state.view === 'stats') renderStats({ refresh: false });
+    return Boolean(Object.keys(changes).length || progressIds.length || seenIds.length || statsChanged);
   },
 
   apply(changes, progressIds, seenIds) {
@@ -2808,6 +2824,7 @@ function parseRoute() {
   const watch = /^#\/watch\/([\w-]{11})$/.exec(hash);
   if (watch) return { view: 'watch', id: watch[1] };
   if (hash === '#/settings') return { view: 'settings' };
+  if (hash === '#/stats') return { view: 'stats' };
   const channel = /^#\/c\/(UC[\w-]{22})$/.exec(hash);
   return { view: 'home', channel: channel?.[1] || null };
 }
@@ -2842,6 +2859,7 @@ function applyView(view, id, channel) {
   $('#view-home').hidden = view !== 'home';
   $('#view-watch').hidden = view !== 'watch';
   $('#view-settings').hidden = view !== 'settings';
+  $('#view-stats').hidden = view !== 'stats';
   $$('.side-footer [data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === view));
   updateSidebarMode();
 
@@ -2854,6 +2872,9 @@ function applyView(view, id, channel) {
   } else if (view === 'watch') {
     window.scrollTo({ top: 0, behavior: 'instant' });
     enterWatch(id);
+  } else if (view === 'stats') {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    renderStats();
   } else {
     window.scrollTo({ top: 0, behavior: 'instant' });
     renderSettings();
@@ -3168,6 +3189,720 @@ async function installApp() {
 }
 
 /* =========================================================
+   Estatísticas
+   =========================================================
+   O app não pode ler o histórico do YouTube, então registra por
+   conta própria, por dia e por canal:
+     • tempo assistido: enquanto um vídeo toca, a cada 5 s o tempo
+       é somado ao dia de hoje e ao canal do vídeo;
+     • vídeos assistidos: um vídeo conta no dia em que é visto até
+       o fim (a mesma regra do "assistido" do app).
+   Cada aparelho guarda o próprio registro e a sincronização junta
+   os de todos (o total é a soma dos aparelhos). O que aconteceu
+   antes de o registro existir é estimado pelo progresso salvo.
+   ========================================================= */
+const STATS_TICK_MS = 5000;
+const DEVICE_ID = (() => {
+  let id = store.get(KEYS.device, '');
+  if (!id) {
+    id = Math.random().toString(36).slice(2, 10);
+    store.set(KEYS.device, id);
+  }
+  return id;
+})();
+// { aparelho: { since, days: { 'AAAA-MM-DD': { s: { canal: segundos }, v: { vídeo: canal } } } } }
+const watchLog = store.get(KEYS.watchLog, {});
+if (!watchLog[DEVICE_ID]) {
+  watchLog[DEVICE_ID] = { since: Date.now(), days: {} };
+  store.set(KEYS.watchLog, watchLog);
+}
+const videoChannels = store.get(KEYS.videoChannels, {}); // vídeo -> canal ('' = não encontrado)
+let watchTick = 0;
+
+const pad2 = n => String(n).padStart(2, '0');
+function dayKey(ts = Date.now()) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+function parseDay(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function todayLog() {
+  const days = watchLog[DEVICE_ID].days;
+  return (days[dayKey()] ||= { s: {}, v: {} });
+}
+
+function saveWatchLog() {
+  store.set(KEYS.watchLog, watchLog);
+  Sync.schedule(SYNC_PROGRESS_MS);
+}
+
+/** Soma o tempo desde a última medição, se o vídeo estava tocando. Chamado a cada 5 s e a cada mudança do player. */
+function tickWatchTime() {
+  const now = Date.now();
+  const v = state.currentVideo;
+  const same = Boolean(v && v.id === playerVideoId && v.channelId);
+  if (watchTick && same) {
+    const sec = Math.min(now - watchTick, 3 * STATS_TICK_MS) / 1000;
+    const log = todayLog();
+    log.s[v.channelId] = Math.round(((log.s[v.channelId] || 0) + sec) * 10) / 10;
+    if (!videoChannels[v.id]) {
+      videoChannels[v.id] = v.channelId;
+      store.set(KEYS.videoChannels, videoChannels);
+    }
+    saveWatchLog();
+  }
+  watchTick = same && state.view === 'watch' && isPlaying() ? now : 0;
+}
+
+/** Registra que o vídeo foi assistido até o fim hoje (uma vez por dia). */
+function logCompletion(id) {
+  const ch = videoForProgress(id)?.channelId || videoChannels[id];
+  if (!ch) return;
+  if (videoChannels[id] !== ch) {
+    videoChannels[id] = ch;
+    store.set(KEYS.videoChannels, videoChannels);
+  }
+  const log = todayLog();
+  if (log.v[id]) return;
+  log.v[id] = ch;
+  saveWatchLog();
+}
+
+/** Junta o registro vindo da nuvem: por aparelho, dia e canal vale o maior tempo; vídeos se somam. */
+function mergeWatchLog(remoteLog, remoteChannels) {
+  let changed = false;
+  for (const [dev, r] of Object.entries(remoteLog || {})) {
+    if (!r || typeof r.days !== 'object') continue;
+    if (!watchLog[dev]) {
+      watchLog[dev] = { since: r.since || Date.now(), days: {} };
+      changed = true;
+    }
+    const l = watchLog[dev];
+    if (r.since && r.since < l.since) {
+      l.since = r.since;
+      changed = true;
+    }
+    for (const [day, rd] of Object.entries(r.days)) {
+      const ld = (l.days[day] ||= { s: {}, v: {} });
+      for (const [ch, sec] of Object.entries(rd?.s || {})) {
+        if (sec > (ld.s[ch] || 0)) { ld.s[ch] = sec; changed = true; }
+      }
+      for (const [id, ch] of Object.entries(rd?.v || {})) {
+        if (!ld.v[id]) { ld.v[id] = ch; changed = true; }
+      }
+    }
+  }
+  if (changed) store.set(KEYS.watchLog, watchLog);
+  let mapped = false;
+  for (const [id, ch] of Object.entries(remoteChannels || {})) {
+    if (ch && !videoChannels[id]) { videoChannels[id] = ch; mapped = true; }
+  }
+  if (mapped) store.set(KEYS.videoChannels, videoChannels);
+  return changed || mapped;
+}
+
+/** Descobre o canal dos vídeos do progresso salvo antes do registro existir (1 unidade de cota a cada 50). */
+let videoChannelsLoading = null;
+function ensureVideoChannels() {
+  if (videoChannelsLoading) return videoChannelsLoading;
+  videoChannelsLoading = (async () => {
+    const missing = Object.keys(progressStore).filter(id => !progressStore[id]?.gone && !(id in videoChannels));
+    for (const id of missing) {
+      const v = findLoadedVideo(id);
+      if (v) videoChannels[id] = v.channelId;
+    }
+    const rest = missing.filter(id => !(id in videoChannels));
+    if (rest.length && hasCredentials()) {
+      try {
+        for (let i = 0; i < rest.length; i += 50) {
+          const batch = rest.slice(i, i + 50);
+          const data = await api('videos', { part: 'snippet', id: batch.join(','), maxResults: 50, fields: 'items(id,snippet(channelId))' });
+          const found = new Map((data.items || []).map(v => [v.id, v.snippet?.channelId || '']));
+          batch.forEach(id => { videoChannels[id] = found.get(id) || ''; });
+        }
+      } catch { /* sem cota/conexão: tenta de novo na próxima visita */ }
+    }
+    if (missing.length) store.set(KEYS.videoChannels, videoChannels);
+    return missing.length > 0;
+  })().finally(() => { videoChannelsLoading = null; });
+  return videoChannelsLoading;
+}
+
+/** Junta o registro de todos os aparelhos + a estimativa do período anterior a ele. */
+function computeStats() {
+  const since = Math.min(...Object.values(watchLog).map(d => d.since || Date.now()));
+  const daySec = new Map();     // dia -> segundos
+  const dayChSec = new Map();   // dia -> Map(canal -> segundos)
+  const dayVids = new Map();    // dia -> Set(vídeos assistidos até o fim)
+  const chSec = new Map();      // canal -> segundos
+  const add = (map, k, n) => map.set(k, (map.get(k) || 0) + n);
+  const addTime = (day, ch, sec) => {
+    add(daySec, day, sec);
+    add(chSec, ch, sec);
+    if (!dayChSec.has(day)) dayChSec.set(day, new Map());
+    add(dayChSec.get(day), ch, sec);
+  };
+  const addVid = (day, id) => {
+    if (!dayVids.has(day)) dayVids.set(day, new Set());
+    dayVids.get(day).add(id);
+  };
+  for (const dev of Object.values(watchLog)) {
+    for (const [day, d] of Object.entries(dev.days || {})) {
+      for (const [ch, sec] of Object.entries(d.s || {})) addTime(day, ch, sec);
+      for (const id of Object.keys(d.v || {})) addVid(day, id);
+    }
+  }
+  const doneByCh = new Map();
+  let started = 0;
+  let done = 0;
+  let estimated = false;
+  for (const [id, p] of Object.entries(progressStore)) {
+    if (!p || p.gone) continue;
+    const ch = videoChannels[id] || '';
+    started++;
+    if (p.done) {
+      done++;
+      add(doneByCh, ch, 1);
+    }
+    if ((p.at || 0) < since) {
+      // Antes do registro: conta o vídeo inteiro (assistido) ou até onde parou, no dia do último acesso.
+      estimated = true;
+      const day = dayKey(p.at);
+      const sec = p.done ? p.d : p.t;
+      if (sec) addTime(day, ch, sec);
+      if (p.done) addVid(day, id);
+    }
+  }
+  return { since, daySec, dayChSec, dayVids, chSec, doneByCh, started, done, estimated };
+}
+
+/* ---------- Períodos (dia, semana, mês) ---------- */
+const STATS_PERIODS = {
+  day: { label: 'Dia', count: 14, now: 'hoje', prev: 'ontem', span: 'últimos 14 dias' },
+  week: { label: 'Semana', count: 12, now: 'esta semana', prev: 'semana passada', span: 'últimas 12 semanas' },
+  month: { label: 'Mês', count: 12, now: 'este mês', prev: 'mês passado', span: 'últimos 12 meses' },
+};
+let statsPeriod = STATS_PERIODS[store.get(KEYS.statsPeriod, 'day')] ? store.get(KEYS.statsPeriod, 'day') : 'day';
+let statsMonthOffset = 0; // calendário: 0 = mês atual, -1 = anterior...
+
+function bucketStart(date, period) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  if (period === 'week') d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // semana começa na segunda
+  if (period === 'month') d.setDate(1);
+  return d;
+}
+
+function shiftBucket(date, period, n) {
+  const d = new Date(date);
+  if (period === 'day') d.setDate(d.getDate() + n);
+  else if (period === 'week') d.setDate(d.getDate() + 7 * n);
+  else d.setMonth(d.getMonth() + n);
+  return d;
+}
+
+/** Série dos últimos N períodos: [{ start, value }], somando o valor de cada dia no seu período. */
+function statsSeries(dayMap, period, count, valueOf = v => v) {
+  const totals = new Map();
+  for (const [day, v] of dayMap) {
+    const k = bucketStart(parseDay(day), period).getTime();
+    totals.set(k, (totals.get(k) || 0) + valueOf(v));
+  }
+  const first = shiftBucket(bucketStart(new Date(), period), period, -(count - 1));
+  return Array.from({ length: count }, (_, i) => {
+    const start = shiftBucket(first, period, i);
+    return { start, value: totals.get(start.getTime()) || 0 };
+  });
+}
+
+function periodLabel(start, period, long = false) {
+  if (period === 'month') {
+    return long
+      ? start.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+      : start.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('. de ', '/').replace(' de ', '/').replace('.', '');
+  }
+  const short = start.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  if (!long) return short;
+  if (period === 'week') {
+    const end = shiftBucket(start, 'day', 6);
+    return `Semana de ${short} a ${end.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`;
+  }
+  return start.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
+}
+
+/* ---------- Formatos ---------- */
+const intFmt = new Intl.NumberFormat('pt-BR');
+function fmtHours(sec) {
+  const m = Math.round(sec / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return r ? `${intFmt.format(h)}h ${pad2(r)}min` : `${intFmt.format(h)}h`;
+}
+function fmtHoursAxis(h) {
+  if (h === 0) return '0';
+  if (h < 1) return `${Math.round(h * 60)} min`;
+  return `${String(Math.round(h * 10) / 10).replace('.', ',')} h`;
+}
+function fmtDelta(cur, prev) {
+  if (!prev) return cur ? { text: 'novo', dir: 'up' } : { text: '—', dir: '' };
+  const pct = ((cur - prev) / prev) * 100;
+  const text = `${pct > 0 ? '+' : ''}${pct.toFixed(Math.abs(pct) < 10 ? 1 : 0).replace('.', ',')}%`;
+  return { text, dir: pct > 0 ? 'up' : pct < 0 ? 'down' : '' };
+}
+
+/** Escala "redonda" para os eixos (ex.: 0, 0,5, 1, 1,5 h). */
+function niceScale(max, ticks = 4, integer = false) {
+  if (!(max > 0)) max = integer ? ticks : 1;
+  let step = max / ticks;
+  const mag = 10 ** Math.floor(Math.log10(step));
+  step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= step - 1e-9);
+  if (integer) step = Math.max(1, Math.ceil(step));
+  return { step, max: step * Math.ceil(max / step - 1e-9) };
+}
+
+/* ---------- Gráficos (SVG desenhado pelo app) ---------- */
+const STATS_DEFS = `
+  <svg class="st-defs" aria-hidden="true" width="0" height="0">
+    <defs>
+      <linearGradient id="st-ring" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#39c6ff"/><stop offset="1" stop-color="#3f5bff"/>
+      </linearGradient>
+      <linearGradient id="st-bar" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#39c6ff"/><stop offset="1" stop-color="#3f5bff"/>
+      </linearGradient>
+      <linearGradient id="st-area" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#4f7cff" stop-opacity=".45"/><stop offset="1" stop-color="#4f7cff" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+  </svg>`;
+
+function ringSVG(pct, size = 150) {
+  const r = size * 0.4;
+  const c = 2 * Math.PI * r;
+  const p = Math.max(0, Math.min(100, pct || 0));
+  const text = `${p < 10 && p > 0 ? p.toFixed(1).replace('.', ',') : Math.round(p)}%`;
+  return `
+    <svg class="st-ring" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" aria-hidden="true">
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="${size * 0.1}"/>
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="url(#st-ring)" stroke-width="${size * 0.1}"
+        stroke-linecap="round" stroke-dasharray="${(c * p) / 100} ${c}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
+      <circle cx="${size / 2}" cy="${size / 2}" r="${size * 0.32}" class="st-ring-core"/>
+      <text x="50%" y="50%" dy=".35em" text-anchor="middle" class="st-ring-text" style="font-size:${size * 0.17}px">${text}</text>
+    </svg>`;
+}
+
+/** Dica que acompanha o ponteiro: mostra o ponto mais próximo (mouse ou toque). */
+function attachChartTip(box, pts) {
+  const tip = document.createElement('div');
+  tip.className = 'st-tip';
+  tip.hidden = true;
+  box.append(tip);
+  const marks = [...box.querySelectorAll('[data-i]')];
+  const show = e => {
+    if (!pts.length) return;
+    const r = box.getBoundingClientRect();
+    const mx = e.clientX - r.left;
+    let best = 0;
+    pts.forEach((p, i) => { if (Math.abs(p.x - mx) < Math.abs(pts[best].x - mx)) best = i; });
+    const p = pts[best];
+    tip.innerHTML = `<strong>${esc(p.value)}</strong><span>${esc(p.title)}</span>`;
+    tip.style.left = `${Math.max(70, Math.min(r.width - 70, p.x))}px`;
+    tip.style.top = `${p.y}px`;
+    tip.hidden = false;
+    marks.forEach(m => m.classList.toggle('active', Number(m.dataset.i) === best));
+  };
+  box.onpointermove = show;
+  box.onpointerdown = show;
+  box.onpointerleave = () => {
+    tip.hidden = true;
+    marks.forEach(m => m.classList.remove('active'));
+  };
+}
+
+function xLabelStep(n, width) {
+  return Math.max(1, Math.ceil(n / Math.max(2, Math.floor(width / 64))));
+}
+
+/** Linha do tempo em linha (com área), no estilo do painel: grade, pontos laranja e dica com o valor. */
+function drawLineChart(box, series, { toValue, axis, tipValue, tipTitle, integer = false }) {
+  const W = box.clientWidth;
+  const H = box.clientHeight;
+  if (!W || !H) return;
+  const pad = { l: 52, r: 18, t: 22, b: 30 };
+  const values = series.map(s => toValue(s.value));
+  const { step, max } = niceScale(Math.max(...values), 4, integer);
+  const iw = W - pad.l - pad.r;
+  const ih = H - pad.t - pad.b;
+  const x = i => pad.l + (series.length === 1 ? iw / 2 : (i * iw) / (series.length - 1));
+  const y = v => pad.t + (1 - v / max) * ih;
+  const grid = [];
+  for (let v = 0; v <= max + 1e-9; v += step) {
+    grid.push(`<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" class="st-grid-line"/>`
+      + `<text x="${pad.l - 10}" y="${y(v)}" dy=".32em" text-anchor="end" class="st-axis">${esc(axis(v))}</text>`);
+  }
+  const every = xLabelStep(series.length, iw);
+  series.forEach((s, i) => {
+    grid.push(`<line x1="${x(i)}" x2="${x(i)}" y1="${pad.t}" y2="${H - pad.b}" class="st-grid-line st-grid-v"/>`);
+    if ((series.length - 1 - i) % every === 0) {
+      grid.push(`<text x="${x(i)}" y="${H - 8}" text-anchor="middle" class="st-axis">${esc(s.label)}</text>`);
+    }
+  });
+  const line = values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('');
+  const area = `${line}L${x(values.length - 1).toFixed(1)},${y(0)}L${x(0).toFixed(1)},${y(0)}Z`;
+  const dots = values.map((v, i) => `<circle data-i="${i}" cx="${x(i)}" cy="${y(v)}" r="5" class="st-dot"/>`).join('');
+  box.innerHTML = `
+    <svg width="${W}" height="${H}" aria-hidden="true">
+      ${grid.join('')}
+      <path d="${area}" fill="url(#st-area)"/>
+      <path d="${line}" class="st-line"/>
+      ${dots}
+    </svg>`;
+  attachChartTip(box, series.map((s, i) => ({ x: x(i), y: y(values[i]), value: tipValue(s.value), title: tipTitle(s) })));
+}
+
+/** Linha do tempo em barras. */
+function drawBarChart(box, series, { axis, tipValue, tipTitle }) {
+  const W = box.clientWidth;
+  const H = box.clientHeight;
+  if (!W || !H) return;
+  const pad = { l: 40, r: 12, t: 22, b: 30 };
+  const { step, max } = niceScale(Math.max(...series.map(s => s.value)), 4, true);
+  const iw = W - pad.l - pad.r;
+  const ih = H - pad.t - pad.b;
+  const slot = iw / series.length;
+  const bw = Math.max(4, Math.min(34, slot * 0.56));
+  const cx = i => pad.l + slot * (i + 0.5);
+  const y = v => pad.t + (1 - v / max) * ih;
+  const parts = [];
+  for (let v = 0; v <= max + 1e-9; v += step) {
+    parts.push(`<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" class="st-grid-line"/>`
+      + `<text x="${pad.l - 10}" y="${y(v)}" dy=".32em" text-anchor="end" class="st-axis">${esc(axis(v))}</text>`);
+  }
+  const every = xLabelStep(series.length, iw);
+  series.forEach((s, i) => {
+    const h = Math.max(s.value ? 3 : 0, y(0) - y(s.value));
+    parts.push(`<rect data-i="${i}" x="${cx(i) - bw / 2}" y="${y(0) - h}" width="${bw}" height="${h}" rx="${Math.min(6, bw / 2)}" class="st-bar"/>`);
+    if ((series.length - 1 - i) % every === 0) {
+      parts.push(`<text x="${cx(i)}" y="${H - 8}" text-anchor="middle" class="st-axis">${esc(s.label)}</text>`);
+    }
+  });
+  box.innerHTML = `<svg width="${W}" height="${H}" aria-hidden="true">${parts.join('')}</svg>`;
+  attachChartTip(box, series.map((s, i) => ({ x: cx(i), y: y(s.value), value: tipValue(s.value), title: tipTitle(s) })));
+}
+
+/** Radar (teia) com as horas de cada canal. */
+function drawRadarChart(box, items) {
+  const W = box.clientWidth;
+  const H = box.clientHeight;
+  if (!W || !H) return;
+  if (items.length < 3) {
+    box.innerHTML = `<p class="st-empty">O radar aparece quando você tiver assistido a pelo menos 3 canais.</p>`;
+    return;
+  }
+  const n = items.length;
+  const cx = W / 2;
+  const cy = H / 2 + 4;
+  const R = Math.max(40, Math.min(H / 2 - 30, W / 2 - 105));
+  const max = Math.max(...items.map(i => i.value)) || 1;
+  const pt = (i, f) => {
+    const a = -Math.PI / 2 + (2 * Math.PI * i) / n;
+    return [cx + Math.cos(a) * R * f, cy + Math.sin(a) * R * f];
+  };
+  const parts = [];
+  for (const f of [0.25, 0.5, 0.75, 1]) parts.push(`<circle cx="${cx}" cy="${cy}" r="${R * f}" class="st-radar-ring"/>`);
+  items.forEach((it, i) => {
+    const [x2, y2] = pt(i, 1);
+    parts.push(`<line x1="${cx}" y1="${cy}" x2="${x2}" y2="${y2}" class="st-radar-axis"/>`);
+    const [lx, ly] = pt(i, 1.14);
+    const anchor = Math.abs(lx - cx) < 8 ? 'middle' : lx > cx ? 'start' : 'end';
+    const name = it.label.length > 16 ? `${it.label.slice(0, 15)}…` : it.label;
+    parts.push(`<text x="${lx}" y="${ly}" text-anchor="${anchor}" class="st-radar-label">`
+      + `<tspan x="${lx}" dy="${ly < cy - R * 0.3 ? '-1.2em' : ly > cy + R * 0.3 ? '.9em' : '-.3em'}">${esc(name)}</tspan>`
+      + `<tspan x="${lx}" dy="1.2em" class="st-radar-value">${esc(fmtHours(it.value))}</tspan></text>`);
+  });
+  const poly = items.map((it, i) => pt(i, Math.max(0.02, it.value / max)).map(v => v.toFixed(1)).join(',')).join(' ');
+  parts.push(`<polygon points="${poly}" class="st-radar-shape"/>`);
+  items.forEach((it, i) => {
+    const [x, y] = pt(i, Math.max(0.02, it.value / max));
+    parts.push(`<circle cx="${x}" cy="${y}" r="3.5" class="st-radar-dot"/>`);
+  });
+  box.innerHTML = `<svg width="${W}" height="${H}" aria-hidden="true">${parts.join('')}</svg>`;
+}
+
+/* ---------- Página ---------- */
+let statsData = null;
+
+function channelAvatar(ch, cls = 'st-avatar') {
+  return `<img class="${cls}" src="${esc(ch?.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">`;
+}
+
+function statsCalendarHTML(data) {
+  const now = new Date();
+  const month = new Date(now.getFullYear(), now.getMonth() + statsMonthOffset, 1);
+  const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const lead = month.getDay(); // domingo = 0, como no calendário da imagem
+  const values = Array.from({ length: days }, (_, i) => data.daySec.get(dayKey(new Date(month.getFullYear(), month.getMonth(), i + 1))) || 0);
+  const max = Math.max(...values, 1);
+  const today = dayKey();
+  const cells = Array.from({ length: lead }, () => '<span></span>');
+  values.forEach((sec, i) => {
+    const date = new Date(month.getFullYear(), month.getMonth(), i + 1);
+    const key = dayKey(date);
+    const vids = data.dayVids.get(key)?.size || 0;
+    const alpha = sec ? (0.25 + 0.75 * (sec / max)).toFixed(2) : 0;
+    const title = `${date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}: ${sec ? fmtHours(sec) : 'nada'}${vids ? ` · ${vids} ${vids === 1 ? 'vídeo' : 'vídeos'}` : ''}`;
+    cells.push(`<span class="st-day${sec ? ' has' : ''}${key === today ? ' today' : ''}" style="--a:${alpha}" title="${esc(title)}">${i + 1}</span>`);
+  });
+  const name = month.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  return `
+    <div class="st-cal-head">
+      <button class="st-cal-nav" type="button" data-cal="-1" aria-label="Mês anterior">‹</button>
+      <h2>${esc(name)}</h2>
+      <button class="st-cal-nav" type="button" data-cal="1" aria-label="Próximo mês"${statsMonthOffset >= 0 ? ' disabled' : ''}>›</button>
+    </div>
+    <div class="st-cal-grid">
+      ${['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map(d => `<b>${d}</b>`).join('')}
+      ${cells.join('')}
+    </div>`;
+}
+
+function renderStats({ refresh = true } = {}) {
+  const box = $('#stats');
+  if (!box) return;
+  const data = computeStats();
+  statsData = data;
+  const period = statsPeriod;
+  const P = STATS_PERIODS[period];
+  const channels = state.channels;
+  const chName = id => channels.find(c => c.id === id)?.title || 'Outros canais';
+
+  // Período atual x anterior
+  const hoursSeries = statsSeries(data.daySec, period, P.count);
+  const vidsSeries = statsSeries(data.dayVids, period, P.count, s => s.size);
+  const curH = hoursSeries.at(-1).value;
+  const prevH = hoursSeries.at(-2)?.value || 0;
+  const curV = vidsSeries.at(-1).value;
+  const prevV = vidsSeries.at(-2)?.value || 0;
+  const curStart = bucketStart(new Date(), period).getTime();
+  const curByCh = new Map();
+  for (const [day, m] of data.dayChSec) {
+    if (bucketStart(parseDay(day), period).getTime() !== curStart) continue;
+    for (const [ch, sec] of m) curByCh.set(ch, (curByCh.get(ch) || 0) + sec);
+  }
+  const topCur = [...curByCh].filter(([ch]) => ch).sort((a, b) => b[1] - a[1])[0];
+
+  // Últimos 30 dias
+  const last30 = Array.from({ length: 30 }, (_, i) => data.daySec.get(dayKey(Date.now() - i * 864e5)) || 0);
+  const active30 = last30.filter(Boolean).length;
+  const avg30 = last30.reduce((a, b) => a + b, 0) / 30;
+
+  // Por canal
+  const totalSec = [...data.chSec.values()].reduce((a, b) => a + b, 0);
+  const byHours = channels.map(c => ({ ch: c, value: data.chSec.get(c.id) || 0 })).sort((a, b) => b.value - a.value);
+  const top = byHours[0];
+  const byVideos = channels.map(c => ({ ch: c, value: data.doneByCh.get(c.id) || 0 })).sort((a, b) => b.value - a.value);
+  const maxVideos = Math.max(1, ...byVideos.map(i => i.value));
+  const catalog = channels.map(c => {
+    const total = channelStats[c.id]?.videos;
+    const doneN = data.doneByCh.get(c.id) || 0;
+    return { ch: c, done: doneN, total, pct: total ? (doneN / total) * 100 : 0 };
+  }).sort((a, b) => b.pct - a.pct || b.done - a.done);
+  const catalogTotal = catalog.reduce((a, c) => a + (c.total || 0), 0);
+  const catalogDone = catalog.reduce((a, c) => a + c.done, 0);
+
+  const deltaHTML = (cur, prev) => {
+    const d = fmtDelta(cur, prev);
+    return `<span class="st-delta ${d.dir}">${d.dir === 'up' ? '▲' : d.dir === 'down' ? '▼' : ''} ${esc(d.text)}</span><span class="st-vs">vs ${P.prev}</span>`;
+  };
+  const sinceText = new Date(data.since).toLocaleDateString('pt-BR');
+
+  box.innerHTML = `
+    ${STATS_DEFS}
+    <header class="st-head">
+      <div>
+        <h1>Estatísticas</h1>
+        <p>O seu tempo no MeuTube · registro desde ${sinceText}</p>
+      </div>
+      <div class="st-tabs" role="group" aria-label="Período">
+        ${Object.entries(STATS_PERIODS).map(([k, p]) => `<button type="button" data-period="${k}" aria-pressed="${k === period}">${p.label}</button>`).join('')}
+      </div>
+    </header>
+
+    <div class="st-grid">
+      <article class="st-card st-cal">${statsCalendarHTML(data)}</article>
+
+      <article class="st-card st-rings">
+        <div class="st-ring-item">
+          ${ringSVG(data.started ? (data.done / data.started) * 100 : 0)}
+          <h3>Concluídos</h3>
+          <p>${intFmt.format(data.done)} de ${intFmt.format(data.started)} vídeos começados</p>
+        </div>
+        <div class="st-ring-item">
+          ${ringSVG(catalogTotal ? (catalogDone / catalogTotal) * 100 : 0)}
+          <h3>Catálogo</h3>
+          <p>${catalogTotal ? `${intFmt.format(catalogDone)} de ${intFmt.format(catalogTotal)} vídeos dos seus canais` : 'carregando o total de vídeos…'}</p>
+        </div>
+        <div class="st-ring-item">
+          ${ringSVG(totalSec && top ? (top.value / totalSec) * 100 : 0)}
+          <h3>Canal nº 1</h3>
+          <p>${top?.value ? `${esc(top.ch.title)} · ${fmtHours(top.value)}` : 'ainda sem horas assistidas'}</p>
+        </div>
+      </article>
+
+      <article class="st-card st-wide">
+        <div class="st-card-head"><h2>Horas assistidas</h2><span class="st-sub">por ${P.label.toLowerCase()} · ${P.span}</span></div>
+        <div class="st-chart" id="st-hours" role="img" aria-label="Linha do tempo das horas assistidas"></div>
+      </article>
+
+      <article class="st-card st-side">
+        <div class="st-card-head"><h2>Horas por canal</h2><span class="st-sub">total registrado</span></div>
+        <div class="st-chart st-chart-radar" id="st-radar" role="img" aria-label="Horas assistidas por canal"></div>
+      </article>
+
+      <article class="st-card st-kpi">
+        <strong class="st-kpi-value">${intFmt.format(curV)}</strong>
+        <span class="st-kpi-label">Vídeos assistidos ${P.now}</span>
+        <div class="st-kpi-foot">${deltaHTML(curV, prevV)}</div>
+      </article>
+      <article class="st-card st-kpi">
+        <strong class="st-kpi-value">${fmtHours(curH)}</strong>
+        <span class="st-kpi-label">Assistidas ${P.now}</span>
+        <div class="st-kpi-foot">${deltaHTML(curH, prevH)}</div>
+      </article>
+      <article class="st-card st-kpi st-kpi-top">
+        <strong class="st-kpi-value st-kpi-name">${topCur ? esc(chName(topCur[0])) : '—'}</strong>
+        <span class="st-kpi-label">Canal mais assistido ${P.now}</span>
+        <div class="st-kpi-foot"><span class="st-delta">${topCur ? fmtHours(topCur[1]) : 'nada ainda'}</span></div>
+      </article>
+      <article class="st-card st-kpi st-kpi-ring">
+        ${ringSVG((active30 / 30) * 100, 92)}
+        <div>
+          <span class="st-kpi-label">Média diária</span>
+          <strong class="st-kpi-value">${fmtHours(avg30)}</strong>
+          <span class="st-kpi-label">/ dia · ${active30} de 30 dias com vídeos</span>
+        </div>
+      </article>
+
+      <article class="st-card st-wide">
+        <div class="st-card-head"><h2>Vídeos assistidos</h2><span class="st-sub">até o fim · por ${P.label.toLowerCase()} · ${P.span}</span></div>
+        <div class="st-chart" id="st-videos" role="img" aria-label="Linha do tempo dos vídeos assistidos"></div>
+      </article>
+
+      <article class="st-card st-side">
+        <div class="st-card-head"><h2>Vídeos por canal</h2><span class="st-sub">assistidos até o fim</span></div>
+        <ul class="st-bars">
+          ${byVideos.map(({ ch, value }) => `
+            <li>
+              ${channelAvatar(ch)}
+              <span class="st-bars-name" title="${esc(ch.title)}">${esc(ch.title)}</span>
+              <span class="st-bars-track"><span style="width:${((value / maxVideos) * 100).toFixed(1)}%"></span></span>
+              <b>${intFmt.format(value)}</b>
+            </li>`).join('') || '<li class="st-empty">Adicione canais nas Configurações.</li>'}
+        </ul>
+      </article>
+
+      <article class="st-card st-full">
+        <div class="st-card-head"><h2>Assistidos x total do canal</h2><span class="st-sub">vídeos que você viu até o fim, do total publicado pelo canal</span></div>
+        <div class="st-catalog">
+          ${catalog.map(c => `
+            <div class="st-catalog-item">
+              ${ringSVG(c.pct, 104)}
+              <div class="st-catalog-name">${channelAvatar(c.ch, 'st-avatar sm')}<span title="${esc(c.ch.title)}">${esc(c.ch.title)}</span></div>
+              <p>${intFmt.format(c.done)} de ${c.total != null ? intFmt.format(c.total) : '…'} vídeos</p>
+            </div>`).join('') || '<p class="st-empty">Adicione canais nas Configurações.</p>'}
+        </div>
+      </article>
+    </div>
+
+    <p class="st-note">
+      Horas contam o tempo em que o vídeo esteve tocando no MeuTube (neste e nos seus outros aparelhos, pela
+      sincronização). Um vídeo conta como assistido quando é visto até o fim.
+      ${data.estimated ? `Antes de ${sinceText}, horas e vídeos são <strong>estimados</strong> pelo progresso salvo
+        (o vídeo inteiro, se assistido, ou até onde parou, no dia do último acesso).` : ''}
+      O total de vídeos de cada canal vem do YouTube e inclui Shorts e lives gravadas.
+    </p>`;
+
+  drawStatsCharts();
+
+  if (refresh) {
+    // Busca o que falta (canal dos vídeos antigos, total de vídeos dos canais) e redesenha uma vez.
+    const needTotals = channels.some(c => channelStats[c.id]?.videos == null);
+    Promise.all([
+      ensureVideoChannels(),
+      channels.length && needTotals ? ensureChannelStats(channels[0].id).then(() => true) : false,
+    ]).then(([mapped, totals]) => {
+      if ((mapped || totals) && state.view === 'stats') renderStats({ refresh: false });
+    });
+  }
+}
+
+/** Desenha os gráficos com a largura real de cada cartão (refeito quando a largura muda). */
+function drawStatsCharts() {
+  const data = statsData;
+  if (!data || state.view !== 'stats') return;
+  const period = statsPeriod;
+  const P = STATS_PERIODS[period];
+  const label = s => ({ ...s, label: periodLabel(s.start, period) });
+  const hours = $('#st-hours');
+  if (hours) {
+    drawLineChart(hours, statsSeries(data.daySec, period, P.count).map(label), {
+      toValue: sec => sec / 3600,
+      axis: fmtHoursAxis,
+      tipValue: sec => fmtHours(sec),
+      tipTitle: s => periodLabel(s.start, period, true),
+    });
+  }
+  const videos = $('#st-videos');
+  if (videos) {
+    drawBarChart(videos, statsSeries(data.dayVids, period, P.count, s => s.size).map(label), {
+      axis: v => intFmt.format(v),
+      tipValue: n => `${intFmt.format(n)} ${n === 1 ? 'vídeo' : 'vídeos'}`,
+      tipTitle: s => periodLabel(s.start, period, true),
+    });
+  }
+  const radar = $('#st-radar');
+  if (radar) {
+    const items = state.channels
+      .map(c => ({ label: c.title, value: data.chSec.get(c.id) || 0 }))
+      .filter(i => i.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10);
+    drawRadarChart(radar, items);
+  }
+}
+
+function setupStats() {
+  const box = $('#stats');
+  box.addEventListener('click', e => {
+    const tab = e.target.closest('[data-period]');
+    if (tab) {
+      statsPeriod = tab.dataset.period;
+      store.set(KEYS.statsPeriod, statsPeriod);
+      renderStats({ refresh: false });
+      return;
+    }
+    const nav = e.target.closest('[data-cal]');
+    if (nav && !nav.disabled) {
+      statsMonthOffset = Math.min(0, statsMonthOffset + Number(nav.dataset.cal));
+      box.querySelector('.st-cal').innerHTML = statsCalendarHTML(statsData || computeStats());
+    }
+  });
+  let lastWidth = 0;
+  let frame = 0;
+  new ResizeObserver(([entry]) => {
+    const w = Math.round(entry.contentRect.width);
+    if (w === lastWidth) return;
+    lastWidth = w;
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(drawStatsCharts);
+  }).observe(box);
+  setInterval(tickWatchTime, STATS_TICK_MS);
+}
+
+/* =========================================================
    Inicialização
    ========================================================= */
 function init() {
@@ -3181,6 +3916,7 @@ function init() {
   console.info(`MeuTube v${APP_VERSION}`);
   setupMobileApp();
   setupPlayerControls();
+  setupStats();
   bindEvents();
   route(false);
   refreshLives(true);

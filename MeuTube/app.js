@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.8.1';
+const APP_VERSION = '1.8.2';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -3593,6 +3593,19 @@ function drawBarChart(box, series, { axis, tipValue, tipTitle }) {
   attachChartTip(box, series.map((s, i) => ({ x: cx(i), y: y(s.value), value: tipValue(s.value), title: tipTitle(s) })));
 }
 
+/** Quebra um nome em até 2 linhas de no máximo `max` letras (corta com … só se ainda não couber). */
+function wrapLabel(text, max) {
+  if (text.length <= max) return [text];
+  const words = text.split(' ');
+  let line1 = '';
+  while (words.length && (line1 ? `${line1} ${words[0]}` : words[0]).length <= max) line1 = line1 ? `${line1} ${words.shift()}` : words.shift();
+  if (!line1) line1 = words.shift();
+  let line2 = words.join(' ');
+  if (line1.length > max) line1 = `${line1.slice(0, max - 1)}…`;
+  if (line2.length > max) line2 = `${line2.slice(0, max - 1)}…`;
+  return line2 ? [line1, line2] : [line1];
+}
+
 /** Radar (teia) com as horas de cada canal. */
 function drawRadarChart(box, items) {
   const W = box.clientWidth;
@@ -3605,7 +3618,8 @@ function drawRadarChart(box, items) {
   const n = items.length;
   const cx = W / 2;
   const cy = H / 2 + 4;
-  const R = Math.max(40, Math.min(H / 2 - 30, W / 2 - 105));
+  const LABEL_W = 84; // espaço reservado para os nomes nas laterais
+  const R = Math.max(36, Math.min(H / 2 - 34, (W / 2 - LABEL_W) / 1.14));
   const max = Math.max(...items.map(i => i.value)) || 1;
   const pt = (i, f) => {
     const a = -Math.PI / 2 + (2 * Math.PI * i) / n;
@@ -3618,9 +3632,12 @@ function drawRadarChart(box, items) {
     parts.push(`<line x1="${cx}" y1="${cy}" x2="${x2}" y2="${y2}" class="st-radar-axis"/>`);
     const [lx, ly] = pt(i, 1.14);
     const anchor = Math.abs(lx - cx) < 8 ? 'middle' : lx > cx ? 'start' : 'end';
-    const name = it.label.length > 16 ? `${it.label.slice(0, 15)}…` : it.label;
+    // Nome em até 2 linhas, cabendo no espaço até a borda do cartão (~6,3 px por letra).
+    const room = anchor === 'middle' ? 150 : (anchor === 'start' ? W - lx : lx) - 4;
+    const lines = wrapLabel(it.label, Math.max(6, Math.floor(room / 6.3)));
+    const first = ly < cy - R * 0.3 ? -(lines.length + 0.2) : ly > cy + R * 0.3 ? 0.9 : -(lines.length * 0.6);
     parts.push(`<text x="${lx}" y="${ly}" text-anchor="${anchor}" class="st-radar-label">`
-      + `<tspan x="${lx}" dy="${ly < cy - R * 0.3 ? '-1.2em' : ly > cy + R * 0.3 ? '.9em' : '-.3em'}">${esc(name)}</tspan>`
+      + lines.map((l, j) => `<tspan x="${lx}" dy="${j ? '1.15em' : `${first.toFixed(2)}em`}">${esc(l)}</tspan>`).join('')
       + `<tspan x="${lx}" dy="1.2em" class="st-radar-value">${esc(fmtHours(it.value))}</tspan></text>`);
   });
   const poly = items.map((it, i) => pt(i, Math.max(0.02, it.value / max)).map(v => v.toFixed(1)).join(',')).join(' ');
@@ -3722,77 +3739,78 @@ function renderStats({ refresh = true } = {}) {
   box.innerHTML = `
     ${STATS_DEFS}
     <header class="st-head">
-      <div>
-        <h1>Estatísticas</h1>
-        <p>O seu tempo no MeuTube · registro desde ${sinceText}</p>
-      </div>
+      <h1>Estatísticas</h1>
+      <p>Registro desde ${sinceText}</p>
+      <details class="st-info">
+        <summary aria-label="Como os números são calculados" title="Como os números são calculados">i</summary>
+        <p>
+          Horas contam o tempo em que o vídeo esteve tocando no MeuTube (neste e nos seus outros aparelhos, pela
+          sincronização). Um vídeo conta como assistido quando é visto até o fim.
+          ${data.estimated ? `Antes de ${sinceText}, horas e vídeos são <strong>estimados</strong> pelo progresso salvo
+            (o vídeo inteiro, se assistido, ou até onde parou, no dia do último acesso).` : ''}
+          O total de vídeos de cada canal vem do YouTube e inclui Shorts e lives gravadas.
+        </p>
+      </details>
       <div class="st-tabs" role="group" aria-label="Período">
         ${Object.entries(STATS_PERIODS).map(([k, p]) => `<button type="button" data-period="${k}" aria-pressed="${k === period}">${p.label}</button>`).join('')}
       </div>
     </header>
 
     <div class="st-grid">
-      <article class="st-card st-cal">${statsCalendarHTML(data)}</article>
-
-      <article class="st-card st-rings">
-        <div class="st-ring-item">
-          ${ringSVG(data.started ? (data.done / data.started) * 100 : 0)}
-          <h3>Concluídos</h3>
-          <p>${intFmt.format(data.done)} de ${intFmt.format(data.started)} vídeos começados</p>
-        </div>
-        <div class="st-ring-item">
-          ${ringSVG(catalogTotal ? (catalogDone / catalogTotal) * 100 : 0)}
-          <h3>Catálogo</h3>
-          <p>${catalogTotal ? `${intFmt.format(catalogDone)} de ${intFmt.format(catalogTotal)} vídeos dos seus canais` : 'carregando o total de vídeos…'}</p>
-        </div>
-        <div class="st-ring-item">
-          ${ringSVG(totalSec && top ? (top.value / totalSec) * 100 : 0)}
-          <h3>Canal nº 1</h3>
-          <p>${top?.value ? `${esc(top.ch.title)} · ${fmtHours(top.value)}` : 'ainda sem horas assistidas'}</p>
-        </div>
-      </article>
-
-      <article class="st-card st-wide">
-        <div class="st-card-head"><h2>Horas assistidas</h2><span class="st-sub">por ${P.label.toLowerCase()} · ${P.span}</span></div>
-        <div class="st-chart" id="st-hours" role="img" aria-label="Linha do tempo das horas assistidas"></div>
-      </article>
-
-      <article class="st-card st-side">
-        <div class="st-card-head"><h2>Horas por canal</h2><span class="st-sub">total registrado</span></div>
-        <div class="st-chart st-chart-radar" id="st-radar" role="img" aria-label="Horas assistidas por canal"></div>
-      </article>
-
       <article class="st-card st-kpi">
-        <strong class="st-kpi-value">${intFmt.format(curV)}</strong>
         <span class="st-kpi-label">Vídeos assistidos ${P.now}</span>
+        <strong class="st-kpi-value">${intFmt.format(curV)}</strong>
         <div class="st-kpi-foot">${deltaHTML(curV, prevV)}</div>
       </article>
       <article class="st-card st-kpi">
+        <span class="st-kpi-label">Horas assistidas ${P.now}</span>
         <strong class="st-kpi-value">${fmtHours(curH)}</strong>
-        <span class="st-kpi-label">Assistidas ${P.now}</span>
         <div class="st-kpi-foot">${deltaHTML(curH, prevH)}</div>
       </article>
       <article class="st-card st-kpi st-kpi-top">
-        <strong class="st-kpi-value st-kpi-name">${topCur ? esc(chName(topCur[0])) : '—'}</strong>
         <span class="st-kpi-label">Canal mais assistido ${P.now}</span>
+        <strong class="st-kpi-value st-kpi-name" title="${topCur ? esc(chName(topCur[0])) : ''}">${topCur ? esc(chName(topCur[0])) : '—'}</strong>
         <div class="st-kpi-foot"><span class="st-delta">${topCur ? fmtHours(topCur[1]) : 'nada ainda'}</span></div>
       </article>
       <article class="st-card st-kpi st-kpi-ring">
-        ${ringSVG((active30 / 30) * 100, 92)}
+        ${ringSVG((active30 / 30) * 100, 64)}
         <div>
           <span class="st-kpi-label">Média diária</span>
           <strong class="st-kpi-value">${fmtHours(avg30)}</strong>
-          <span class="st-kpi-label">/ dia · ${active30} de 30 dias com vídeos</span>
+          <span class="st-vs">${active30} de 30 dias com vídeos</span>
+        </div>
+      </article>
+      <article class="st-card st-rings">
+        <div class="st-ring-item" title="${intFmt.format(data.done)} de ${intFmt.format(data.started)} vídeos começados">
+          ${ringSVG(data.started ? (data.done / data.started) * 100 : 0, 64)}
+          <h3>Concluídos</h3>
+        </div>
+        <div class="st-ring-item" title="${catalogTotal ? `${intFmt.format(catalogDone)} de ${intFmt.format(catalogTotal)} vídeos dos seus canais` : 'carregando o total de vídeos…'}">
+          ${ringSVG(catalogTotal ? (catalogDone / catalogTotal) * 100 : 0, 64)}
+          <h3>Catálogo</h3>
+        </div>
+        <div class="st-ring-item" title="${top?.value ? `${esc(top.ch.title)} · ${fmtHours(top.value)} do total` : 'ainda sem horas assistidas'}">
+          ${ringSVG(totalSec && top ? (top.value / totalSec) * 100 : 0, 64)}
+          <h3>Canal nº 1</h3>
         </div>
       </article>
 
-      <article class="st-card st-wide">
-        <div class="st-card-head"><h2>Vídeos assistidos</h2><span class="st-sub">até o fim · por ${P.label.toLowerCase()} · ${P.span}</span></div>
+      <article class="st-card st-hours">
+        <div class="st-card-head"><h2>Horas assistidas</h2><span class="st-sub">por ${P.label.toLowerCase()} · ${P.span}</span></div>
+        <div class="st-chart" id="st-hours" role="img" aria-label="Linha do tempo das horas assistidas"></div>
+      </article>
+      <article class="st-card st-videos">
+        <div class="st-card-head"><h2>Vídeos assistidos</h2><span class="st-sub">até o fim · ${P.span}</span></div>
         <div class="st-chart" id="st-videos" role="img" aria-label="Linha do tempo dos vídeos assistidos"></div>
       </article>
+      <article class="st-card st-radar">
+        <div class="st-card-head"><h2>Horas por canal</h2></div>
+        <div class="st-chart" id="st-radar" role="img" aria-label="Horas assistidas por canal"></div>
+      </article>
 
-      <article class="st-card st-side">
-        <div class="st-card-head"><h2>Vídeos por canal</h2><span class="st-sub">assistidos até o fim</span></div>
+      <article class="st-card st-cal">${statsCalendarHTML(data)}</article>
+      <article class="st-card st-perch">
+        <div class="st-card-head"><h2>Vídeos por canal</h2><span class="st-sub">até o fim</span></div>
         <ul class="st-bars">
           ${byVideos.map(({ ch, value }) => `
             <li>
@@ -3803,27 +3821,18 @@ function renderStats({ refresh = true } = {}) {
             </li>`).join('') || '<li class="st-empty">Adicione canais nas Configurações.</li>'}
         </ul>
       </article>
-
-      <article class="st-card st-full">
-        <div class="st-card-head"><h2>Assistidos x total do canal</h2><span class="st-sub">vídeos que você viu até o fim, do total publicado pelo canal</span></div>
+      <article class="st-card st-catalog-card">
+        <div class="st-card-head"><h2>Assistidos x total do canal</h2><span class="st-sub">vistos até o fim, do total publicado</span></div>
         <div class="st-catalog">
           ${catalog.map(c => `
-            <div class="st-catalog-item">
-              ${ringSVG(c.pct, 104)}
-              <div class="st-catalog-name">${channelAvatar(c.ch, 'st-avatar sm')}<span title="${esc(c.ch.title)}">${esc(c.ch.title)}</span></div>
-              <p>${intFmt.format(c.done)} de ${c.total != null ? intFmt.format(c.total) : '…'} vídeos</p>
+            <div class="st-catalog-item" title="${esc(c.ch.title)}: ${intFmt.format(c.done)} de ${c.total != null ? intFmt.format(c.total) : '…'} vídeos">
+              ${ringSVG(c.pct, 64)}
+              <div class="st-catalog-name">${channelAvatar(c.ch, 'st-avatar sm')}<span>${esc(c.ch.title)}</span></div>
+              <p>${intFmt.format(c.done)} de ${c.total != null ? intFmt.format(c.total) : '…'}</p>
             </div>`).join('') || '<p class="st-empty">Adicione canais nas Configurações.</p>'}
         </div>
       </article>
-    </div>
-
-    <p class="st-note">
-      Horas contam o tempo em que o vídeo esteve tocando no MeuTube (neste e nos seus outros aparelhos, pela
-      sincronização). Um vídeo conta como assistido quando é visto até o fim.
-      ${data.estimated ? `Antes de ${sinceText}, horas e vídeos são <strong>estimados</strong> pelo progresso salvo
-        (o vídeo inteiro, se assistido, ou até onde parou, no dia do último acesso).` : ''}
-      O total de vídeos de cada canal vem do YouTube e inclui Shorts e lives gravadas.
-    </p>`;
+    </div>`;
 
   drawStatsCharts();
 
@@ -3839,7 +3848,7 @@ function renderStats({ refresh = true } = {}) {
   }
 }
 
-/** Desenha os gráficos com a largura real de cada cartão (refeito quando a largura muda). */
+/** Desenha os gráficos com o tamanho real de cada cartão (refeito quando o tamanho muda). */
 function drawStatsCharts() {
   const data = statsData;
   if (!data || state.view !== 'stats') return;
@@ -3890,12 +3899,12 @@ function setupStats() {
       box.querySelector('.st-cal').innerHTML = statsCalendarHTML(statsData || computeStats());
     }
   });
-  let lastWidth = 0;
+  let lastSize = '';
   let frame = 0;
   new ResizeObserver(([entry]) => {
-    const w = Math.round(entry.contentRect.width);
-    if (w === lastWidth) return;
-    lastWidth = w;
+    const size = `${Math.round(entry.contentRect.width)}x${Math.round(entry.contentRect.height)}`;
+    if (size === lastSize) return;
+    lastSize = size;
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(drawStatsCharts);
   }).observe(box);
