@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -1251,6 +1251,10 @@ const PLAY_ICONS = {
   pause: ICON('M6 5h4v14H6zm8 0h4v14h-4z'),
   replay: ICON('M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z'),
 };
+const SKIP_ICONS = {
+  prev: ICON('M6 6h2v12H6zm3.5 6 8.5 6V6z'),
+  next: ICON('M6 18l8.5-6L6 6zM16 6v12h2V6z'),
+};
 const VOL_ICONS = {
   high: ICON('M3 9v6h4l5 5V4L7 9zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z'),
   low: ICON('M5 9v6h4l5 5V4L9 9zm13.5 3A4.5 4.5 0 0 0 16 8v8a4.5 4.5 0 0 0 2.5-4z'),
@@ -1336,6 +1340,62 @@ let pointerOnBar = false;
 
 function setControlsVisible(visible) {
   $('.player-wrap').classList.toggle('pc-hidden', !visible);
+}
+
+/* ---------- Anterior / Próximo ---------- */
+// "Próximo" toca o primeiro vídeo de "A seguir". "Anterior" volta ao último vídeo assistido
+// antes deste (vale para esta aba, mesmo passando pelo Início; recarregar não apaga).
+const WATCH_HISTORY_KEY = 'meutube.watchHistory';
+const WATCH_HISTORY_MAX = 50;
+const watchHistory = (() => {
+  try { return { stack: [], last: null, ...JSON.parse(sessionStorage.getItem(WATCH_HISTORY_KEY)) }; } catch { return { stack: [], last: null }; }
+})();
+let goingBack = false;
+
+function saveWatchHistory() {
+  try { sessionStorage.setItem(WATCH_HISTORY_KEY, JSON.stringify(watchHistory)); } catch { /* sem sessionStorage */ }
+}
+
+/** Chamado quando um vídeo (já conferido como de um canal seu) começa a ser exibido. */
+function recordWatchHistory(id) {
+  if (goingBack) goingBack = false;
+  else if (watchHistory.last && watchHistory.last !== id) {
+    watchHistory.stack.push(watchHistory.last);
+    watchHistory.stack = watchHistory.stack.slice(-WATCH_HISTORY_MAX);
+  }
+  watchHistory.last = id;
+  saveWatchHistory();
+  updateSkipButtons();
+}
+
+function previousVideoId() {
+  return watchHistory.stack.findLast(id => id !== state.currentVideoId) || null;
+}
+
+function playPrevious() {
+  const id = previousVideoId();
+  if (!id) return;
+  while (watchHistory.stack.length && watchHistory.stack.at(-1) !== id) watchHistory.stack.pop();
+  watchHistory.stack.pop();
+  saveWatchHistory();
+  goingBack = true;
+  location.hash = `#/watch/${id}`;
+}
+
+function playNext() {
+  const next = nextVideoAfter(state.currentVideo);
+  if (next) location.hash = `#/watch/${next.id}`;
+}
+
+function updateSkipButtons() {
+  const set = (btn, enabled, label) => {
+    btn.disabled = !enabled;
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+  };
+  const next = nextVideoAfter(state.currentVideo);
+  set($('#pc-prev'), Boolean(previousVideoId()), previousVideoId() ? 'Anterior (Shift+P)' : 'Nenhum vídeo anterior');
+  set($('#pc-next'), Boolean(next), next ? `Próximo: ${next.title} (Shift+N)` : 'Nenhum vídeo seguinte');
 }
 
 /* ---------- Faixa de título (em cima do vídeo) ---------- */
@@ -1641,6 +1701,9 @@ function setupPlayerControls() {
   setYouTubeTitleShowing(true);
   $('#pc-settings').insertAdjacentHTML('afterbegin', GEAR_ICON);
   $('#pc-cc').innerHTML = CC_ICON;
+  $('#pc-prev').innerHTML = SKIP_ICONS.prev;
+  $('#pc-next').innerHTML = SKIP_ICONS.next;
+  updateSkipButtons();
   updatePlayButton(false);
   updateVolumeUI();
   updateAutoplayButton();
@@ -1655,6 +1718,8 @@ function setupPlayerControls() {
     if (e.detail > 0) e.currentTarget.blur();
   });
   onClick('#pc-play', togglePlay);
+  onClick('#pc-prev', playPrevious);
+  onClick('#pc-next', playNext);
   onClick('#pc-mute', toggleMute);
   onClick('#pc-autoplay', toggleAutoplay);
   onClick('#pc-cc', toggleCaptions);
@@ -1760,6 +1825,11 @@ function setupPlayerControls() {
     // Botões fora do player mantêm o comportamento normal; os do player não bloqueiam os atalhos.
     if (e.target.closest?.('button') && !e.target.closest('.player-wrap')) return;
     if (e.key === 'Escape' && !$('#pc-menu').hidden) { openMenu(false); return; }
+    if (e.shiftKey && (e.key === 'N' || e.key === 'P')) {
+      e.preventDefault();
+      (e.key === 'N' ? playNext : playPrevious)();
+      return;
+    }
     const actions = {
       ' ': togglePlay,
       k: togglePlay,
@@ -1907,6 +1977,7 @@ function enterWatch(id) {
   if (playerVideoId && playerVideoId !== id) saveProgress();
   state.currentVideoId = id;
   state.currentVideo = null;
+  updateSkipButtons();
   upNextCount = UPNEXT_PAGE;
   Comments.req++; // cancela respostas de comentários do vídeo anterior
   $('#player-error').hidden = true;
@@ -1945,6 +2016,7 @@ function enterWatch(id) {
       renderWatchInfo(video);
     }
     state.currentVideo = video;
+    recordWatchHistory(id);
     markSeen(id);
     playVideo(id);
     loadComments(id, true);
@@ -2018,6 +2090,7 @@ async function renderUpNext(video) {
   }
   more.hidden = !slice.hasMore || Boolean(failure);
   more.disabled = false;
+  updateSkipButtons();
 }
 
 /* ---------- Comentários ---------- */

@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = '1.8.0'; // mudar este número faz o navegador atualizar o service worker
+const VERSION = '1.6.0'; // mudar este número faz o navegador atualizar o service worker
 
 /* =========================================================
    Service worker mínimo do MeuTube
