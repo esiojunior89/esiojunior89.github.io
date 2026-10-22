@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f0f12">
+  <title>Changelog — MeuTube</title>
+  <meta name="description" content="Tudo o que mudou no MeuTube, da primeira publicação até a v1.6.1.">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -4 28 28'%3E%3Crect width='28' height='20' rx='6' fill='%23ff3d3d'/%3E%3Cpath d='M11.5 5.8v8.4L18.6 10z' fill='%23fff'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      --bg:#0f0f12; --surface:#17171c; --surface-2:#212128; --border:#2d2d35;
+      --text:#f2f2f5; --muted:#9d9daa; --accent:#ff3d3d; --accent-soft:rgba(255,61,61,.14);
+      --new:#34c77b; --new-bg:rgba(52,199,123,.14);
+      --imp:#4da3ff; --imp-bg:rgba(77,163,255,.14);
+      --fix:#ffb020; --fix-bg:rgba(255,176,32,.14);
+      --rev:#9d9daa; --rev-bg:rgba(157,157,170,.16);
+      --ease:cubic-bezier(.2,.8,.2,1);
+      color-scheme: dark;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg:#f6f6f8; --surface:#ffffff; --surface-2:#ececf0; --border:#dedee4;
+        --text:#141418; --muted:#63636f; --accent-soft:rgba(255,61,61,.1);
+        --new:#13874d; --new-bg:rgba(52,199,123,.16);
+        --imp:#1a6fd1; --imp-bg:rgba(77,163,255,.16);
+        --fix:#a35f00; --fix-bg:rgba(255,176,32,.2);
+        --rev:#63636f; --rev-bg:rgba(99,99,111,.12);
+        color-scheme: light;
+      }
+    }
+    *, *::before, *::after { box-sizing:border-box; }
+    html { scroll-behavior:smooth; -webkit-text-size-adjust:100%; }
+    body {
+      margin:0; min-height:100vh; background:var(--bg); color:var(--text);
+      font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+      -webkit-font-smoothing:antialiased;
+    }
+    a { color:inherit; }
+    .wrap { max-width:820px; margin:0 auto; padding:0 max(16px, env(safe-area-inset-left)) 72px; }
+
+    .top {
+      position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:12px;
+      height:60px; padding:0 max(16px, env(safe-area-inset-left));
+      background:color-mix(in srgb, var(--bg) 80%, transparent);
+      backdrop-filter:saturate(180%) blur(16px); -webkit-backdrop-filter:saturate(180%) blur(16px);
+      border-bottom:1px solid var(--border);
+    }
+    .brand { display:flex; align-items:center; gap:10px; text-decoration:none; font-size:19px; letter-spacing:-.02em; }
+    .brand svg { width:30px; height:22px; color:var(--accent); transition:transform .3s var(--ease); }
+    .brand:hover svg { transform:scale(1.08) rotate(-4deg); }
+    .back {
+      margin-left:auto; padding:8px 14px; border-radius:999px; text-decoration:none;
+      font-weight:600; font-size:14px; background:var(--surface-2); transition:background .2s;
+    }
+    .back:hover { background:var(--border); }
+
+    .hero { padding:48px 0 28px; animation:rise .6s var(--ease) both; }
+    .hero .eyebrow {
+      display:inline-flex; align-items:center; gap:8px; padding:4px 12px; border-radius:999px;
+      background:var(--accent-soft); color:var(--accent); font-size:13px; font-weight:700;
+    }
+    .hero h1 { margin:14px 0 8px; font-size:clamp(30px,6vw,44px); line-height:1.1; letter-spacing:-.03em; }
+    .hero p { margin:0; max-width:56ch; color:var(--muted); font-size:16px; }
+    .stats { display:flex; flex-wrap:wrap; gap:10px; margin-top:22px; }
+    .stat { padding:10px 16px; border-radius:14px; background:var(--surface); border:1px solid var(--border); }
+    .stat b { display:block; font-size:22px; letter-spacing:-.02em; line-height:1.2; }
+    .stat span { font-size:12.5px; color:var(--muted); }
+
+    .legend { display:flex; flex-wrap:wrap; gap:8px; margin:26px 0 0; }
+    .tabs { display:flex; gap:6px; margin:30px 0 8px; border-bottom:1px solid var(--border); }
+    .tabs a {
+      padding:10px 14px; text-decoration:none; font-weight:600; color:var(--muted);
+      border-bottom:2px solid transparent; margin-bottom:-1px; transition:color .2s;
+    }
+    .tabs a:hover { color:var(--text); }
+    .tabs a.on { color:var(--text); border-color:var(--accent); }
+
+    h2.sec { margin:36px 0 18px; font-size:20px; letter-spacing:-.01em; scroll-margin-top:76px; }
+    h2.sec small { margin-left:8px; font-size:13px; font-weight:500; color:var(--muted); }
+
+    .tag {
+      display:inline-block; padding:1px 9px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap;
+    }
+    .tag.new { color:var(--new); background:var(--new-bg); }
+    .tag.imp { color:var(--imp); background:var(--imp-bg); }
+    .tag.fix { color:var(--fix); background:var(--fix-bg); }
+    .tag.rev { color:var(--rev); background:var(--rev-bg); }
+
+    /* Linha do tempo */
+    .timeline { list-style:none; margin:0; padding:0 0 0 22px; position:relative; }
+    .timeline::before {
+      content:""; position:absolute; left:5px; top:8px; bottom:8px; width:2px;
+      background:linear-gradient(var(--accent), var(--border) 30%, var(--border));
+    }
+    .entry { position:relative; margin-bottom:16px; animation:rise .5s var(--ease) both; animation-delay:calc(var(--i,0) * 40ms); }
+    .dot {
+      position:absolute; left:-22px; top:20px; width:12px; height:12px; border-radius:50%;
+      background:var(--bg); border:2px solid var(--accent);
+    }
+    .entry:first-child .dot { background:var(--accent); box-shadow:0 0 0 5px var(--accent-soft); }
+    .card {
+      padding:16px 18px; border-radius:16px; background:var(--surface); border:1px solid var(--border);
+      transition:transform .25s var(--ease), border-color .25s;
+    }
+    .card:hover { transform:translateY(-2px); border-color:color-mix(in srgb, var(--accent) 45%, var(--border)); }
+    .card header { display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px; }
+    .card h3 { margin:0; font-size:18px; letter-spacing:-.01em; display:flex; align-items:center; gap:8px; }
+    .now {
+      padding:1px 8px; border-radius:6px; background:var(--accent); color:#fff;
+      font-size:11px; font-weight:800; letter-spacing:.04em; text-transform:uppercase;
+    }
+    time { margin-left:auto; font-size:13px; color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .title { margin:8px 0 6px; font-weight:600; }
+    .card ul { margin:0; padding-left:18px; color:var(--muted); }
+    .card li { margin:3px 0; }
+    .card li::marker { color:var(--accent); }
+
+    /* Antes do versionamento */
+    .prelist { list-style:none; margin:0; padding:0; border:1px solid var(--border); border-radius:16px; background:var(--surface); overflow:hidden; }
+    .prelist li {
+      display:grid; grid-template-columns:104px auto 1fr; gap:6px 12px; align-items:baseline;
+      padding:12px 16px; border-top:1px solid var(--border);
+    }
+    .prelist li:first-child { border-top:0; }
+    .prelist time { margin:0; }
+    .prelist .txt { min-width:0; }
+
+    footer { margin-top:48px; padding-top:20px; border-top:1px solid var(--border); color:var(--muted); font-size:13px; }
+
+    @keyframes rise { from { opacity:0; transform:translateY(14px); } }
+    @media (max-width:560px) {
+      .prelist li { grid-template-columns:auto 1fr; }
+      .prelist .txt { grid-column:1 / -1; }
+      time { margin-left:0; }
+      .brand span { display:none; }
+    }
+    @media (prefers-reduced-motion:reduce) {
+      html { scroll-behavior:auto; }
+      *, *::before, *::after { animation-duration:.01ms !important; animation-delay:0ms !important; transition-duration:.01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="./" aria-label="Voltar ao MeuTube">
+      <svg viewBox="0 0 28 20" aria-hidden="true"><rect width="28" height="20" rx="6" fill="currentColor"/><path d="M11.5 5.8v8.4L18.6 10z" fill="#fff"/></svg>
+      <span>Meu<strong>Tube</strong></span>
+    </a>
+    <a class="back" href="./">Abrir o app</a>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <span class="eyebrow">Changelog</span>
+      <h1>O que mudou no MeuTube</h1>
+      <p>Da primeira publicação à versão atual: menu de canais, sincronização na nuvem, app instalável e um player com controles próprios.</p>
+      <div class="stats">
+        <div class="stat"><b>v1.6.1</b><span>versão atual</span></div>
+        <div class="stat"><b>13</b><span>versões numeradas</span></div>
+        <div class="stat"><b>29</b><span>entregas registradas</span></div>
+        <div class="stat"><b>2</b><span>dias de história</span></div>
+      </div>
+      <div class="legend" aria-label="Legenda">
+        <span class="tag new">Novo</span><span class="tag imp">Melhoria</span><span class="tag fix">Correção</span><span class="tag rev">Revertida</span>
+      </div>
+    </section>
+
+    <nav class="tabs" aria-label="Seções">
+      <a href="#versoes" class="on">Versões</a>
+      <a href="#antes">Antes da v1.0.0</a>
+    </nav>
+
+    <h2 class="sec" id="versoes">Desde a v1.0.0 <small>2026, mais recente primeiro</small></h2>
+    <ol class="timeline">
+    <li class="entry" style="--i:0">
+      <div class="dot" aria-hidden="true"></div>
+      <article class="card">
+        <header>
+          <h3><span class="ver">v1.6.1</span> <span class="now">atual</span></h3>
+          <span class="tag fix">Correção</span>
+          <time>21/10 · 21:24</time>
+        </header>
+        <p class="title">Menu da engrenagem mais limpo</p>
+        <ul><li>Removido o aviso “O YouTube escolhe a qualidade sozinho; o app só mostra a atual.”</li></ul>
+      </article>
+    </li>
+    <li class="entry" style="--i:1">
+      <div class="dot" aria-hidden="true"></div>
+      <article class="card">
+        <header>
+          <h3><span class="ver">v1.6.0</span></h3>
+          <span class="tag new">Novo</span>
+          <time>21/10 · 21:22</time>
+        </header>
+        <p class="title">Player com controles próprios</p>
+        <ul><li>Controles desenhados pelo app: play/pausa, volume, tempo, reprodução automática, legendas, engrenagem e tela cheia.</li><li>Menu da engrenagem com velocidade, legendas e a qualidade atual.</li><li>Barra de progresso vermelha com dica de tempo ao passar o mouse.</li><li>Os controles somem com o vídeo tocando; a camada de cliques cobre o vídeo inteiro.</li></ul>
+      </article>
+    </li>
+    <li class="entry" style="--i:2">
+      <div class="dot" aria-hidden="true"></div>
+      <article class="card">
+        <header>
+          <h3><span class="ver">v1.5.0</span></h3>
+          <span class="tag imp">Melhoria</span>
+          <time>21/10 · 20:39</time>
+        </header>
+        <p class="title">Rodapé do menu lateral</p>
+        <ul><li>“Ocultar assistidos” e “Configurações” saem da barra superior e viram ícones no rodapé do menu, junto da versão.</li><li>Com o menu recolhido, os ícones ficam um embaixo do outro.</li></ul>
+      </article>
+    </li>
+    <li class="entry" style="--i:3">
+      <div class="dot" aria-hidden="true"></div>
+      <article class="card">
+        <header>
+          <h3><span class="ver">v1.4.1</span></h3>
+          <span class="tag imp">Melhoria</span>
+          <time>21/10 · 20:30</time>
+        </header>
+        <p class="title">Tela cheia do app</p>
+        <ul><li>Botão de tela cheia do app no lugar do botão do YouTube.</li><li>Clique duplo e tecla F funcionam sempre, inclusive para sair da tela cheia.</li></ul>
+      </article>
+    </li>
+    <li class="entry" style="--i:4">
+      <div class="dot" aria-hidden="true"></div>
+      <article class="card">
+        <header>
+          <h3><span class="ver">v1.4.0</span></h3>
+          <span class="tag imp">Melhoria</span>
+          <time>21/10 · 20:19</time>
+        </header>
+        <p class="title">“A seguir” no estilo do YouTube</p>
+        <ul><li>Três tiles grandes, juntos com a altura do player.</li><li>“Mostrar mais” acrescenta 3 vídeos por vez.</li></ul>
+      </article>
+    </li>
+    <li class="entry" style="--i:5">
+      <div class="dot" aria-hidden="true"></div>
+      <article class="card">
+        <header>
+          <h3><span class="ver">v1.3.2</span></h3>
+          <span class="tag imp">Melhoria</span>
+          <time>21/10 · 20:06</time>
+        </header>
+        <p class="title">Posição da página do vídeo</p>
+        <ul><li>Player a 12 px do topo e conjunto encostado à esquerda.</li><li>Espaço reservado para título, canal e a 1ª linha da descrição sem rolar.</li></ul>
+      </article>
+    </li>
+    <li class="entry" style="--i:6">
+      <div class="dot" aria-hidden="true"></div>
+      <article class="card">
+        <header>
+          <h3><span class="ver">v1.3.1</span></h3>
+          <span class="tag imp">Melhoria</span>
+          <time>21/10 · 20:01</time>
+        </header>
+        <p class="title">Medidas do YouTube</p>
+        <ul><li>Margens de 24 px e coluna “A seguir” de cerca de 400 px.</li><li>Altura do player limitada à da janela; título e avatar ajustados.</li></ul>
+      </article>
+    </li>
+    <li class="entry" style="--i:7">
+      <div class="dot" aria-hidden="true"></div>
+      <article class="card">
+        <header>
+          <h3><span class="ver">v1.3.0</span></h3>
+          <span class="tag new">Novo</span>
+          <time>21/10 · 19:43</time>
+        </header>
+        <p class="title">Descrição no estilo do YouTube</p>
+        <ul><li>Caixa de descrição com visualizações e data em negrito, 3 linhas e “mais”.</li><li>Avatar do canal maior.</li><li>Saem o chip de retomar e as pílulas de estatísticas.</li></ul>
+      </article>
+    </li>
+    <li class="entry" style="--i:8">
+      <div class="dot" aria-hidden="true"></div>
+      <article class="card">
+        <header>
+          <h3><span class="ver">v1.2.0</span></h3>
+          <span class="tag imp">Melhoria</span>
+          <time>21/10 · 19:29</time>
+        </header>
+        <p class="title">Economia de cota da API</p>
+        <ul><li>Lives só são verificadas com o menu expandido e o app visível; ao expandir, verifica na hora se a última checagem tiver mais de 5 min.</li><li>“A seguir” passa a mostrar 4 vídeos.</li><li>Limite de 5 páginas por busca ao ocultar assistidos.</li></ul>
+      </article>
+    </li>
+    <li class="entry" style="--i:9">
+      <div class="dot" aria-hidden="true"></div>
+      <article class="card">
+        <header>
+          <h3><span class="ver">v1.1.2</span></h3>
+          <span class="tag new">Novo</span>
+          <time>21/10 · 19:02</time>
+        </header>
+        <p class="title">Clique no vídeo e tela cheia</p>
+        <ul><li>Clique pausa e continua; clique duplo alterna a tela cheia sem pausar; tecla F.</li><li>Cursor some parado sobre o vídeo.</li><li>Correções de estado do player em cliques seguidos e clique duplo sem selecionar texto.</li></ul>
+      </article>
+    </li>
+    <li class="entry" style="--i:10">
+      <div class="dot" aria-hidden="true"></div>
+      <article class="card">
+        <header>
+          <h3><span class="ver">v1.1.1</span></h3>
+          <span class="tag rev">Revertida</span>
+          <time>21/10 · 18:56</time>
+        </header>
+        <p class="title">Primeira entrega do clique no vídeo</p>
+        <ul><li>Revertida dois minutos depois e reentregue como 1.1.2.</li></ul>
+      </article>
+    </li>
+    <li class="entry" style="--i:11">
+      <div class="dot" aria-hidden="true"></div>
+      <article class="card">
+        <header>
+          <h3><span class="ver">v1.0.1</span></h3>
+          <span class="tag fix">Correção</span>
+          <time>21/10 · 11:51</time>
+        </header>
+        <p class="title">Marca de assistido</p>
+        <ul><li>Vídeo já assistido mantém a marca ao ser revisto.</li><li>Voltar ao início zera só o ponto onde parou, sem tirar a marca de assistido.</li><li>Barra de progresso acompanha o ponto atual.</li></ul>
+      </article>
+    </li>
+    <li class="entry" style="--i:12">
+      <div class="dot" aria-hidden="true"></div>
+      <article class="card">
+        <header>
+          <h3><span class="ver">v1.0.0</span></h3>
+          <span class="tag new">Novo</span>
+          <time>21/10 · 11:37</time>
+        </header>
+        <p class="title">Versionamento</p>
+        <ul><li>Versão visível no app (menu lateral e Configurações).</li><li>Arquivos carregados com ?v= para forçar a atualização.</li><li>Service worker sem cache.</li></ul>
+      </article>
+    </li>
+    </ol>
+
+    <h2 class="sec" id="antes">Antes do versionamento <small>20/10 e manhã de 21/10</small></h2>
+    <ul class="prelist">
+      <li><time>21/10 · 11:24</time><span class="tag new">Novo</span><span class="txt">App instalável: manifest, service worker e ícones dentro da pasta MeuTube.</span></li>
+      <li><time>21/10 · 11:07</time><span class="tag imp">Melhoria</span><span class="txt">Login: aviso ao sair da conta neste aparelho e, quando o Google encerra a sessão, o painel oferece “Reconectar”.</span></li>
+      <li><time>21/10 · 11:02</time><span class="tag imp">Melhoria</span><span class="txt">Resumo da sincronização nas Configurações, mostrando o que ficou na nuvem.</span></li>
+      <li><time>21/10 · 10:50</time><span class="tag new">Novo</span><span class="txt">Sincronização na nuvem por uma pasta oculta do Google Drive: canais, opções, chave de API e progresso entre aparelhos.</span></li>
+      <li><time>21/10 · 10:31</time><span class="tag new">Novo</span><span class="txt">Botão para ocultar vídeos já assistidos.</span></li>
+      <li><time>21/10 · 00:26</time><span class="tag imp">Melhoria</span><span class="txt">Transição suave ao entrar e sair da tela cheia.</span></li>
+      <li><time>21/10 · 00:15</time><span class="tag fix">Correção</span><span class="txt">Ao trocar de vídeo pela reprodução automática, o vídeo novo não é mais marcado como assistido por dados do vídeo anterior.</span></li>
+      <li><time>21/10 · 00:06</time><span class="tag imp">Melhoria</span><span class="txt">Canais e lives em ordem alfabética.</span></li>
+      <li><time>20/10 · 23:50</time><span class="tag new">Novo</span><span class="txt">Opção “Apenas lives” por canal: ele só aparece em “Ao vivo”, quando está transmitindo.</span></li>
+      <li><time>20/10 · 23:35</time><span class="tag imp">Melhoria</span><span class="txt">Menu lateral dividido: canais em cima e lives embaixo, cada um com a própria rolagem.</span></li>
+      <li><time>20/10 · 23:23</time><span class="tag new">Novo</span><span class="txt">Barra de progresso nos vídeos já assistidos e retomada de onde parou.</span></li>
+      <li><time>20/10 · 22:52</time><span class="tag new">Novo</span><span class="txt">Menu lateral de canais, filtro por canal e opção de ocultar Shorts.</span></li>
+      <li><time>20/10 · 21:58</time><span class="tag fix">Correção</span><span class="txt">Comentários usam só a chave de API; um erro de escopo repete a chamada com a chave, sem derrubar o login.</span></li>
+      <li><time>20/10 · 21:31</time><span class="tag imp">Melhoria</span><span class="txt">Mensagens de erro da YouTube Data API mais detalhadas; avisos de erro de canais ficam mais tempo na tela.</span></li>
+      <li><time>20/10 · 21:25</time><span class="tag fix">Correção</span><span class="txt">O app verifica se o escopo do YouTube foi concedido no login e orienta a autorizar quando faltar.</span></li>
+      <li><time>20/10 · 21:08</time><span class="tag new">Novo</span><span class="txt">Primeira publicação do MeuTube no GitHub Pages.</span></li>
+    </ul>
+
+    <footer>
+      Datas e horários em Brasília, vindos do histórico do repositório. Houve rollbacks às 00:28 de 21/10 e às 18:58, quando a v1.1.1 foi revertida e voltou como v1.1.2.
+    </footer>
+  </main>
+
+  <script>
+    // Destaca a aba da seção que está na tela
+    (function () {
+      var links = document.querySelectorAll('.tabs a');
+      var secs = [document.getElementById('versoes'), document.getElementById('antes')];
+      if (!('IntersectionObserver' in window)) return;
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (!en.isIntersecting) return;
+          links.forEach(function (a) { a.classList.toggle('on', a.getAttribute('href') === '#' + en.target.id); });
+        });
+      }, { rootMargin: '-30% 0px -60% 0px' });
+      secs.forEach(function (s) { if (s) io.observe(s); });
+    })();
+  </script>
+</body>
+</html>
