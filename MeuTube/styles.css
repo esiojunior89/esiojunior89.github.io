@@ -668,10 +668,28 @@ body.sidebar-overlay main { margin-left: 0; }
   text-overflow: ellipsis;
 }
 .channel-item > div > span { font-size: 13px; color: var(--muted); }
+/* Duração máxima do canal ("Até hh:mm:ss"), ao lado de "Apenas lives" */
+.channel-dur { display: flex; flex-shrink: 0; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.channel-dur input {
+  width: 86px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.channel-dur input:not(:placeholder-shown) { color: var(--text); font-weight: 600; }
 .channel-switch { flex-shrink: 0; font-size: 13px; }
 .channel-switch input:checked ~ .switch-label { color: var(--text); font-weight: 600; }
 @media (max-width: 480px) {
   .channel-switch .switch-label { font-size: 12px; }
+}
+/* Celular: os controles do canal descem para uma segunda linha, abaixo do nome */
+@media (max-width: 560px) {
+  .channel-item { flex-wrap: wrap; row-gap: 6px; }
+  .channel-item > div { flex-basis: calc(100% - 100px); }
+  .channel-item .channel-dur { order: 3; margin-left: 52px; }
+  .channel-item .channel-switch { order: 4; margin-left: auto; }
 }
 .channel-empty { color: var(--muted); padding: 10px 0 0; }
 

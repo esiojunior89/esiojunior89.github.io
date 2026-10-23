@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.12.0';
+const APP_VERSION = '1.13.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -165,6 +165,29 @@ const channelById = id => state.channels.find(c => c.id === id);
 const allowedChannels = () => new Set(state.channels.map(c => c.id));
 /** Canais que aparecem no Início e na lista de canais (os marcados "Apenas lives" ficam só em "Ao vivo"). */
 const homeChannels = () => state.channels.filter(c => !c.livesOnly);
+
+/* Limite de duração por canal (Configurações › Canais › "Até hh:mm:ss"): vídeos mais longos
+   que o limite não aparecem e não contam nas Estatísticas. O limite inclui o tempo exato. */
+const channelMaxDur = id => channelById(id)?.maxDur || 0;
+
+function withinDurationLimit(v) {
+  const max = channelMaxDur(v.channelId);
+  return !max || !v.durationSec || v.durationSec <= max;
+}
+
+function fmtHms(sec) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(Math.floor(sec / 3600))}:${pad(Math.floor((sec % 3600) / 60))}:${pad(sec % 60)}`;
+}
+
+/** "hh:mm:ss" -> segundos; '' -> 0 (sem limite); formato inválido -> null. */
+function parseHms(text) {
+  const t = text.trim();
+  if (!t) return 0;
+  const m = /^(\d{1,2}):([0-5]\d):([0-5]\d)$/.exec(t);
+  if (!m) return null;
+  return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+}
 const isHomeChannel = id => homeChannels().some(c => c.id === id);
 /** Ordem alfabética em português: ignora maiúsculas/acentos e põe "Canal 2" antes de "Canal 10". */
 const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true });
@@ -705,7 +728,7 @@ class FeedStream {
       const details = await fetchVideos(picked.map(p => p.id));
       if (this.dead) return [];
       // Garantia extra: nada que esteja ao vivo ou agendado entra na página inicial.
-      added.push(...picked.map(p => details.get(p.id)).filter(v => v && v.live === 'none'));
+      added.push(...picked.map(p => details.get(p.id)).filter(v => v && v.live === 'none' && withinDurationLimit(v)));
     }
     this.items.push(...added);
     return added;
@@ -816,7 +839,7 @@ class OldestFeedStream {
       this.pos += ids.length;
       const details = await fetchVideos(ids);
       if (this.dead) return [];
-      added.push(...ids.map(id => details.get(id)).filter(v => v && v.live === 'none'));
+      added.push(...ids.map(id => details.get(id)).filter(v => v && v.live === 'none' && withinDurationLimit(v)));
     }
     if (this.pos >= this.order.length) this.exhausted = true;
     this.items.push(...added);
@@ -2310,6 +2333,10 @@ function enterWatch(id) {
       }
       renderWatchInfo(video);
     }
+    if (!withinDurationLimit(video)) {
+      showWatchBlocked(`Este vídeo tem ${video.duration} e passa do limite de ${fmtHms(channelMaxDur(video.channelId))} definido para “${video.channelTitle}” nas Configurações.`);
+      return;
+    }
     state.currentVideo = video;
     recordWatchHistory(id);
     markSeen(id);
@@ -2596,6 +2623,11 @@ function renderChannelList() {
         <strong>${esc(c.title)}</strong>
         <span>${esc(c.handle || c.id)}</span>
       </div>
+      <label class="channel-dur" title="Duração máxima dos vídeos deste canal (hh:mm:ss). Vídeos mais longos não aparecem e não contam nas Estatísticas. Vazio = sem limite.">
+        <span>Até</span>
+        <input type="text" inputmode="numeric" placeholder="hh:mm:ss" maxlength="8" spellcheck="false" autocomplete="off"
+          value="${c.maxDur ? fmtHms(c.maxDur) : ''}" data-max-dur="${esc(c.id)}" aria-label="Duração máxima dos vídeos de ${esc(c.title)} (hh:mm:ss)">
+      </label>
       <label class="switch channel-switch" title="Quando ativado, o canal só aparece em “Ao vivo” (no menu lateral) enquanto estiver transmitindo">
         <input type="checkbox" data-lives-only="${esc(c.id)}" ${c.livesOnly ? 'checked' : ''}>
         <span class="switch-track" aria-hidden="true"></span>
@@ -2743,6 +2775,27 @@ function setLivesOnly(id, enabled) {
   toast(enabled
     ? `“${ch.title}” agora aparece só em “Ao vivo”, quando estiver transmitindo.`
     : `“${ch.title}” voltou para o Início e para a lista de canais.`, 'success');
+}
+
+function setMaxDuration(id, input) {
+  const ch = channelById(id);
+  if (!ch) return;
+  const sec = parseHms(input.value);
+  if (sec === null) {
+    toast('Use o formato hh:mm:ss, por exemplo 00:20:00 para vídeos de até 20 minutos.', 'error', 6000);
+    input.value = ch.maxDur ? fmtHms(ch.maxDur) : '';
+    return;
+  }
+  input.value = sec ? fmtHms(sec) : '';
+  if (sec === (ch.maxDur || 0)) return;
+  if (sec) ch.maxDur = sec;
+  else delete ch.maxDur;
+  store.set(KEYS.channels, state.channels);
+  Sync.touch('channels');
+  resetFeed();
+  toast(sec
+    ? `“${ch.title}”: só vídeos de até ${fmtHms(sec)}.`
+    : `“${ch.title}”: sem limite de duração.`, 'success');
 }
 
 function removeChannel(id) {
@@ -3292,6 +3345,12 @@ function bindEvents() {
   $('#channel-list').addEventListener('change', e => {
     const input = e.target.closest('input[data-lives-only]');
     if (input) setLivesOnly(input.dataset.livesOnly, input.checked);
+    const dur = e.target.closest('input[data-max-dur]');
+    if (dur) setMaxDuration(dur.dataset.maxDur, dur);
+  });
+  // Enter no campo de duração confirma (o "change" acontece ao sair do campo).
+  $('#channel-list').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.matches('input[data-max-dur]')) e.target.blur();
   });
   $('#hide-shorts').addEventListener('change', e => {
     state.hideShorts = e.target.checked;
@@ -3561,7 +3620,7 @@ function tickWatchTime() {
   const now = Date.now();
   const v = state.currentVideo;
   const same = Boolean(v && v.id === playerVideoId && v.channelId);
-  if (watchTick && same && !livesOnlyIds().has(v.channelId)) {
+  if (watchTick && same && !livesOnlyIds().has(v.channelId) && withinDurationLimit(v)) {
     const sec = Math.min(now - watchTick, 3 * STATS_TICK_MS) / 1000;
     const log = todayLog();
     log.s[v.channelId] = Math.round(((log.s[v.channelId] || 0) + sec) * 10) / 10;
@@ -3578,6 +3637,8 @@ function tickWatchTime() {
 function logCompletion(id) {
   const ch = videoForProgress(id)?.channelId || videoChannels[id];
   if (!ch || livesOnlyIds().has(ch)) return;
+  const d = videoForProgress(id)?.durationSec || progressStore[id]?.d;
+  if (channelMaxDur(ch) && d > channelMaxDur(ch)) return; // acima do limite do canal: não conta
   if (videoChannels[id] !== ch) {
     videoChannels[id] = ch;
     store.set(KEYS.videoChannels, videoChannels);
@@ -3648,10 +3709,56 @@ function ensureVideoChannels() {
   return videoChannelsLoading;
 }
 
+/* Total de vídeos do canal dentro do limite de duração ("Assistidos x total do canal").
+   O YouTube só informa o total geral; para contar os que cabem no limite, o app lê a lista
+   do canal (a mesma do "Mais antigos") e a duração de cada vídeo, uma vez (~4 unidades de
+   cota a cada 100 vídeos), e guarda no aparelho. Nas visitas seguintes, só os vídeos novos. */
+const DURATIONS_KEY = 'meutube.durations'; // { canal: { vídeo: segundos (-1 = indisponível) } }
+const limitedTotals = new Map();           // "canal:limite" -> total dentro do limite
+
+let limitedTotalsLoading = null;
+function ensureLimitedTotals(channels) {
+  // Se a página pedir de novo enquanto ainda está buscando, aproveita a mesma busca.
+  limitedTotalsLoading ||= loadLimitedTotals(channels).finally(() => { limitedTotalsLoading = null; });
+  return limitedTotalsLoading;
+}
+
+async function loadLimitedTotals(channels) {
+  const todo = channels.filter(c => c.maxDur && !limitedTotals.has(`${c.id}:${c.maxDur}`));
+  if (!todo.length || !hasCredentials()) return false;
+  const all = store.get(DURATIONS_KEY, {});
+  for (const id of Object.keys(all)) if (!channelById(id)) delete all[id]; // canais removidos
+  let changed = false;
+  for (const c of todo) {
+    try {
+      const ids = new Set();
+      for (const prefix of ['UULF', 'UUSH']) (await playlistIndex(prefix + c.id.slice(2))).forEach(e => ids.add(e.id));
+      const durations = (all[c.id] ||= {});
+      const missing = [...ids].filter(id => !(id in durations));
+      for (let i = 0; i < missing.length; i += 50) {
+        const batch = missing.slice(i, i + 50);
+        const data = await api('videos', { part: 'contentDetails', id: batch.join(','), maxResults: 50, fields: 'items(id,contentDetails(duration))' });
+        const found = new Map((data.items || []).map(v => [v.id, isoSeconds(v.contentDetails?.duration)]));
+        batch.forEach(id => { durations[id] = found.get(id) || -1; }); // -1: privado/removido
+      }
+      limitedTotals.set(`${c.id}:${c.maxDur}`, [...ids].filter(id => durations[id] > 0 && durations[id] <= c.maxDur).length);
+      changed = true;
+    } catch { /* sem cota/conexão: mostra "…" e tenta na próxima visita */ }
+  }
+  store.set(DURATIONS_KEY, all);
+  return changed;
+}
+
 /** Junta o registro de todos os aparelhos + a estimativa do período anterior a ele. */
 function computeStats() {
   const since = Math.min(...Object.values(watchLog).map(d => d.since || Date.now()));
   const hidden = livesOnlyIds();
+  // Vídeo acima do limite de duração do canal (a duração vem do progresso salvo).
+  const overLimit = (id, ch) => {
+    const max = channelMaxDur(ch);
+    const d = progressStore[id]?.d;
+    return Boolean(max && d && d > max);
+  };
   const daySec = new Map();     // dia -> segundos
   const dayChSec = new Map();   // dia -> Map(canal -> segundos)
   const dayVids = new Map();    // dia -> Set(vídeos assistidos até o fim)
@@ -3670,7 +3777,7 @@ function computeStats() {
   for (const dev of Object.values(watchLog)) {
     for (const [day, d] of Object.entries(dev.days || {})) {
       for (const [ch, sec] of Object.entries(d.s || {})) if (!hidden.has(ch)) addTime(day, ch, sec);
-      for (const [id, ch] of Object.entries(d.v || {})) if (!hidden.has(ch)) addVid(day, id);
+      for (const [id, ch] of Object.entries(d.v || {})) if (!hidden.has(ch) && !overLimit(id, ch)) addVid(day, id);
     }
   }
   const doneByCh = new Map();
@@ -3680,7 +3787,7 @@ function computeStats() {
   for (const [id, p] of Object.entries(progressStore)) {
     if (!p || p.gone) continue;
     const ch = videoChannels[id] || '';
-    if (hidden.has(ch)) continue;
+    if (hidden.has(ch) || overLimit(id, ch)) continue;
     started++;
     if (p.done) {
       done++;
@@ -4042,7 +4149,7 @@ function renderStats({ refresh = true } = {}) {
   const byVideos = channels.map(c => ({ ch: c, value: data.doneByCh.get(c.id) || 0 })).sort((a, b) => b.value - a.value);
   const maxVideos = Math.max(1, ...byVideos.map(i => i.value));
   const catalog = channels.map(c => {
-    const total = channelStats[c.id]?.videos;
+    const total = c.maxDur ? limitedTotals.get(`${c.id}:${c.maxDur}`) : channelStats[c.id]?.videos;
     const doneN = data.doneByCh.get(c.id) || 0;
     return { ch: c, done: doneN, total, pct: total ? (doneN / total) * 100 : 0 };
   }).sort((a, b) => b.pct - a.pct || b.done - a.done);
@@ -4068,6 +4175,8 @@ function renderStats({ refresh = true } = {}) {
           ${data.estimated ? `Antes de ${sinceText}, horas e vídeos são <strong>estimados</strong> pelo progresso salvo
             (o vídeo inteiro, se assistido, ou até onde parou, no dia do último acesso).` : ''}
           O total de vídeos de cada canal vem do YouTube e inclui Shorts e lives gravadas.
+          Canais com limite de duração (“Até hh:mm:ss”, nas Configurações) contam só os vídeos dentro do limite,
+          nas horas (a partir da versão 1.13.0), nos vídeos assistidos e no total do canal.
         </p>
       </details>
       <div class="st-tabs" role="group" aria-label="Período">
@@ -4161,8 +4270,9 @@ function renderStats({ refresh = true } = {}) {
     Promise.all([
       ensureVideoChannels(),
       channels.length && needTotals ? ensureChannelStats(channels[0].id).then(() => true) : false,
-    ]).then(([mapped, totals]) => {
-      if ((mapped || totals) && state.view === 'stats') renderStats({ refresh: false });
+      ensureLimitedTotals(channels),
+    ]).then(([mapped, totals, limited]) => {
+      if ((mapped || totals || limited) && state.view === 'stats') renderStats({ refresh: false });
     });
   }
 }

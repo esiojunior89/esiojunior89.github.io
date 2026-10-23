@@ -7,17 +7,17 @@
   <title>MeuTube</title>
   <!-- Versão do app (SemVer). Mantida igual ao APP_VERSION do app.js e ao "?v=" dos arquivos abaixo:
        o número no endereço faz o navegador baixar a versão nova em vez de usar o cache. -->
-  <meta name="app-version" content="1.11.2">
+  <meta name="app-version" content="1.12.0">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -4 28 28'%3E%3Crect width='28' height='20' rx='6' fill='%23ff3d3d'/%3E%3Cpath d='M11.5 5.8v8.4L18.6 10z' fill='%23fff'/%3E%3C/svg%3E">
   <!-- App instalável (abre em tela cheia no celular) -->
-  <link rel="manifest" href="manifest.json?v=1.11.2">
+  <link rel="manifest" href="manifest.json?v=1.12.0">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="preconnect" href="https://i.ytimg.com">
   <link rel="preconnect" href="https://www.googleapis.com">
-  <link rel="stylesheet" href="styles.css?v=1.11.2">
+  <link rel="stylesheet" href="styles.css?v=1.12.0">
   <!-- Google Identity Services (login com Google) -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -203,41 +203,9 @@
 
         <article class="card">
           <h2>Credenciais da API</h2>
-          <form id="config-form" class="config-form" autocomplete="off">
-            <label>
-              <span>Chave da YouTube Data API v3</span>
-              <input id="cfg-api-key" type="password" placeholder="AIza…" spellcheck="false">
-              <small class="muted">Usada para listar vídeos e comentários. Opcional se você entrar com o Google.</small>
-            </label>
-            <label>
-              <span>OAuth 2.0 Client ID (aplicação Web)</span>
-              <input id="cfg-client-id" type="text" placeholder="0000000000-xxxx.apps.googleusercontent.com" spellcheck="false">
-              <small class="muted">Necessário para o botão “Entrar com o Google”.</small>
-            </label>
-            <label>
-              <span>Servidor de login (opcional)</span>
-              <input id="cfg-login-server" type="text" inputmode="url" placeholder="https://meutube-login.seunome.workers.dev" spellcheck="false">
-              <small class="muted">Endereço do seu Worker no Cloudflare (arquivo <code>worker.js</code>). Com ele, o login do Google
-                se renova sozinho por até 7 dias, em vez de expirar a cada 1 hora.</small>
-            </label>
-            <div class="form-actions">
-              <button class="btn btn-primary" type="submit">Salvar</button>
-            </div>
-          </form>
-          <details class="help">
-            <summary>Como obter essas credenciais</summary>
-            <ol>
-              <li>Acesse o Google Cloud Console e crie (ou escolha) um projeto.</li>
-              <li>Em “APIs e serviços › Biblioteca”, ative a <strong>YouTube Data API v3</strong> e, para a sincronização
-                na nuvem, a <strong>Google Drive API</strong>.</li>
-              <li>Em “Credenciais”, crie uma <strong>Chave de API</strong> (restrinja-a ao domínio do app).</li>
-              <li>Configure a “Tela de permissão OAuth” e crie um <strong>ID do cliente OAuth</strong> do tipo “Aplicativo da Web”, adicionando a URL do app (ex.: <code>http://localhost:8080</code>) em “Origens JavaScript autorizadas”.</li>
-              <li>Para entrar em outros aparelhos sem digitar nada, coloque o seu Client ID em
-                <code>DEFAULT_CONFIG.clientId</code>, no topo do <code>app.js</code>. Depois do login, canais, opções,
-                chave de API e progresso vêm da nuvem.</li>
-              <li>Abra o app por <code>http://</code> ou <code>https://</code> — o login e o player não funcionam abrindo o arquivo direto (<code>file://</code>).</li>
-            </ol>
-          </details>
+          <p class="muted">Chave da YouTube Data API, Client ID do Google e servidor de login ficam numa página
+            separada, protegida por usuário e senha.</p>
+          <a id="cred-link" class="btn btn-ghost" href="credenciais.html">Abrir credenciais</a>
         </article>
 
         <article class="card">
@@ -253,6 +221,7 @@
 
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
-  <script src="app.js?v=1.11.2"></script>
+  <script src="config.js?v=1.12.0"></script>
+  <script src="app.js?v=1.12.0"></script>
 </body>
 </html>

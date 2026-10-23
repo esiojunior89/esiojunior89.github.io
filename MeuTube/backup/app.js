@@ -1,20 +1,14 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.11.2';
+const APP_VERSION = '1.12.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
    =========================================================
-   Credenciais padrão (também podem ser definidas na tela de
-   Configurações; o que for salvo lá tem prioridade).
+   As credenciais padrão (DEFAULT_CONFIG) ficam em config.js,
+   carregado antes deste arquivo.
    ========================================================= */
-const DEFAULT_CONFIG = {
-  apiKey: '',      // Chave da YouTube Data API v3
-  clientId: '797093121512-2rg9lgs89th97ei5cvfg111rmnu77bo0.apps.googleusercontent.com', // OAuth 2.0 Client ID (tipo "Aplicativo da Web")
-  loginServer: 'https://meutube-login.esiosalazar.workers.dev', // Servidor de login (Cloudflare Worker, arquivo worker.js)
-};
-
 const PAGE_SIZE = 20;
 const YT_SCOPE = 'https://www.googleapis.com/auth/youtube.readonly';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata'; // pasta oculta do app no Drive (sincronização)
@@ -501,9 +495,8 @@ const Auth = {
   async signIn() {
     const { clientId } = state.config;
     if (!clientId) {
-      toast('Informe o OAuth Client ID em Configurações para entrar com o Google.', 'error');
+      toast('Informe o OAuth Client ID em Configurações › Credenciais da API para entrar com o Google.', 'error', 7000);
       if (state.view !== 'settings') location.hash = '#/settings';
-      $('#cfg-client-id')?.focus();
       return;
     }
     if (location.protocol === 'file:') {
@@ -2614,9 +2607,6 @@ function renderChannelList() {
 
 function renderSettings() {
   document.title = 'Configurações · MeuTube';
-  $('#cfg-api-key').value = state.config.apiKey;
-  $('#cfg-client-id').value = state.config.clientId;
-  $('#cfg-login-server').value = state.config.loginServer || '';
   $('#hide-shorts').checked = state.hideShorts;
   renderInstallPanel();
   renderVersionInfo();
@@ -2769,26 +2759,19 @@ function removeChannel(id) {
   } else apply();
 }
 
-function onConfigSubmit(e) {
-  e.preventDefault();
-  const apiKey = $('#cfg-api-key').value.trim();
-  const clientId = $('#cfg-client-id').value.trim();
-  const loginServer = $('#cfg-login-server').value.trim().replace(/\/+$/, '');
-  if (loginServer && !/^https:\/\/[^\s/]+$/.test(loginServer)) {
-    toast('O servidor de login deve ser um endereço https://, como https://meutube-login.seunome.workers.dev', 'error', 7000);
-    return;
-  }
-  const changed = apiKey !== state.config.apiKey || clientId !== state.config.clientId;
-  const apiKeyChanged = apiKey !== state.config.apiKey;
-  if (loginServer !== (state.config.loginServer || '')) {
-    Auth.setSession(null); // a chave de renovação é do servidor antigo
+/** A página de credenciais (credenciais.html) salvou algo: aplica na hora, sem recarregar o app. */
+function onConfigStored() {
+  const before = state.config;
+  state.config = loadConfig();
+  const saved = store.get(KEYS.sync, {});
+  Sync.meta.at = { ...Sync.meta.at, ...(saved.at || {}) };
+  if ((state.config.loginServer || '') !== (before.loginServer || '')) {
+    Auth.setSession(null); // a chave de renovação era do servidor antigo
     Auth.scheduleExpiry();
   }
-  state.config = { apiKey, clientId, loginServer };
-  store.set(KEYS.config, state.config);
-  if (apiKeyChanged) Sync.touch('apiKey');
-  toast('Configurações salvas.', 'success');
-  if (changed) onCredentialsChanged();
+  renderAccount();
+  if (state.config.apiKey !== before.apiKey) Sync.schedule(SYNC_QUICK_MS);
+  if (state.config.apiKey !== before.apiKey || state.config.clientId !== before.clientId) onCredentialsChanged();
 }
 
 function onCredentialsChanged() {
@@ -3328,7 +3311,7 @@ function bindEvents() {
     updateSidebarMode();
     requestAnimationFrame(checkSentinel);
   });
-  $('#config-form').addEventListener('submit', onConfigSubmit);
+  addEventListener('storage', e => { if (e.key === KEYS.config) onConfigStored(); });
 
   $('#comments-more').addEventListener('click', () => loadComments(state.currentVideoId));
   $('#upnext-more').addEventListener('click', () => {
@@ -3481,11 +3464,11 @@ function setupMobileApp() {
   }, true);
 }
 
-/** No PC, os botões de Estatísticas e Configurações do rodapé do menu abrem numa aba nova.
+/** No PC, os botões de Estatísticas e Configurações do rodapé do menu (e o de Credenciais) abrem numa aba nova.
     No celular (e no app instalado) continuam abrindo na mesma tela. */
 function setupFooterLinks() {
   if (isMobile()) return;
-  $$('.side-footer a[data-nav="stats"], .side-footer a[data-nav="settings"]').forEach(a => {
+  $$('.side-footer a[data-nav="stats"], .side-footer a[data-nav="settings"], #cred-link').forEach(a => {
     a.target = '_blank';
     a.rel = 'noopener';
   });

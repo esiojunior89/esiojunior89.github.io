@@ -1824,3 +1824,19 @@ body.sidebar-mini .side-sep-lives { display: none; }
 @media (max-width: 700px) {
   #view-stats { padding-inline: 10px; }
 }
+
+/* =========================================================
+   Página de credenciais (credenciais.html), protegida por senha
+   ========================================================= */
+.cred-body { min-height: 100vh; }
+.cred-page { display: grid; align-content: start; gap: 16px; min-height: 0; max-width: 720px; margin: 0 auto; padding: 32px var(--gutter) 56px; }
+.cred-back { justify-self: start; color: var(--muted); font-size: 14px; text-decoration: none; }
+.cred-back:hover { color: var(--text); }
+.cred-page h1 { margin: 0 0 6px; font-size: 22px; }
+.cred-login { max-width: 420px; width: 100%; justify-self: center; }
+.cred-login .config-form { margin-top: 16px; }
+.cred-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.cred-head h1 { margin: 0; }
+/* Campo com o texto escondido (bolinhas) sem ser "senha": o navegador não oferece salvar. */
+.masked { -webkit-text-security: disc; text-security: disc; }
+#save-msg:empty { display: none; }
