@@ -876,6 +876,31 @@ body.sidebar-overlay.sidebar-open .sidebar-backdrop { opacity: 1; pointer-events
 .feed-header span { font-size: 13.5px; }
 .feed-header .btn { margin-left: auto; }
 
+/* Ordem dos vídeos do canal ("Mais recentes" / "Mais antigos"), no estilo dos chips do YouTube */
+.chips { display: flex; flex-basis: 100%; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .1);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background .2s, color .2s;
+}
+.chip:hover { background: rgba(255, 255, 255, .2); }
+.chip[aria-current="true"] { background: #f1f1f1; color: #0f0f0f; }
+@media (prefers-color-scheme: light) {
+  .chip { background: rgba(0, 0, 0, .05); }
+  .chip:hover { background: rgba(0, 0, 0, .1); }
+  .chip[aria-current="true"] { background: #0f0f0f; color: #fff; }
+}
+
 /* Selo "Novo" */
 .new-tag {
   display: inline-block;

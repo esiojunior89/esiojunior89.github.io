@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.8.3';
+const APP_VERSION = '1.9.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -140,6 +140,7 @@ const state = {
   sidebarMini: store.get(KEYS.sidebar, false),
   hideWatched: store.get(KEYS.hideWatched, false), // esconde os vídeos assistidos até o fim
   filter: null,      // ID do canal selecionado no menu lateral (null = todos)
+  sort: 'new',       // ordem na página do canal: 'new' (mais recentes) | 'old' (mais antigos)
   watchFeed: null,   // feed de onde saem os "vídeos seguintes"
   view: null,
   currentVideoId: null,
@@ -550,14 +551,133 @@ class FeedStream {
   }
 }
 
-/** Um feed por filtro: "all" (todos os canais) ou o ID de um canal. */
+/* =========================================================
+   "Mais antigos" (página de um canal)
+   =========================================================
+   A API do YouTube só lista os vídeos de um canal do mais novo para
+   o mais antigo. Para mostrar os mais antigos primeiro, o app lê a
+   lista completa do canal (só IDs e datas: 1 unidade de cota a cada
+   50 vídeos), inverte a ordem e carrega os detalhes de 20 em 20,
+   como no Início. A lista fica guardada no aparelho: nas próximas
+   visitas só são buscados os vídeos publicados desde a última.
+   ========================================================= */
+const UPLOAD_INDEX_KEY = 'meutube.uploadIndex';
+
+/** Lista { id, ts } de uma playlist automática do canal, do cache + o que for novo. */
+async function playlistIndex(playlistId, onProgress) {
+  const cache = store.get(UPLOAD_INDEX_KEY, {});
+  // Formato compacto: "ID (11 letras) + segundos em base 36", separados por espaço.
+  const cached = (cache[playlistId]?.list || '').split(' ').filter(Boolean)
+    .map(e => ({ id: e.slice(0, 11), ts: parseInt(e.slice(11), 36) * 1000 }));
+  const known = new Set(cached.map(e => e.id));
+  const fresh = [];
+  let token = null;
+  let reachedKnown = false;
+  do {
+    let data;
+    try {
+      data = await api('playlistItems', {
+        part: 'contentDetails',
+        playlistId,
+        maxResults: 50,
+        pageToken: token,
+        fields: 'nextPageToken,items(contentDetails(videoId,videoPublishedAt))',
+      });
+    } catch (e) {
+      if (e.status === 404) return []; // o canal não tem essa playlist (ex.: sem Shorts)
+      throw e;
+    }
+    for (const it of data.items || []) {
+      const id = it.contentDetails?.videoId;
+      const published = it.contentDetails?.videoPublishedAt;
+      if (!id || !published) continue;
+      if (known.has(id)) { reachedKnown = true; continue; }
+      fresh.push({ id, ts: Date.parse(published) });
+    }
+    onProgress?.(fresh.length + cached.length);
+    token = data.nextPageToken || null;
+  } while (token && !reachedKnown);
+
+  const all = [...fresh, ...cached];
+  if (fresh.length || !cache[playlistId]) {
+    // Esquece as listas de canais que você removeu.
+    for (const key of Object.keys(cache)) {
+      if (!state.channels.some(c => c.id.slice(2) === key.slice(4))) delete cache[key];
+    }
+    cache[playlistId] = { at: Date.now(), list: all.map(e => e.id + Math.floor(e.ts / 1000).toString(36)).join(' ') };
+    store.set(UPLOAD_INDEX_KEY, cache);
+  }
+  return all;
+}
+
+class OldestFeedStream {
+  constructor(channel) {
+    const prefixes = state.hideShorts ? ['UULF'] : ['UULF', 'UUSH'];
+    this.playlists = prefixes.map(prefix => prefix + channel.id.slice(2));
+    this.ascending = true;
+    this.items = [];
+    this.order = null;
+    this.pos = 0;
+    this.loading = null;
+    this.exhausted = false;
+    this.error = null;
+    this.dead = false;
+    this.uiBusy = false;
+  }
+
+  dispose() {
+    this.dead = true;
+  }
+
+  loadMore(count = PAGE_SIZE) {
+    if (this.loading) return this.loading;
+    if (this.exhausted || this.dead) return Promise.resolve([]);
+    this.loading = this._load(count).finally(() => { this.loading = null; });
+    return this.loading;
+  }
+
+  async _load(count) {
+    if (!this.order) {
+      const byId = new Map();
+      for (const pl of this.playlists) {
+        const before = byId.size;
+        const list = await playlistIndex(pl, n => {
+          if (this === currentFeed()) renderIndexProgress(before + n);
+        });
+        if (this.dead) return [];
+        list.forEach(e => byId.set(e.id, e.ts));
+      }
+      this.order = [...byId].sort((a, b) => a[1] - b[1]).map(([id]) => id);
+    }
+    const added = [];
+    while (added.length < count && this.pos < this.order.length) {
+      const ids = this.order.slice(this.pos, this.pos + (count - added.length));
+      this.pos += ids.length;
+      const details = await fetchVideos(ids);
+      if (this.dead) return [];
+      added.push(...ids.map(id => details.get(id)).filter(v => v && v.live === 'none'));
+    }
+    if (this.pos >= this.order.length) this.exhausted = true;
+    this.items.push(...added);
+    return added;
+  }
+}
+
+/** Enquanto lê a lista completa do canal (só na primeira vez), mostra quantos vídeos já leu. */
+function renderIndexProgress(n) {
+  if (state.view !== 'home') return;
+  $('#feed-status').innerHTML = `<p class="muted">Buscando os vídeos mais antigos do canal… ${n.toLocaleString('pt-BR')} vídeos lidos</p>`;
+}
+
+/** Um feed por filtro: "all" (todos os canais), o ID de um canal ou "ID:old" (mais antigos). */
 const feeds = new Map();
 
 function currentFeed() {
-  const key = state.filter || 'all';
+  const oldest = Boolean(state.filter) && state.sort === 'old';
+  const key = (state.filter || 'all') + (oldest ? ':old' : '');
   if (!feeds.has(key)) {
-    const list = key === 'all' ? homeChannels() : homeChannels().filter(c => c.id === key);
-    feeds.set(key, new FeedStream(list));
+    const list = !state.filter ? homeChannels() : homeChannels().filter(c => c.id === state.filter);
+    feeds.set(key, oldest && list.length ? new OldestFeedStream(list[0]) : new FeedStream(list));
   }
   return feeds.get(key);
 }
@@ -692,7 +812,11 @@ function renderFeedHeader() {
       <h1>${esc(ch.title)}</h1>
       <span class="muted">${esc(ch.handle || '')}</span>
     </div>
-    <a class="btn btn-ghost btn-sm" href="#/">Ver todos os canais</a>`;
+    <a class="btn btn-ghost btn-sm" href="#/">Ver todos os canais</a>
+    <nav class="chips" aria-label="Ordem dos vídeos">
+      <a class="chip" href="#/c/${esc(ch.id)}"${state.sort !== 'old' ? ' aria-current="true"' : ''}>Mais recentes</a>
+      <a class="chip" href="#/c/${esc(ch.id)}/antigos"${state.sort === 'old' ? ' aria-current="true"' : ''}>Mais antigos</a>
+    </nav>`;
   box.hidden = false;
 }
 
@@ -2040,7 +2164,7 @@ function upNextSlice(video) {
   let start = feed.items.findIndex(v => v.id === video.id);
   if (start >= 0) start += 1;
   else {
-    start = feed.items.findIndex(v => v.publishedAt < video.publishedAt);
+    start = feed.items.findIndex(v => (feed.ascending ? v.publishedAt > video.publishedAt : v.publishedAt < video.publishedAt));
     if (start < 0) return { list: [], ready: feed.exhausted, hasMore: !feed.exhausted };
   }
   const rest = feed.items.slice(start).filter(v => !state.hideWatched || !isWatched(v.id));
@@ -2825,8 +2949,8 @@ function parseRoute() {
   if (watch) return { view: 'watch', id: watch[1] };
   if (hash === '#/settings') return { view: 'settings' };
   if (hash === '#/stats') return { view: 'stats' };
-  const channel = /^#\/c\/(UC[\w-]{22})$/.exec(hash);
-  return { view: 'home', channel: channel?.[1] || null };
+  const channel = /^#\/c\/(UC[\w-]{22})(\/antigos)?$/.exec(hash);
+  return { view: 'home', channel: channel?.[1] || null, sort: channel?.[2] ? 'old' : 'new' };
 }
 
 function clearHeroNames() {
@@ -2847,7 +2971,7 @@ function inViewport(el) {
   return r.bottom > 0 && r.top < innerHeight;
 }
 
-function applyView(view, id, channel) {
+function applyView(view, id, channel, sort = 'new') {
   const prev = state.view;
   if (prev === 'home') state.homeScroll = scrollY;
   if (prev === 'watch' && view !== 'watch') {
@@ -2865,8 +2989,10 @@ function applyView(view, id, channel) {
 
   if (view === 'home') {
     const filter = channel && isHomeChannel(channel) ? channel : null;
-    const filterChanged = filter !== state.filter;
+    const order = filter ? sort : 'new';
+    const filterChanged = filter !== state.filter || order !== state.sort;
     state.filter = filter;
+    state.sort = order;
     showHome();
     window.scrollTo({ top: filterChanged ? 0 : state.homeScroll, behavior: 'instant' });
   } else if (view === 'watch') {
@@ -2884,7 +3010,7 @@ function applyView(view, id, channel) {
 }
 
 function route(animate = true) {
-  const { view, id, channel } = parseRoute();
+  const { view, id, channel, sort } = parseRoute();
   const prevView = state.view;
   closeSidebarOverlay();
   const prevVideo = state.currentVideoId;
@@ -2898,7 +3024,7 @@ function route(animate = true) {
 
   const update = () => {
     clearHeroNames();
-    applyView(view, id, channel);
+    applyView(view, id, channel, sort);
     if (view === 'watch') {
       setHero($('.player-wrap'));
     } else if (view === 'home' && prevView === 'watch' && prevVideo) {
