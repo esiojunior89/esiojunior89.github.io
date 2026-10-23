@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f0f12">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Credenciais · MeuTube</title>
+  <meta name="app-version" content="1.12.0">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -4 28 28'%3E%3Crect width='28' height='20' rx='6' fill='%23ff3d3d'/%3E%3Cpath d='M11.5 5.8v8.4L18.6 10z' fill='%23fff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css?v=1.12.0">
+</head>
+<body class="cred-body">
+  <!-- =========================================================
+       Credenciais do MeuTube (página protegida)
+       =========================================================
+       Pede usuário e senha TODA vez que é aberta (nada fica salvo:
+       recarregar, voltar ou abrir de novo pede outra vez). A senha
+       não está escrita aqui: o código guarda só uma "impressão
+       digital" dela (PBKDF2), que não pode ser revertida.
+
+       Observação: o GitHub Pages não permite a autenticação "basic"
+       do servidor; esta tela faz o papel dela no próprio navegador.
+       ========================================================= -->
+  <main class="cred-page">
+    <a class="cred-back" href="./#/settings">← Voltar ao MeuTube</a>
+
+    <section id="cred-login" class="card cred-login">
+      <h1>Credenciais da API</h1>
+      <p class="muted">Área protegida. Entre com o usuário e a senha para ver e alterar as credenciais.</p>
+      <!-- Sem type="password" e com autocomplete desligado: o navegador não oferece salvar a senha. -->
+      <form id="login-form" class="config-form" autocomplete="off">
+        <label>
+          <span>Usuário</span>
+          <input id="login-user" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+        </label>
+        <label>
+          <span>Senha</span>
+          <input id="login-pass" class="masked" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+        </label>
+        <p id="login-error" class="error" role="alert" hidden></p>
+        <div class="form-actions">
+          <button id="login-btn" class="btn btn-primary" type="submit">Entrar</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="cred-panel" class="card" hidden>
+      <div class="cred-head">
+        <h1>Credenciais da API</h1>
+        <button id="lock-btn" class="btn btn-ghost btn-sm" type="button">Bloquear</button>
+      </div>
+      <form id="config-form" class="config-form" autocomplete="off">
+        <label>
+          <span>Chave da YouTube Data API v3</span>
+          <input id="cfg-api-key" class="masked" type="text" placeholder="AIza…" autocomplete="off" spellcheck="false">
+          <small class="muted">Usada para listar vídeos e comentários. Opcional se você entrar com o Google.</small>
+        </label>
+        <label>
+          <span>OAuth 2.0 Client ID (aplicação Web)</span>
+          <input id="cfg-client-id" type="text" placeholder="0000000000-xxxx.apps.googleusercontent.com" autocomplete="off" spellcheck="false">
+          <small class="muted">Necessário para o botão “Entrar com o Google”.</small>
+        </label>
+        <label>
+          <span>Servidor de login (opcional)</span>
+          <input id="cfg-login-server" type="text" inputmode="url" placeholder="https://meutube-login.seunome.workers.dev" autocomplete="off" spellcheck="false">
+          <small class="muted">Endereço do seu Worker no Cloudflare (arquivo <code>worker.js</code>). Com ele, o login do Google
+            se renova sozinho por até 7 dias, em vez de expirar a cada 1 hora.</small>
+        </label>
+        <p id="save-msg" class="muted" role="status"></p>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">Salvar</button>
+        </div>
+      </form>
+      <details class="help">
+        <summary>Como obter essas credenciais</summary>
+        <ol>
+          <li>Acesse o Google Cloud Console e crie (ou escolha) um projeto.</li>
+          <li>Em “APIs e serviços › Biblioteca”, ative a <strong>YouTube Data API v3</strong> e, para a sincronização
+            na nuvem, a <strong>Google Drive API</strong>.</li>
+          <li>Em “Credenciais”, crie uma <strong>Chave de API</strong> (restrinja-a ao domínio do app).</li>
+          <li>Configure a “Tela de permissão OAuth” e crie um <strong>ID do cliente OAuth</strong> do tipo “Aplicativo da Web”,
+            com a URL do app (ex.: <code>https://esiojunior89.github.io</code>) em “Origens JavaScript autorizadas” e
+            <code>https://esiojunior89.github.io/MeuTube/</code> em “URIs de redirecionamento autorizados”.</li>
+          <li>Para entrar em outros aparelhos sem digitar nada, coloque o Client ID e o servidor de login em
+            <code>DEFAULT_CONFIG</code>, no arquivo <code>config.js</code>. Depois do login, canais, opções,
+            chave de API e progresso vêm da nuvem.</li>
+          <li>Abra o app por <code>https://</code> — o login e o player não funcionam abrindo o arquivo direto (<code>file://</code>).</li>
+        </ol>
+      </details>
+    </section>
+  </main>
+
+  <script src="config.js?v=1.12.0"></script>
+  <script>
+    'use strict';
+    const KEYS = { config: 'meutube.config', sync: 'meutube.sync', authSession: 'meutube.authSession' };
+    // "Impressão digital" de usuário + senha (PBKDF2-SHA256). Para trocar a senha, gere um novo valor.
+    const ACCESS = {
+      salt: '8c2e4b2bd369213f07640a0381938f59',
+      iterations: 310000,
+      hash: '9941ce23427d44bbf2d6ead693e6b1f01a8d4d54de8e0269c5aaf9c88dc910cf',
+    };
+    const $ = sel => document.querySelector(sel);
+    const store = {
+      get(key, fallback) {
+        try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); } catch { return fallback; }
+      },
+      set(key, value) {
+        try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* armazenamento indisponível */ }
+      },
+    };
+    const hex = buf => Array.from(new Uint8Array(buf), b => b.toString(16).padStart(2, '0')).join('');
+    const fromHex = h => Uint8Array.from(h.match(/../g), b => parseInt(b, 16));
+
+    async function checkAccess(user, pass) {
+      const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(`${user}\n${pass}`), 'PBKDF2', false, ['deriveBits']);
+      const bits = await crypto.subtle.deriveBits(
+        { name: 'PBKDF2', hash: 'SHA-256', salt: fromHex(ACCESS.salt), iterations: ACCESS.iterations }, key, 256);
+      return hex(bits) === ACCESS.hash;
+    }
+
+    /* ---------- Entrada (pedida sempre; nada é guardado) ---------- */
+    let failures = 0;
+    $('#login-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const user = $('#login-user').value.trim();
+      const pass = $('#login-pass').value;
+      const btn = $('#login-btn');
+      const error = $('#login-error');
+      btn.disabled = true;
+      btn.textContent = 'Verificando…';
+      error.hidden = true;
+      const ok = await checkAccess(user, pass).catch(() => false);
+      $('#login-pass').value = '';
+      if (ok) {
+        $('#login-user').value = '';
+        $('#cred-login').hidden = true;
+        $('#cred-panel').hidden = false;
+        fillForm();
+        return;
+      }
+      // Errou: espera um pouco mais a cada tentativa.
+      failures++;
+      const wait = Math.min(30, failures * 2);
+      error.textContent = `Usuário ou senha incorretos. Tente de novo em ${wait} s.`;
+      error.hidden = false;
+      btn.textContent = 'Entrar';
+      setTimeout(() => { btn.disabled = false; $('#login-pass').focus(); }, wait * 1000);
+    });
+
+    // Bloquear, voltar com o botão do navegador ou reabrir a aba: pede usuário e senha de novo.
+    $('#lock-btn').addEventListener('click', () => location.reload());
+    addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
+
+    /* ---------- Credenciais ---------- */
+    function currentConfig() {
+      return { ...DEFAULT_CONFIG, ...store.get(KEYS.config, {}) };
+    }
+
+    function fillForm() {
+      const c = currentConfig();
+      $('#cfg-api-key').value = c.apiKey || '';
+      $('#cfg-client-id').value = c.clientId || '';
+      $('#cfg-login-server').value = c.loginServer || '';
+      $('#cfg-api-key').focus();
+    }
+
+    $('#config-form').addEventListener('submit', e => {
+      e.preventDefault();
+      const msg = $('#save-msg');
+      const apiKey = $('#cfg-api-key').value.trim();
+      const clientId = $('#cfg-client-id').value.trim();
+      const loginServer = $('#cfg-login-server').value.trim().replace(/\/+$/, '');
+      if (loginServer && !/^https:\/\/[^\s/]+$/.test(loginServer)) {
+        msg.textContent = 'O servidor de login deve ser um endereço https://, como https://meutube-login.seunome.workers.dev';
+        msg.className = 'error';
+        return;
+      }
+      const before = currentConfig();
+      // Chave de API alterada: marca a alteração para a sincronização levá-la aos outros aparelhos.
+      // (Antes de salvar a configuração: o app aberto em outra aba reage ao salvamento e já lê esta marca.)
+      if (apiKey !== before.apiKey) {
+        const sync = store.get(KEYS.sync, {});
+        store.set(KEYS.sync, { ...sync, at: { ...(sync.at || {}), apiKey: Date.now() } });
+      }
+      // Servidor de login trocado: a renovação automática era do servidor antigo.
+      if (loginServer !== (before.loginServer || '')) {
+        try { localStorage.removeItem(KEYS.authSession); } catch { /* ignora */ }
+      }
+      store.set(KEYS.config, { ...store.get(KEYS.config, {}), apiKey, clientId, loginServer });
+      msg.textContent = 'Credenciais salvas. O MeuTube já está usando os novos valores.';
+      msg.className = 'muted';
+    });
+
+    $('#login-user').focus();
+  </script>
+</body>
+</html>

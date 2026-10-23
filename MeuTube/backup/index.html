@@ -7,17 +7,17 @@
   <title>MeuTube</title>
   <!-- Versão do app (SemVer). Mantida igual ao APP_VERSION do app.js e ao "?v=" dos arquivos abaixo:
        o número no endereço faz o navegador baixar a versão nova em vez de usar o cache. -->
-  <meta name="app-version" content="1.10.0">
+  <meta name="app-version" content="1.11.2">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -4 28 28'%3E%3Crect width='28' height='20' rx='6' fill='%23ff3d3d'/%3E%3Cpath d='M11.5 5.8v8.4L18.6 10z' fill='%23fff'/%3E%3C/svg%3E">
   <!-- App instalável (abre em tela cheia no celular) -->
-  <link rel="manifest" href="manifest.json?v=1.10.0">
+  <link rel="manifest" href="manifest.json?v=1.11.2">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="preconnect" href="https://i.ytimg.com">
   <link rel="preconnect" href="https://www.googleapis.com">
-  <link rel="stylesheet" href="styles.css?v=1.10.0">
+  <link rel="stylesheet" href="styles.css?v=1.11.2">
   <!-- Google Identity Services (login com Google) -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -214,6 +214,12 @@
               <input id="cfg-client-id" type="text" placeholder="0000000000-xxxx.apps.googleusercontent.com" spellcheck="false">
               <small class="muted">Necessário para o botão “Entrar com o Google”.</small>
             </label>
+            <label>
+              <span>Servidor de login (opcional)</span>
+              <input id="cfg-login-server" type="text" inputmode="url" placeholder="https://meutube-login.seunome.workers.dev" spellcheck="false">
+              <small class="muted">Endereço do seu Worker no Cloudflare (arquivo <code>worker.js</code>). Com ele, o login do Google
+                se renova sozinho por até 7 dias, em vez de expirar a cada 1 hora.</small>
+            </label>
             <div class="form-actions">
               <button class="btn btn-primary" type="submit">Salvar</button>
             </div>
@@ -247,6 +253,6 @@
 
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
-  <script src="app.js?v=1.10.0"></script>
+  <script src="app.js?v=1.11.2"></script>
 </body>
 </html>

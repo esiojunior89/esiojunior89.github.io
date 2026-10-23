@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.10.0';
+const APP_VERSION = '1.11.2';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -10,8 +10,9 @@ const APP_VERSION = '1.10.0';
    Configurações; o que for salvo lá tem prioridade).
    ========================================================= */
 const DEFAULT_CONFIG = {
-  apiKey: '',   // Chave da YouTube Data API v3
-  clientId: '', // OAuth 2.0 Client ID (tipo "Aplicativo da Web")
+  apiKey: '',      // Chave da YouTube Data API v3
+  clientId: '797093121512-2rg9lgs89th97ei5cvfg111rmnu77bo0.apps.googleusercontent.com', // OAuth 2.0 Client ID (tipo "Aplicativo da Web")
+  loginServer: 'https://meutube-login.esiosalazar.workers.dev', // Servidor de login (Cloudflare Worker, arquivo worker.js)
 };
 
 const PAGE_SIZE = 20;
@@ -35,6 +36,9 @@ const KEYS = {
   hideShorts: 'meutube.hideShorts',
   sidebar: 'meutube.sidebarMini',
   player: 'meutube.player',
+  authSession: 'meutube.authSession', // chave de renovação do login (criptografada pelo servidor de login)
+  oauthState: 'meutube.oauthState',   // pedido de login em andamento (volta do Google)
+  clientMigrated: 'meutube.clientMigrated',
   device: 'meutube.device',
   watchLog: 'meutube.watchLog',
   videoChannels: 'meutube.videoChannels',
@@ -132,8 +136,23 @@ const ICONS = {
 /* =========================================================
    Estado
    ========================================================= */
+/** Configuração salva neste aparelho + os valores padrão do topo do arquivo. */
+function loadConfig() {
+  const saved = store.get(KEYS.config, {});
+  // 1.11.2: o app passou a usar um novo ID do cliente OAuth (o que tem chave secreta, para o servidor de
+  // login). O ID antigo salvo nos aparelhos é trocado uma única vez; um ID escolhido depois é respeitado.
+  if (!store.get(KEYS.clientMigrated, false)) {
+    if ('clientId' in saved && saved.clientId !== DEFAULT_CONFIG.clientId) {
+      delete saved.clientId;
+      store.set(KEYS.config, saved);
+    }
+    store.set(KEYS.clientMigrated, true);
+  }
+  return { ...DEFAULT_CONFIG, ...saved };
+}
+
 const state = {
-  config: { ...DEFAULT_CONFIG, ...store.get(KEYS.config, {}) },
+  config: loadConfig(),
   channels: store.get(KEYS.channels, []), // [{ id, title, handle, thumb, uploads }]
   autoplay: store.get(KEYS.autoplay, true),
   hideShorts: store.get(KEYS.hideShorts, true),
@@ -278,7 +297,19 @@ async function fetchVideos(ids) {
 }
 
 /* =========================================================
-   Login com Google (Google Identity Services — token OAuth)
+   Login com Google
+   =========================================================
+   Sem servidor de login: Google Identity Services (janela do
+   Google), com login de 1 hora — depois aparece "Reconectar".
+
+   Com servidor de login (Cloudflare Worker, worker.js): a página
+   vai ao Google e volta com um código; o servidor troca o código
+   pelo login de 1 hora + uma chave de renovação (criptografada,
+   guardada neste aparelho). Antes de cada hora acabar, o app pede
+   um login novo ao servidor, em segundo plano. A chave dura até 7
+   dias (limite do Google para apps em modo "Teste"); depois disso,
+   "Reconectar" de novo. Se o servidor sair do ar, o login atual
+   continua até expirar, e o app volta a funcionar como antes.
    ========================================================= */
 const Auth = {
   token: null,
@@ -291,13 +322,140 @@ const Auth = {
   client: null,
   clientIdInUse: null,
   expiryTimer: 0,
+  session: null,     // chave de renovação (só com servidor de login)
+  refreshing: null,
+  pendingCode: null, // código que voltou do Google, ainda não trocado
 
   // Guardado no localStorage (e não por aba) para valer em todas as abas enquanto o token for válido.
   restore() {
+    this.takeRedirectResult();
     const saved = store.get(KEYS.auth, null);
-    if (saved && saved.expiresAt > Date.now() + 60_000) Object.assign(this, saved);
+    this.session = this.server() ? store.get(KEYS.authSession, null) : null;
+    // Com chave de renovação, o login expirado é renovado em seguida (mantendo nome e foto).
+    if (saved && (saved.expiresAt > Date.now() + 60_000 || this.session)) Object.assign(this, saved);
     this.remembered = store.get(KEYS.account, null);
     this.scheduleExpiry();
+    if (this.pendingCode) this.exchangeCode();
+    else if (this.session && !this.validToken()) this.refresh();
+  },
+
+  /** Endereço do servidor de login (sem a barra final), ou '' se não houver. */
+  server() {
+    return (state.config.loginServer || '').trim().replace(/\/+$/, '');
+  },
+
+  /** Volta do Google (login pela página inteira): guarda o código e limpa o endereço. */
+  takeRedirectResult() {
+    const q = new URLSearchParams(location.search);
+    if (!q.has('code') && !q.has('error')) return;
+    const pending = store.get(KEYS.oauthState, null);
+    try { localStorage.removeItem(KEYS.oauthState); } catch { /* ignora */ }
+    history.replaceState(null, '', location.pathname + (pending?.hash || '#/'));
+    if (!pending || pending.state !== q.get('state')) {
+      setTimeout(() => toast('O login não foi concluído. Tente entrar de novo.', 'error'), 0);
+    } else if (q.get('error') || !q.get('code')) {
+      setTimeout(() => toast('Login cancelado ou não autorizado.', 'error'), 0);
+    } else {
+      this.pendingCode = { code: q.get('code'), redirectUri: pending.redirectUri };
+    }
+  },
+
+  /** Endereço de volta do Google (cadastrado no Google Cloud Console), ex.: https://esiojunior89.github.io/MeuTube/ */
+  redirectUri() {
+    return location.origin + location.pathname.replace(/index\.html$/, '');
+  },
+
+  /** Login com servidor: vai ao Google pedindo também a chave de renovação. */
+  signInWithServer(clientId) {
+    const st = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+    store.set(KEYS.oauthState, { state: st, hash: location.hash || '#/', redirectUri: this.redirectUri(), at: Date.now() });
+    const email = this.profile?.email || this.remembered?.profile?.email;
+    const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    url.search = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: this.redirectUri(),
+      response_type: 'code',
+      scope: SCOPES,
+      access_type: 'offline', // pede a chave de renovação
+      prompt: 'consent',      // o Google só manda a chave quando mostra a tela de permissões
+      include_granted_scopes: 'true',
+      state: st,
+      ...(email && { login_hint: email }),
+    });
+    location.assign(url);
+  },
+
+  async exchangeCode() {
+    const { code, redirectUri } = this.pendingCode;
+    this.pendingCode = null;
+    let data = null;
+    try {
+      const res = await fetch(`${this.server()}/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, redirect_uri: redirectUri }),
+      });
+      data = await res.json().catch(() => null);
+      if (!res.ok || !data?.access_token) throw new Error(data?.error || `erro ${res.status}`);
+    } catch (e) {
+      toast(`Não foi possível concluir o login pelo servidor de login (${e.message}).`, 'error', 9000);
+      return;
+    }
+    this.setSession(data.session || null);
+    if (!data.session) toast('O Google não enviou a chave de renovação: este login vale por 1 hora.', 'info', 8000);
+    await this.onToken(data);
+  },
+
+  setSession(session) {
+    this.session = session;
+    if (session) store.set(KEYS.authSession, session);
+    else try { localStorage.removeItem(KEYS.authSession); } catch { /* ignora */ }
+  },
+
+  /** Pede um login novo ao servidor de login (em segundo plano). Retorna true se renovou. */
+  refresh() {
+    if (this.refreshing) return this.refreshing;
+    this.refreshing = (async () => {
+      const hadCredentials = hasCredentials();
+      let res = null;
+      let data = null;
+      try {
+        res = await fetch(`${this.server()}/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session: this.session }),
+        });
+        data = await res.json().catch(() => null);
+      } catch { res = null; }
+      if (res?.ok && data?.access_token) {
+        this.token = data.access_token;
+        this.expiresAt = Date.now() + Number(data.expires_in || 3600) * 1000;
+        if (data.scope) {
+          const granted = String(data.scope).split(/\s+/);
+          this.hasYtScope = granted.includes(YT_SCOPE);
+          this.hasDriveScope = granted.includes(DRIVE_SCOPE);
+        }
+        this.persist();
+        renderAccount();
+        if (!hadCredentials) onCredentialsChanged();
+        Sync.schedule(SYNC_QUICK_MS);
+        return true;
+      }
+      if (res && (res.status === 401 || res.status === 400)) {
+        // A chave de renovação expirou (7 dias) ou foi revogada: precisa entrar de novo.
+        this.setSession(null);
+        this.scheduleExpiry();
+        renderAccount();
+        if (!this.validToken()) toast('Seu login do Google precisa ser renovado (o Google pede a cada 7 dias). Clique em “Reconectar”.', 'info', 9000);
+        return false;
+      }
+      // Sem conexão ou servidor fora do ar: tenta de novo em 1 minuto.
+      clearTimeout(this.expiryTimer);
+      this.expiryTimer = setTimeout(() => this.refresh(), 60_000);
+      if (!this.validToken()) renderAccount();
+      return false;
+    })().finally(() => { this.refreshing = null; });
+    return this.refreshing;
   },
 
   persist() {
@@ -312,10 +470,14 @@ const Auth = {
     this.scheduleExpiry();
   },
 
-  /** O Google emite tokens de 1 hora para apps web; avisa quando expira em vez de "sumir" o login. */
+  /** O Google emite tokens de 1 hora para apps web: renova antes (com servidor) ou avisa quando expira. */
   scheduleExpiry() {
     clearTimeout(this.expiryTimer);
     if (!this.token) return;
+    if (this.session) {
+      this.expiryTimer = setTimeout(() => this.refresh(), Math.max(0, this.expiresAt - Date.now() - 5 * 60_000));
+      return;
+    }
     this.expiryTimer = setTimeout(() => {
       renderAccount();
       if (!state.config.apiKey) toast('Sua sessão do Google expirou (o Google limita a 1 hora). Clique em “Reconectar”.', 'info', 8000);
@@ -346,6 +508,10 @@ const Auth = {
     }
     if (location.protocol === 'file:') {
       toast('Abra o app por http:// ou https:// (ex.: um servidor local) para usar o login do Google.', 'error', 6000);
+      return;
+    }
+    if (this.server()) {
+      this.signInWithServer(clientId);
       return;
     }
     try {
@@ -379,8 +545,9 @@ const Auth = {
     this.expiresAt = Date.now() + Number(resp.expires_in || 3600) * 1000;
     // O Google permite desmarcar permissões individualmente na tela de consentimento.
     const granted = String(resp.scope || '').split(/\s+/);
-    this.hasYtScope = granted.includes(YT_SCOPE) || google.accounts.oauth2.hasGrantedAllScopes(resp, YT_SCOPE);
-    this.hasDriveScope = granted.includes(DRIVE_SCOPE) || google.accounts.oauth2.hasGrantedAllScopes(resp, DRIVE_SCOPE);
+    const gisGranted = scope => Boolean(window.google?.accounts?.oauth2?.hasGrantedAllScopes?.(resp, scope));
+    this.hasYtScope = granted.includes(YT_SCOPE) || gisGranted(YT_SCOPE);
+    this.hasDriveScope = granted.includes(DRIVE_SCOPE) || gisGranted(DRIVE_SCOPE);
     await this.loadProfile();
     this.persist();
     renderAccount();
@@ -436,6 +603,7 @@ const Auth = {
   },
 
   signOut() {
+    this.setSession(null);
     this.remembered = null;
     try { localStorage.removeItem(KEYS.account); } catch { /* ignora */ }
     this.clear();
@@ -2375,14 +2543,24 @@ function renderAccount() {
   if (!connected) {
     status = `
       <p class="note">
-        <strong>Sessão expirada.</strong> Por segurança, o Google limita o login de apps web a 1 hora.
+        <strong>Sessão expirada.</strong> ${Auth.server()
+          ? 'A renovação automática do login vale por até 7 dias (limite do Google); depois disso é preciso entrar de novo.'
+          : 'Por segurança, o Google limita o login de apps web a 1 hora.'}
         ${state.config.apiKey
           ? 'Como você tem uma chave de API salva, o app continua funcionando normalmente — reconectar é opcional.'
           : 'Clique em “Reconectar” para continuar carregando vídeos.'}
       </p>`;
   } else if (Auth.hasYtScope) {
     const until = new Date(Auth.expiresAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    status = `<span class="tier">Conectado · acesso ao YouTube autorizado · sessão válida até ${until}</span>`;
+    status = Auth.session
+      ? '<span class="tier">Conectado · acesso ao YouTube autorizado · login renovado automaticamente neste aparelho</span>'
+      : `<span class="tier">Conectado · acesso ao YouTube autorizado · sessão válida até ${until}</span>`;
+    if (Auth.server() && !Auth.session) {
+      // Servidor de login configurado, mas este login ainda é o de 1 hora: entra de novo para receber a chave.
+      status += `
+        <p class="note">Servidor de login configurado. Entre de novo uma vez para o login se renovar sozinho por até 7 dias.</p>
+        <div><button class="btn btn-primary btn-sm" type="button" data-action="signin">Ativar renovação automática</button></div>`;
+    }
   } else {
     status = `
       <p class="note note-warn">
@@ -2438,6 +2616,7 @@ function renderSettings() {
   document.title = 'Configurações · MeuTube';
   $('#cfg-api-key').value = state.config.apiKey;
   $('#cfg-client-id').value = state.config.clientId;
+  $('#cfg-login-server').value = state.config.loginServer || '';
   $('#hide-shorts').checked = state.hideShorts;
   renderInstallPanel();
   renderVersionInfo();
@@ -2594,9 +2773,18 @@ function onConfigSubmit(e) {
   e.preventDefault();
   const apiKey = $('#cfg-api-key').value.trim();
   const clientId = $('#cfg-client-id').value.trim();
+  const loginServer = $('#cfg-login-server').value.trim().replace(/\/+$/, '');
+  if (loginServer && !/^https:\/\/[^\s/]+$/.test(loginServer)) {
+    toast('O servidor de login deve ser um endereço https://, como https://meutube-login.seunome.workers.dev', 'error', 7000);
+    return;
+  }
   const changed = apiKey !== state.config.apiKey || clientId !== state.config.clientId;
   const apiKeyChanged = apiKey !== state.config.apiKey;
-  state.config = { apiKey, clientId };
+  if (loginServer !== (state.config.loginServer || '')) {
+    Auth.setSession(null); // a chave de renovação é do servidor antigo
+    Auth.scheduleExpiry();
+  }
+  state.config = { apiKey, clientId, loginServer };
   store.set(KEYS.config, state.config);
   if (apiKeyChanged) Sync.touch('apiKey');
   toast('Configurações salvas.', 'success');
@@ -2638,6 +2826,9 @@ async function driveFetch(url, opts = {}) {
     res = await fetch(url, { ...opts, headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) } });
   } catch {
     throw new Error('Sem conexão com o Google Drive.');
+  }
+  if (res.status === 401 && !opts.retried && Auth.session && await Auth.refresh()) {
+    return driveFetch(url, { ...opts, retried: true }); // renovou pelo servidor de login: tenta de novo
   }
   if (res.status === 401) {
     // Login recusado pelo Google (expirou antes da hora ou foi encerrado em outro lugar):
