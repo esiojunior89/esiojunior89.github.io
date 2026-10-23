@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '1.10.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -3290,6 +3290,16 @@ function setupMobileApp() {
   }, true);
 }
 
+/** No PC, os botões de Estatísticas e Configurações do rodapé do menu abrem numa aba nova.
+    No celular (e no app instalado) continuam abrindo na mesma tela. */
+function setupFooterLinks() {
+  if (isMobile()) return;
+  $$('.side-footer a[data-nav="stats"], .side-footer a[data-nav="settings"]').forEach(a => {
+    a.target = '_blank';
+    a.rel = 'noopener';
+  });
+}
+
 /** Versão discreta no menu lateral e, em Configurações, versão + diagnóstico do celular. */
 function renderVersionInfo() {
   const side = $('#app-version');
@@ -4059,6 +4069,7 @@ function init() {
   renderVersionInfo();
   console.info(`MeuTube v${APP_VERSION}`);
   setupMobileApp();
+  setupFooterLinks();
   setupPlayerControls();
   setupStats();
   bindEvents();
