@@ -1661,6 +1661,9 @@ body.sidebar-mini .side-sep-lives { display: none; }
 .st-card-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; flex-shrink: 0; }
 .st-sub { color: var(--st-muted); font-size: 11px; }
 .st-empty { margin: 0; color: var(--st-muted); font-size: 12px; }
+.st-counting { margin: 0; color: var(--st-muted); font-size: 12px; }
+.st-counting::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--st-blue); animation: stPulse 1.2s ease-in-out infinite; }
+@keyframes stPulse { 50% { opacity: .3; } }
 
 /* Faixa de números */
 .st-kpi { grid-column: span 6; justify-content: center; gap: 2px; padding: 12px 16px; }
