@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.13.0';
+const APP_VERSION = '1.14.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -27,7 +27,6 @@ const KEYS = {
   hideWatched: 'meutube.hideWatched',
   chstats: 'meutube.channelStats',
   sync: 'meutube.sync',
-  hideShorts: 'meutube.hideShorts',
   sidebar: 'meutube.sidebarMini',
   player: 'meutube.player',
   authSession: 'meutube.authSession', // chave de renovação do login (criptografada pelo servidor de login)
@@ -149,7 +148,6 @@ const state = {
   config: loadConfig(),
   channels: store.get(KEYS.channels, []), // [{ id, title, handle, thumb, uploads }]
   autoplay: store.get(KEYS.autoplay, true),
-  hideShorts: store.get(KEYS.hideShorts, true),
   sidebarMini: store.get(KEYS.sidebar, false),
   hideWatched: store.get(KEYS.hideWatched, false), // esconde os vídeos assistidos até o fim
   filter: null,      // ID do canal selecionado no menu lateral (null = todos)
@@ -637,15 +635,15 @@ const Auth = {
    recente entre os topos dos buffers. Assim a ordem global por
    data é sempre correta, página após página.
 
-   Sem lives na página inicial: em vez da playlist de uploads
-   completa (UU…), usamos as playlists automáticas de vídeos
-   longos (UULF…) e, se os Shorts estiverem ligados, a de Shorts
-   (UUSH…). As lives (UULV…) ficam no menu lateral.
+   Só a aba "Vídeos" de cada canal: em vez da playlist de
+   uploads completa (UU…), usamos a playlist automática de
+   vídeos (UULF…). Shorts (UUSH…) e lives gravadas (UULV…) não
+   entram no app; só as lives que estão no ar aparecem, no menu
+   lateral, em "Ao vivo".
    ========================================================= */
 class FeedStream {
   constructor(channels) {
-    const prefixes = state.hideShorts ? ['UULF'] : ['UULF', 'UUSH'];
-    this.sources = channels.flatMap(c => prefixes.map(prefix => ({
+    this.sources = channels.flatMap(c => ['UULF'].map(prefix => ({
       channelId: c.id,
       playlistId: prefix + c.id.slice(2),
       buffer: [],
@@ -747,12 +745,17 @@ class FeedStream {
    ========================================================= */
 const UPLOAD_INDEX_KEY = 'meutube.uploadIndex';
 
-/** Lista { id, ts } de uma playlist automática do canal, do cache + o que for novo. */
-async function playlistIndex(playlistId, onProgress) {
+/** Lê a lista guardada: "ID (11 letras) + segundos em base 36", separados por espaço. */
+function parseIndexList(list) {
+  return (list || '').split(' ').filter(Boolean).map(e => ({ id: e.slice(0, 11), ts: parseInt(e.slice(11), 36) * 1000 }));
+}
+
+/** Lista { id, ts } de uma playlist automática do canal, do cache + o que for novo.
+    Com maxAge, uma lista conferida há menos tempo que isso é usada sem consultar o YouTube. */
+async function playlistIndex(playlistId, onProgress, maxAge = 0) {
   const cache = store.get(UPLOAD_INDEX_KEY, {});
-  // Formato compacto: "ID (11 letras) + segundos em base 36", separados por espaço.
-  const cached = (cache[playlistId]?.list || '').split(' ').filter(Boolean)
-    .map(e => ({ id: e.slice(0, 11), ts: parseInt(e.slice(11), 36) * 1000 }));
+  const cached = parseIndexList(cache[playlistId]?.list);
+  if (maxAge && cache[playlistId] && Date.now() - (cache[playlistId].checked || cache[playlistId].at) < maxAge) return cached;
   const known = new Set(cached.map(e => e.id));
   const fresh = [];
   let token = null;
@@ -783,21 +786,22 @@ async function playlistIndex(playlistId, onProgress) {
   } while (token && !reachedKnown);
 
   const all = [...fresh, ...cached];
-  if (fresh.length || !cache[playlistId]) {
-    // Esquece as listas de canais que você removeu.
-    for (const key of Object.keys(cache)) {
-      if (!state.channels.some(c => c.id.slice(2) === key.slice(4))) delete cache[key];
-    }
-    cache[playlistId] = { at: Date.now(), list: all.map(e => e.id + Math.floor(e.ts / 1000).toString(36)).join(' ') };
-    store.set(UPLOAD_INDEX_KEY, cache);
+  // Esquece as listas de canais removidos e as de Shorts (de versões antigas).
+  for (const key of Object.keys(cache)) {
+    if (!key.startsWith('UULF') || !state.channels.some(c => c.id.slice(2) === key.slice(4))) delete cache[key];
   }
+  cache[playlistId] = {
+    at: fresh.length || !cache[playlistId] ? Date.now() : cache[playlistId].at,
+    checked: Date.now(),
+    list: all.map(e => e.id + Math.floor(e.ts / 1000).toString(36)).join(' '),
+  };
+  store.set(UPLOAD_INDEX_KEY, cache);
   return all;
 }
 
 class OldestFeedStream {
   constructor(channel) {
-    const prefixes = state.hideShorts ? ['UULF'] : ['UULF', 'UUSH'];
-    this.playlists = prefixes.map(prefix => prefix + channel.id.slice(2));
+    this.playlists = ['UULF' + channel.id.slice(2)]; // só a aba "Vídeos" do canal
     this.ascending = true;
     this.items = [];
     this.order = null;
@@ -2319,7 +2323,7 @@ function enterWatch(id) {
   (async () => {
     let video = known;
     if (!video) {
-      // Link direto/recarregamento: confirma que o vídeo pertence a um canal configurado.
+      // Link direto, recarregamento, "Anterior": só vale vídeo de um canal configurado.
       try {
         video = (await fetchVideos([id])).get(id);
       } catch (e) {
@@ -2327,16 +2331,15 @@ function enterWatch(id) {
         return;
       }
       if (state.currentVideoId !== id) return;
-      if (!video) {
-        showWatchBlocked('Este vídeo não pertence a nenhum dos canais adicionados nas Configurações, por isso não pode ser reproduzido aqui.');
-        return;
-      }
-      renderWatchInfo(video);
     }
-    if (!withinDurationLimit(video)) {
-      showWatchBlocked(`Este vídeo tem ${video.duration} e passa do limite de ${fmtHms(channelMaxDur(video.channelId))} definido para “${video.channelTitle}” nas Configurações.`);
+    // O que não é do MeuTube (outro canal, Short, live gravada, acima do limite de duração)
+    // simplesmente não existe no app: sem aviso, segue para outro lugar.
+    if (!video || !(await isMeuTubeVideo(video))) {
+      if (state.currentVideoId === id) skipNonMeuTube(id);
       return;
     }
+    if (state.currentVideoId !== id) return;
+    if (!known) renderWatchInfo(video);
     state.currentVideo = video;
     recordWatchHistory(id);
     markSeen(id);
@@ -2344,6 +2347,47 @@ function enterWatch(id) {
     loadComments(id, true);
     renderUpNext(video);
   })();
+}
+
+/** Vídeo que o MeuTube mostra: live no ar (menu "Ao vivo") ou vídeo da aba "Vídeos" do canal,
+    dentro do limite de duração. Shorts e lives gravadas ficam de fora. */
+async function isMeuTubeVideo(v) {
+  if (v.live === 'live') return true;
+  if (v.live !== 'none' || !withinDurationLimit(v)) return false;
+  for (const feed of feeds.values()) if (feed.items.some(item => item.id === v.id)) return true; // veio da aba "Vídeos"
+  return inVideosTab(v);
+}
+
+const videosTabChecks = new Map(); // vídeo -> está na aba "Vídeos"? (vale até recarregar)
+
+async function inVideosTab(v) {
+  if (videosTabChecks.has(v.id)) return videosTabChecks.get(v.id);
+  const playlistId = 'UULF' + v.channelId.slice(2);
+  let found = parseIndexList(store.get(UPLOAD_INDEX_KEY, {})[playlistId]?.list).some(e => e.id === v.id);
+  if (!found) {
+    try {
+      // Pergunta ao YouTube se o vídeo está na aba "Vídeos" do canal (1 unidade de cota).
+      const data = await api('playlistItems', { part: 'id', playlistId, videoId: v.id, maxResults: 1 });
+      found = Boolean(data.items?.length);
+    } catch (e) {
+      found = e.status === 404 ? false : true; // sem conexão/cota: não esconde o que pode ser válido
+    }
+  }
+  videosTabChecks.set(v.id, found);
+  return found;
+}
+
+/** Vídeo que não é do MeuTube: vai para o anterior válido (se veio do "Anterior") ou para o Início. */
+function skipNonMeuTube(id) {
+  watchHistory.stack = watchHistory.stack.filter(x => x !== id);
+  if (watchHistory.last === id) watchHistory.last = null;
+  saveWatchHistory();
+  if (goingBack && previousVideoId()) {
+    playPrevious();
+    return;
+  }
+  goingBack = false;
+  location.replace('#/');
 }
 
 /** Vídeos seguintes = os próximos do feed (mais antigos) depois do vídeo atual. */
@@ -2639,7 +2683,6 @@ function renderChannelList() {
 
 function renderSettings() {
   document.title = 'Configurações · MeuTube';
-  $('#hide-shorts').checked = state.hideShorts;
   renderInstallPanel();
   renderVersionInfo();
   renderAccount();
@@ -2812,6 +2855,17 @@ function removeChannel(id) {
   } else apply();
 }
 
+/** Canais alterados em outra aba (ex.: limite de duração nas Configurações com as Estatísticas abertas): aplica na hora. */
+function onChannelsStored() {
+  state.channels = store.get(KEYS.channels, []);
+  if (state.filter && !isHomeChannel(state.filter)) state.filter = null;
+  renderSidebar();
+  resetFeed();
+  if (state.view === 'stats') renderStats({ refresh: false });
+  else if (state.view === 'settings') renderChannelList();
+  else if (state.view === 'home') showHome();
+}
+
 /** A página de credenciais (credenciais.html) salvou algo: aplica na hora, sem recarregar o app. */
 function onConfigStored() {
   const before = state.config;
@@ -2936,7 +2990,7 @@ const Sync = {
     return {
       version: 1,
       channels: { at: at('channels'), value: state.channels },
-      prefs: { at: at('prefs'), value: { hideShorts: state.hideShorts, hideWatched: state.hideWatched, autoplay: state.autoplay } },
+      prefs: { at: at('prefs'), value: { hideWatched: state.hideWatched, autoplay: state.autoplay } },
       apiKey: { at: state.config.apiKey ? at('apiKey') : (this.meta.at.apiKey || 0), value: state.config.apiKey },
       progress: progressStore,
       seen: [...seenVideos].slice(-3000),
@@ -3095,11 +3149,6 @@ const Sync = {
     }
     if (changes.prefs) {
       const p = changes.prefs;
-      if (typeof p.hideShorts === 'boolean' && p.hideShorts !== state.hideShorts) {
-        state.hideShorts = p.hideShorts;
-        store.set(KEYS.hideShorts, state.hideShorts);
-        resetFeed();
-      }
       if (typeof p.hideWatched === 'boolean') {
         state.hideWatched = p.hideWatched;
         store.set(KEYS.hideWatched, state.hideWatched);
@@ -3352,13 +3401,6 @@ function bindEvents() {
   $('#channel-list').addEventListener('keydown', e => {
     if (e.key === 'Enter' && e.target.matches('input[data-max-dur]')) e.target.blur();
   });
-  $('#hide-shorts').addEventListener('change', e => {
-    state.hideShorts = e.target.checked;
-    store.set(KEYS.hideShorts, state.hideShorts);
-    Sync.touch('prefs');
-    resetFeed();
-    toast(state.hideShorts ? 'Shorts ocultados.' : 'Shorts voltarão a aparecer.', 'success');
-  });
 
   $('#menu-btn').addEventListener('click', toggleSidebar);
   $('#watched-toggle').addEventListener('click', toggleHideWatched);
@@ -3370,7 +3412,10 @@ function bindEvents() {
     updateSidebarMode();
     requestAnimationFrame(checkSentinel);
   });
-  addEventListener('storage', e => { if (e.key === KEYS.config) onConfigStored(); });
+  addEventListener('storage', e => {
+    if (e.key === KEYS.config) onConfigStored();
+    if (e.key === KEYS.channels) onChannelsStored();
+  });
 
   $('#comments-more').addEventListener('click', () => loadComments(state.currentVideoId));
   $('#upnext-more').addEventListener('click', () => {
@@ -3682,70 +3727,96 @@ function mergeWatchLog(remoteLog, remoteChannels) {
   return changed || mapped;
 }
 
-/** Descobre o canal dos vídeos do progresso salvo antes do registro existir (1 unidade de cota a cada 50). */
-let videoChannelsLoading = null;
-function ensureVideoChannels() {
-  if (videoChannelsLoading) return videoChannelsLoading;
-  videoChannelsLoading = (async () => {
-    const missing = Object.keys(progressStore).filter(id => !progressStore[id]?.gone && !(id in videoChannels));
-    for (const id of missing) {
-      const v = findLoadedVideo(id);
-      if (v) videoChannels[id] = v.channelId;
-    }
-    const rest = missing.filter(id => !(id in videoChannels));
-    if (rest.length && hasCredentials()) {
-      try {
-        for (let i = 0; i < rest.length; i += 50) {
-          const batch = rest.slice(i, i + 50);
-          const data = await api('videos', { part: 'snippet', id: batch.join(','), maxResults: 50, fields: 'items(id,snippet(channelId))' });
-          const found = new Map((data.items || []).map(v => [v.id, v.snippet?.channelId || '']));
-          batch.forEach(id => { videoChannels[id] = found.get(id) || ''; });
-        }
-      } catch { /* sem cota/conexão: tenta de novo na próxima visita */ }
-    }
-    if (missing.length) store.set(KEYS.videoChannels, videoChannels);
-    return missing.length > 0;
-  })().finally(() => { videoChannelsLoading = null; });
-  return videoChannelsLoading;
-}
+/* =========================================================
+   Vídeos de cada canal no MeuTube (base das Estatísticas)
+   =========================================================
+   O total de cada canal e o que conta como assistido seguem a
+   mesma regra do que aparece no app: vídeos da aba "Vídeos" do
+   canal (sem Shorts e sem lives gravadas), disponíveis e dentro
+   do limite de duração do canal. O app lê a lista do canal (a
+   mesma do "Mais antigos") e a duração de cada vídeo uma vez
+   (~4 unidades de cota a cada 100 vídeos) e guarda no aparelho;
+   depois, só confere os vídeos novos, no máximo a cada 3 horas.
+   Mudar o limite de duração recalcula tudo na hora, sem cota.
+   ========================================================= */
+const VIDEO_INFO_KEY = 'meutube.videoInfo'; // { canal: { vídeo: segundos | -1 indisponível | -2 estreia/ao vivo } }
+const CATALOG_MAX_AGE = 3 * 60 * 60 * 1000;
+const channelCatalogs = new Map(); // canal -> Map(vídeo -> segundos): só os vídeos exibíveis da aba "Vídeos"
 
-/* Total de vídeos do canal dentro do limite de duração ("Assistidos x total do canal").
-   O YouTube só informa o total geral; para contar os que cabem no limite, o app lê a lista
-   do canal (a mesma do "Mais antigos") e a duração de cada vídeo, uma vez (~4 unidades de
-   cota a cada 100 vídeos), e guarda no aparelho. Nas visitas seguintes, só os vídeos novos. */
-const DURATIONS_KEY = 'meutube.durations'; // { canal: { vídeo: segundos (-1 = indisponível) } }
-const limitedTotals = new Map();           // "canal:limite" -> total dentro do limite
-
-let limitedTotalsLoading = null;
-function ensureLimitedTotals(channels) {
-  // Se a página pedir de novo enquanto ainda está buscando, aproveita a mesma busca.
-  limitedTotalsLoading ||= loadLimitedTotals(channels).finally(() => { limitedTotalsLoading = null; });
-  return limitedTotalsLoading;
-}
-
-async function loadLimitedTotals(channels) {
-  const todo = channels.filter(c => c.maxDur && !limitedTotals.has(`${c.id}:${c.maxDur}`));
-  if (!todo.length || !hasCredentials()) return false;
-  const all = store.get(DURATIONS_KEY, {});
-  for (const id of Object.keys(all)) if (!channelById(id)) delete all[id]; // canais removidos
-  let changed = false;
-  for (const c of todo) {
-    try {
-      const ids = new Set();
-      for (const prefix of ['UULF', 'UUSH']) (await playlistIndex(prefix + c.id.slice(2))).forEach(e => ids.add(e.id));
-      const durations = (all[c.id] ||= {});
-      const missing = [...ids].filter(id => !(id in durations));
-      for (let i = 0; i < missing.length; i += 50) {
-        const batch = missing.slice(i, i + 50);
-        const data = await api('videos', { part: 'contentDetails', id: batch.join(','), maxResults: 50, fields: 'items(id,contentDetails(duration))' });
-        const found = new Map((data.items || []).map(v => [v.id, isoSeconds(v.contentDetails?.duration)]));
-        batch.forEach(id => { durations[id] = found.get(id) || -1; }); // -1: privado/removido
-      }
-      limitedTotals.set(`${c.id}:${c.maxDur}`, [...ids].filter(id => durations[id] > 0 && durations[id] <= c.maxDur).length);
-      changed = true;
-    } catch { /* sem cota/conexão: mostra "…" e tenta na próxima visita */ }
+/** Monta, a partir do que está guardado no aparelho, o catálogo dos canais que ainda não estão na memória. */
+function loadCatalogsFromCache(channels) {
+  const missing = channels.filter(c => !channelCatalogs.has(c.id));
+  if (!missing.length) return;
+  const index = store.get(UPLOAD_INDEX_KEY, {});
+  const info = store.get(VIDEO_INFO_KEY, {});
+  for (const c of missing) {
+    const list = index['UULF' + c.id.slice(2)]?.list;
+    const durations = info[c.id];
+    if (list == null || !durations) continue;
+    channelCatalogs.set(c.id, new Map(parseIndexList(list).filter(e => durations[e.id] > 0).map(e => [e.id, durations[e.id]])));
   }
-  store.set(DURATIONS_KEY, all);
+}
+
+/** Total de vídeos do canal no MeuTube (respeitando o limite de duração), ou undefined se ainda não foi contado. */
+function channelVideoTotal(c) {
+  const catalog = channelCatalogs.get(c.id);
+  if (!catalog) return undefined;
+  if (!c.maxDur) return catalog.size;
+  let n = 0;
+  for (const d of catalog.values()) if (d <= c.maxDur) n++;
+  return n;
+}
+
+/** Confere no YouTube o que mudou nos canais (vídeos novos, removidos) e atualiza os catálogos. */
+let catalogsLoading = null;
+function refreshCatalogs(channels, onProgress) {
+  catalogsLoading ||= loadCatalogs(channels, onProgress).finally(() => { catalogsLoading = null; });
+  return catalogsLoading;
+}
+
+async function loadCatalogs(channels, onProgress) {
+  if (!hasCredentials() || !channels.length) return false;
+  const all = store.get(VIDEO_INFO_KEY, {});
+  for (const id of Object.keys(all)) if (!channelById(id)) delete all[id]; // canais removidos
+  const indexes = store.get(UPLOAD_INDEX_KEY, {});
+  let changed = false;
+  for (const [i, c] of channels.entries()) {
+    onProgress?.(i, channels.length);
+    try {
+      const playlistId = 'UULF' + c.id.slice(2);
+      const info = (all[c.id] ||= {});
+      // Assistiu a um vídeo publicado depois da última conferência: confere a lista agora.
+      const checkedAt = indexes[playlistId]?.checked || indexes[playlistId]?.at || 0;
+      const catalog = channelCatalogs.get(c.id);
+      const watchedNew = Object.entries(progressStore).some(([id, p]) =>
+        videoChannels[id] === c.id && (p.at || 0) > checkedAt && !catalog?.has(id) && !(id in info));
+      const list = await playlistIndex(playlistId, null, watchedNew ? 0 : CATALOG_MAX_AGE);
+      const ids = list.map(e => e.id);
+      const inList = new Set(ids);
+      for (const id of Object.keys(info)) if (!inList.has(id)) delete info[id];
+      const missing = ids.filter(id => !(id in info) || info[id] === -2); // novos + estreias que podem ter saído
+      for (let j = 0; j < missing.length; j += 50) {
+        const batch = missing.slice(j, j + 50);
+        const data = await api('videos', {
+          part: 'contentDetails,snippet',
+          id: batch.join(','),
+          maxResults: 50,
+          fields: 'items(id,contentDetails(duration),snippet(liveBroadcastContent))',
+        });
+        const found = new Map((data.items || []).map(v => [v.id, v]));
+        batch.forEach(id => {
+          const v = found.get(id);
+          info[id] = !v ? -1 : (v.snippet?.liveBroadcastContent || 'none') !== 'none' ? -2 : (isoSeconds(v.contentDetails?.duration) || -1);
+        });
+      }
+      const next = new Map(ids.filter(id => info[id] > 0).map(id => [id, info[id]]));
+      if (!catalog || catalog.size !== next.size || missing.length) changed = true;
+      channelCatalogs.set(c.id, next);
+    } catch { /* sem cota/conexão: usa o que já está guardado e tenta na próxima visita */ }
+  }
+  onProgress?.(channels.length, channels.length);
+  store.set(VIDEO_INFO_KEY, all);
+  try { localStorage.removeItem('meutube.durations'); } catch { /* cache da versão 1.13.0 */ }
   return changed;
 }
 
@@ -3753,12 +3824,13 @@ async function loadLimitedTotals(channels) {
 function computeStats() {
   const since = Math.min(...Object.values(watchLog).map(d => d.since || Date.now()));
   const hidden = livesOnlyIds();
-  // Vídeo acima do limite de duração do canal (a duração vem do progresso salvo).
-  const overLimit = (id, ch) => {
-    const max = channelMaxDur(ch);
-    const d = progressStore[id]?.d;
-    return Boolean(max && d && d > max);
-  };
+  // Vídeos que contam: os da aba "Vídeos" dos canais, dentro do limite de duração (vídeo -> canal).
+  const owner = new Map();
+  for (const c of homeChannels()) {
+    const catalog = channelCatalogs.get(c.id);
+    if (!catalog) continue;
+    for (const [id, d] of catalog) if (!c.maxDur || d <= c.maxDur) owner.set(id, c.id);
+  }
   const daySec = new Map();     // dia -> segundos
   const dayChSec = new Map();   // dia -> Map(canal -> segundos)
   const dayVids = new Map();    // dia -> Set(vídeos assistidos até o fim)
@@ -3777,7 +3849,7 @@ function computeStats() {
   for (const dev of Object.values(watchLog)) {
     for (const [day, d] of Object.entries(dev.days || {})) {
       for (const [ch, sec] of Object.entries(d.s || {})) if (!hidden.has(ch)) addTime(day, ch, sec);
-      for (const [id, ch] of Object.entries(d.v || {})) if (!hidden.has(ch) && !overLimit(id, ch)) addVid(day, id);
+      for (const id of Object.keys(d.v || {})) if (owner.has(id)) addVid(day, id);
     }
   }
   const doneByCh = new Map();
@@ -3786,8 +3858,8 @@ function computeStats() {
   let estimated = false;
   for (const [id, p] of Object.entries(progressStore)) {
     if (!p || p.gone) continue;
-    const ch = videoChannels[id] || '';
-    if (hidden.has(ch) || overLimit(id, ch)) continue;
+    const ch = owner.get(id);
+    if (!ch) continue; // Short, live gravada, acima do limite, de outro canal ou removido
     started++;
     if (p.done) {
       done++;
@@ -4115,6 +4187,7 @@ function statsCalendarHTML(data) {
 function renderStats({ refresh = true } = {}) {
   const box = $('#stats');
   if (!box) return;
+  loadCatalogsFromCache(homeChannels());
   const data = computeStats();
   statsData = data;
   const period = statsPeriod;
@@ -4149,7 +4222,7 @@ function renderStats({ refresh = true } = {}) {
   const byVideos = channels.map(c => ({ ch: c, value: data.doneByCh.get(c.id) || 0 })).sort((a, b) => b.value - a.value);
   const maxVideos = Math.max(1, ...byVideos.map(i => i.value));
   const catalog = channels.map(c => {
-    const total = c.maxDur ? limitedTotals.get(`${c.id}:${c.maxDur}`) : channelStats[c.id]?.videos;
+    const total = channelVideoTotal(c);
     const doneN = data.doneByCh.get(c.id) || 0;
     return { ch: c, done: doneN, total, pct: total ? (doneN / total) * 100 : 0 };
   }).sort((a, b) => b.pct - a.pct || b.done - a.done);
@@ -4170,13 +4243,14 @@ function renderStats({ refresh = true } = {}) {
       <details class="st-info">
         <summary aria-label="Como os números são calculados" title="Como os números são calculados">i</summary>
         <p>
-          Horas contam o tempo em que o vídeo esteve tocando no MeuTube (neste e nos seus outros aparelhos, pela
-          sincronização). Um vídeo conta como assistido quando é visto até o fim.
+          Contam só os vídeos que aparecem no MeuTube: os da aba “Vídeos” de cada canal, dentro do limite de duração
+          (“Até hh:mm:ss”, nas Configurações). Horas são o tempo em que o vídeo esteve tocando no MeuTube, incluindo as
+          lives assistidas ao vivo (neste e nos seus outros aparelhos, pela sincronização). Um vídeo conta como
+          assistido quando é visto até o fim.
           ${data.estimated ? `Antes de ${sinceText}, horas e vídeos são <strong>estimados</strong> pelo progresso salvo
             (o vídeo inteiro, se assistido, ou até onde parou, no dia do último acesso).` : ''}
-          O total de vídeos de cada canal vem do YouTube e inclui Shorts e lives gravadas.
-          Canais com limite de duração (“Até hh:mm:ss”, nas Configurações) contam só os vídeos dentro do limite,
-          nas horas (a partir da versão 1.13.0), nos vídeos assistidos e no total do canal.
+          O total de cada canal é o número de vídeos que o MeuTube mostra para ele; mudar o limite de duração
+          recalcula tudo na hora. As horas registradas antes da versão 1.13.0 não podem ser separadas por limite.
         </p>
       </details>
       <div class="st-tabs" role="group" aria-label="Período">
@@ -4184,6 +4258,7 @@ function renderStats({ refresh = true } = {}) {
       </div>
     </header>
 
+    ${channels.some(c => !channelCatalogs.has(c.id)) ? '<p id="st-counting" class="st-counting" role="status">Contando os vídeos dos canais…</p>' : ''}
     <div class="st-grid">
       <article class="st-card st-kpi">
         <span class="st-kpi-label">Vídeos assistidos ${P.now}</span>
@@ -4266,13 +4341,13 @@ function renderStats({ refresh = true } = {}) {
 
   if (refresh) {
     // Busca o que falta (canal dos vídeos antigos, total de vídeos dos canais) e redesenha uma vez.
-    const needTotals = channels.some(c => channelStats[c.id]?.videos == null);
-    Promise.all([
-      ensureVideoChannels(),
-      channels.length && needTotals ? ensureChannelStats(channels[0].id).then(() => true) : false,
-      ensureLimitedTotals(channels),
-    ]).then(([mapped, totals, limited]) => {
-      if ((mapped || totals || limited) && state.view === 'stats') renderStats({ refresh: false });
+    // Primeira vez (nada guardado ainda): mostra o andamento da contagem.
+    const counting = channels.some(c => !channelCatalogs.has(c.id));
+    refreshCatalogs(channels, (done, total) => {
+      const el = $('#st-counting');
+      if (el && counting) el.textContent = `Contando os vídeos dos canais… (${done} de ${total})`;
+    }).then(changed => {
+      if ((changed || counting) && state.view === 'stats') renderStats({ refresh: false });
     });
   }
 }
