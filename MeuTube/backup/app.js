@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.14.1';
+const APP_VERSION = '1.15.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -29,6 +29,7 @@ const KEYS = {
   sync: 'meutube.sync',
   sidebar: 'meutube.sidebarMini',
   player: 'meutube.player',
+  theater: 'meutube.theater', // modo teatro ligado (só no computador; vale para este aparelho)
   authSession: 'meutube.authSession', // chave de renovação do login (criptografada pelo servidor de login)
   oauthState: 'meutube.oauthState',   // pedido de login em andamento (volta do Google)
   clientMigrated: 'meutube.clientMigrated',
@@ -2005,6 +2006,46 @@ function onPlayerControlsState(stateCode) {
   }
 }
 
+/* ---------- Modo teatro (só no computador) ----------
+   O player ocupa uma faixa preta de ponta a ponta; título, descrição e comentários ficam
+   embaixo, à esquerda, e "A seguir" à direita, em lista. A escolha fica guardada neste
+   aparelho. No celular o botão não existe (o player já ocupa a largura toda). */
+const THEATER_ICONS = {
+  on: ICON('M19 6H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zm0 10H5V8h14z'),
+  off: ICON('M17 8H7a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2zm0 6H7v-4h10z'),
+};
+const desktopQuery = matchMedia('(min-width: 1001px)');
+let theaterOn = store.get(KEYS.theater, false);
+
+function theaterActive() {
+  return theaterOn && desktopQuery.matches && !isMobile();
+}
+
+function applyTheater() {
+  $('#view-watch').classList.toggle('theater', theaterActive());
+  const btn = $('#pc-theater');
+  if (!btn) return;
+  btn.innerHTML = theaterOn ? THEATER_ICONS.off : THEATER_ICONS.on;
+  btn.setAttribute('aria-pressed', String(theaterOn));
+  btn.title = theaterOn ? 'Sair do modo teatro (t)' : 'Modo teatro (t)';
+  btn.setAttribute('aria-label', btn.title);
+}
+
+function toggleTheater() {
+  if (isMobile() || !desktopQuery.matches) return;
+  theaterOn = !theaterOn;
+  store.set(KEYS.theater, theaterOn);
+  const update = () => {
+    applyTheater();
+    // A lista de "A seguir" muda de tamanho: 10 vídeos no modo teatro, 3 no normal.
+    upNextCount = Math.max(upNextPage(), theaterOn ? upNextCount : UPNEXT_PAGE);
+    if (state.currentVideo) renderUpNext(state.currentVideo);
+  };
+  if (document.startViewTransition && !reducedMotion.matches && !document.fullscreenElement) document.startViewTransition(update);
+  else update();
+  pokeControls();
+}
+
 /** Atualiza o ícone do botão de tela cheia do app (entrar/sair). */
 function updateFullscreenButton() {
   const btn = $('#player-fs');
@@ -2043,6 +2084,10 @@ function setupPlayerControls() {
   onClick('#pc-cc', toggleCaptions);
   onClick('#pc-settings', () => openMenu());
   onClick('#player-fs', togglePlayerFullscreen);
+  if (isMobile()) $('#pc-theater').remove(); // modo teatro: só no computador
+  else onClick('#pc-theater', toggleTheater);
+  applyTheater();
+  desktopQuery.addEventListener('change', applyTheater);
   $('#pc-volume').addEventListener('input', e => setVolume(Number(e.target.value)));
   $('#pc-menu').addEventListener('click', e => {
     e.stopPropagation();
@@ -2152,6 +2197,7 @@ function setupPlayerControls() {
       ' ': togglePlay,
       k: togglePlay,
       f: togglePlayerFullscreen,
+      t: toggleTheater,
       c: toggleCaptions,
       ArrowLeft: () => seekBy(-5),
       ArrowRight: () => seekBy(5),
@@ -2172,7 +2218,9 @@ function setupPlayerControls() {
 /* =========================================================
    Página do vídeo
    ========================================================= */
-const UPNEXT_PAGE = 3; // "A seguir" mostra 3 vídeos; "Mostrar mais" acrescenta outros 3
+const UPNEXT_PAGE = 3;          // "A seguir" mostra 3 vídeos; "Mostrar mais" acrescenta outros 3
+const UPNEXT_PAGE_THEATER = 10; // no modo teatro, a coluna fica ao lado dos comentários: 10 por vez
+const upNextPage = () => (theaterActive() ? UPNEXT_PAGE_THEATER : UPNEXT_PAGE);
 let upNextCount = UPNEXT_PAGE;
 
 function watchInfoSkeleton() {
@@ -2300,7 +2348,7 @@ function enterWatch(id) {
   state.currentVideoId = id;
   state.currentVideo = null;
   updateSkipButtons();
-  upNextCount = UPNEXT_PAGE;
+  upNextCount = upNextPage();
   Comments.req++; // cancela respostas de comentários do vídeo anterior
   $('#player-error').hidden = true;
 
@@ -2308,7 +2356,7 @@ function enterWatch(id) {
   const known = state.watchFeed.items.find(v => v.id === id) || findLoadedVideo(id);
   if (known) renderWatchInfo(known);
   else $('#watch-info').innerHTML = watchInfoSkeleton();
-  $('#upnext').innerHTML = miniSkeletons(UPNEXT_PAGE);
+  $('#upnext').innerHTML = miniSkeletons(upNextPage());
   $('#upnext-more').hidden = true;
   $('#comments-list').innerHTML = commentSkeletons(3);
   $('#comments-more').hidden = true;
@@ -3420,7 +3468,7 @@ function bindEvents() {
   $('#comments-more').addEventListener('click', () => loadComments(state.currentVideoId));
   $('#upnext-more').addEventListener('click', () => {
     if (!state.currentVideo) return;
-    upNextCount += UPNEXT_PAGE;
+    upNextCount += upNextPage();
     renderUpNext(state.currentVideo);
   });
 

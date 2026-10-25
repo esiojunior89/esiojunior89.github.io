@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.15.0';
+const APP_VERSION = '1.16.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -39,6 +39,66 @@ const KEYS = {
   statsPeriod: 'meutube.statsPeriod',
 };
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
+/* ---------- Movimento ("apple experience") ----------
+   As curvas e durações ficam no styles.css (bloco "Movimento"). Aqui só ficam as
+   animações que dependem de medir a tela: um elemento que muda de lugar "viaja"
+   da posição antiga até a nova (técnica FLIP), alturas que mudam crescem suaves e
+   botões que trocam de estado dão um pequeno pulo. Tudo desligado com o "Reduzir
+   movimento" do sistema; nada disso muda o que o app faz, só como se move. */
+const motionOK = () => !reducedMotion.matches;
+const easeSmooth = () => getComputedStyle(document.documentElement).getPropertyValue('--ease-smooth').trim() || 'cubic-bezier(.16, 1, .3, 1)';
+
+/** Faz o elemento viajar do retângulo antigo (from) até onde ele está agora. */
+function playFlip(el, from, { scale = false, duration = 560, delay = 0 } = {}) {
+  if (!el || !from || !el.isConnected) return;
+  const to = el.getBoundingClientRect();
+  if (!to.width || !to.height) return;
+  const dx = from.left - to.left;
+  const dy = from.top - to.top;
+  const sx = scale ? from.width / to.width : 1;
+  const sy = scale ? from.height / to.height : 1;
+  if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) return;
+  el.animate([
+    { transformOrigin: '0 0', transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` },
+    { transformOrigin: '0 0', transform: 'none' },
+  ], { duration, delay, easing: easeSmooth(), fill: 'backwards' });
+}
+
+/** Entrada com "foco": surge subindo um pouco e saindo do desfoque. */
+function focusIn(el, { delay = 0, duration = 560 } = {}) {
+  el.animate([
+    { opacity: 0, transform: 'translateY(14px) scale(.97)', filter: 'blur(6px)' },
+    { opacity: 1, transform: 'none', filter: 'none' },
+  ], { duration, delay, easing: easeSmooth(), fill: 'backwards' });
+}
+
+/** Saída com "foco" (desfoca e some). Retorna quando termina. */
+function focusOut(el, { delay = 0, duration = 220 } = {}) {
+  return el.animate([
+    { opacity: 1, transform: 'none', filter: 'none' },
+    { opacity: 0, transform: 'translateY(6px) scale(.95)', filter: 'blur(6px)' },
+  ], { duration, delay, easing: 'cubic-bezier(.4, 0, 1, 1)', fill: 'forwards' }).finished.catch(() => {});
+}
+
+/** Muda algo que altera a altura do elemento (mutate) e anima a altura da antiga até a nova. */
+function animateHeight(el, mutate, duration = 460) {
+  const h0 = el.offsetHeight;
+  mutate();
+  if (!motionOK()) return;
+  const h1 = el.offsetHeight;
+  if (Math.abs(h1 - h0) < 2) return;
+  el.animate([{ height: `${h0}px`, overflow: 'hidden' }, { height: `${h1}px`, overflow: 'hidden' }], { duration, easing: easeSmooth() });
+}
+
+/** Pequeno "pulo" num botão que acabou de mudar de estado. */
+function pop(el) {
+  if (!el || !motionOK()) return;
+  el.classList.remove('pop');
+  void el.offsetWidth; // reinicia a animação
+  el.classList.add('pop');
+  el.addEventListener('animationend', () => el.classList.remove('pop'), { once: true });
+}
 
 /* =========================================================
    Utilitários
@@ -1374,16 +1434,45 @@ function applyHideWatched() {
 }
 
 function toggleHideWatched() {
-  state.hideWatched = !state.hideWatched;
-  store.set(KEYS.hideWatched, state.hideWatched);
-  Sync.touch('prefs');
-  applyHideWatched();
-  if (state.view === 'home') {
-    updateFeedStatus();
-    requestAnimationFrame(checkSentinel); // se sobrou pouco na tela, carrega mais
-  } else if (state.view === 'watch' && state.currentVideo) {
-    renderUpNext(state.currentVideo);
-  }
+  const run = () => {
+    state.hideWatched = !state.hideWatched;
+    store.set(KEYS.hideWatched, state.hideWatched);
+    Sync.touch('prefs');
+    applyHideWatched();
+    pop($('#watched-toggle'));
+    if (state.view === 'home') {
+      updateFeedStatus();
+      requestAnimationFrame(checkSentinel); // se sobrou pouco na tela, carrega mais
+    } else if (state.view === 'watch' && state.currentVideo) {
+      renderUpNext(state.currentVideo);
+    }
+  };
+  // Início: os assistidos saem desfocando e os outros deslizam até o novo lugar (só os que estão na tela).
+  const tiles = state.view === 'home' && motionOK() ? [...$$('#feed .tile')].filter(t => t.offsetParent && inViewport(t)) : [];
+  if (!tiles.length) { run(); return; }
+  const hiding = !state.hideWatched;
+  const leaving = hiding ? tiles.filter(t => t.classList.contains('is-watched')) : [];
+  const staying = tiles.filter(t => !leaving.includes(t));
+  const rearrange = () => {
+    const first = new Map(staying.map(t => [t, t.getBoundingClientRect()]));
+    run();
+    leaving.forEach(t => t.getAnimations().forEach(a => a.cancel()));
+    staying.forEach((t, i) => {
+      if (!t.offsetParent) return;
+      t.style.animation = 'none';
+      playFlip(t, first.get(t), { duration: 600, delay: Math.min(i, 12) * 12 });
+    });
+    if (!hiding) {
+      let n = 0;
+      $$('#feed .tile.is-watched').forEach(t => {
+        if (!inViewport(t)) return;
+        t.style.animation = 'none';
+        focusIn(t, { delay: 120 + n++ * 30 });
+      });
+    }
+  };
+  if (!leaving.length) { rearrange(); return; }
+  Promise.all(leaving.map((t, i) => focusOut(t, { delay: i * 15 }))).then(rearrange);
 }
 
 /** Salva o ponto atual do vídeo que está carregado no player. */
@@ -1804,6 +1893,7 @@ function toggleAutoplay() {
   store.set(KEYS.autoplay, state.autoplay);
   Sync.touch('prefs');
   updateAutoplayButton();
+  pop($('#pc-autoplay'));
   flashPlayerIcon('play', state.autoplay ? 'Reprodução automática ativada' : 'Reprodução automática desativada');
 }
 
@@ -1842,6 +1932,7 @@ function toggleCaptions() {
   savePlayerPrefs();
   applyCaptions();
   updateCcButton();
+  pop($('#pc-cc'));
   flashPlayerIcon('play', playerPrefs.cc ? 'Legendas ativadas' : 'Legendas desativadas');
   pokeControls();
 }
@@ -1904,9 +1995,20 @@ function openMenu(open = $('#pc-menu').hidden) {
   }
 }
 
+/** Troca de página do menu (Velocidade, Legendas...) deslizando para o lado, como no iPhone. */
+function renderMenuAnimated(dir) {
+  const menu = $('#pc-menu');
+  if (!motionOK() || menu.hidden) { renderMenu(); return; }
+  animateHeight(menu, renderMenu, 380);
+  [...menu.children].forEach((row, i) => row.animate([
+    { opacity: 0, transform: `translateX(${dir * 28}px)`, filter: 'blur(3px)' },
+    { opacity: 1, transform: 'none', filter: 'none' },
+  ], { duration: 380, delay: i * 18, easing: easeSmooth(), fill: 'backwards' }));
+}
+
 function onMenuAction(action) {
   const [kind, value] = action.split(':');
-  if (kind === 'menu') { menuPage = value; renderMenu(); return; }
+  if (kind === 'menu') { menuPage = value; renderMenuAnimated(value === 'main' ? -1 : 1); return; }
   if (kind === 'speed') {
     playbackRate = Number(value);
     player?.setPlaybackRate?.(playbackRate);
@@ -1920,7 +2022,7 @@ function onMenuAction(action) {
     updateCcButton();
     menuPage = 'main';
   }
-  renderMenu();
+  renderMenuAnimated(-1);
 }
 
 /* ---------- Barra de progresso e tempo ---------- */
@@ -2035,15 +2137,50 @@ function toggleTheater() {
   if (isMobile() || !desktopQuery.matches) return;
   theaterOn = !theaterOn;
   store.set(KEYS.theater, theaterOn);
+  pop($('#pc-theater'));
   const update = () => {
     applyTheater();
     // A lista de "A seguir" muda de tamanho: 10 vídeos no modo teatro, 3 no normal.
     upNextCount = Math.max(upNextPage(), theaterOn ? upNextCount : UPNEXT_PAGE);
     if (state.currentVideo) renderUpNext(state.currentVideo);
   };
-  if (document.startViewTransition && !reducedMotion.matches && !document.fullscreenElement) document.startViewTransition(update);
-  else update();
-  pokeControls();
+  if (!motionOK() || document.fullscreenElement || state.view !== 'watch') { update(); pokeControls(); return; }
+
+  // FLIP: mede onde cada coisa está, troca o layout e faz cada uma viajar até o novo lugar.
+  // O player é movido de verdade (não é uma "foto"), então o vídeo continua tocando.
+  const wrap = $('.player-wrap');
+  const band = $('.watch-player');
+  const parts = [$('.watch-info'), $('.watch-comments'), $('.watch-side .side-head'), $('#upnext-more')].filter(el => el && el.offsetParent);
+  const firstWrap = wrap.getBoundingClientRect();
+  const firstParts = new Map(parts.map(el => [el, el.getBoundingClientRect()]));
+  const firstTiles = new Map([...$$('#upnext .mini')].map(m => [m.dataset.vid, {
+    thumb: m.querySelector('.thumb')?.getBoundingClientRect(),
+    text: m.querySelector('.thumb')?.nextElementSibling?.getBoundingClientRect(),
+  }]));
+  const bandFrom = getComputedStyle(band).backgroundColor;
+  const go = () => {
+    update();
+    playFlip(wrap, firstWrap, { scale: true, duration: 620 });
+    band.animate([{ backgroundColor: bandFrom }, { backgroundColor: getComputedStyle(band).backgroundColor }], { duration: 520, easing: 'ease' });
+    parts.forEach((el, i) => playFlip(el, firstParts.get(el), { duration: 620, delay: 50 + i * 30 }));
+    let fresh = 0;
+    $$('#upnext .mini').forEach((m, i) => {
+      const before = firstTiles.get(m.dataset.vid);
+      const thumb = m.querySelector('.thumb');
+      m.style.animation = 'none';
+      if (before?.thumb && thumb) {
+        playFlip(thumb, before.thumb, { scale: true, duration: 620, delay: 40 + i * 30 });
+        playFlip(thumb.nextElementSibling, before.text, { duration: 620, delay: 40 + i * 30 });
+      } else {
+        focusIn(m, { delay: 220 + fresh++ * 45 });
+      }
+    });
+    pokeControls();
+  };
+  // Saindo do modo teatro: os vídeos extras de "A seguir" saem antes, desfocando.
+  const extras = theaterOn ? [] : [...$$('#upnext .mini')].slice(UPNEXT_PAGE);
+  if (extras.length) Promise.all(extras.map((m, i) => focusOut(m, { delay: (extras.length - 1 - i) * 15 }))).then(go);
+  else go();
 }
 
 /** Atualiza o ícone do botão de tela cheia do app (entrar/sair). */
@@ -3431,8 +3568,10 @@ function bindEvents() {
         const box = $('#description');
         if (actionEl.dataset.action === 'expand-desc' && !box.classList.contains('collapsed')) break;
         if (getSelection()?.toString()) break; // estava selecionando texto, não clicando
-        const collapsed = box.classList.toggle('collapsed');
-        box.querySelector('.desc-toggle').textContent = collapsed ? 'mais' : 'Mostrar menos';
+        animateHeight(box, () => {
+          const collapsed = box.classList.toggle('collapsed');
+          box.querySelector('.desc-toggle').textContent = collapsed ? 'mais' : 'Mostrar menos';
+        });
         break;
       }
     }
@@ -4033,7 +4172,7 @@ function ringSVG(pct, size = 150) {
   return `
     <svg class="st-ring" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" aria-hidden="true">
       <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="${size * 0.1}"/>
-      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="url(#st-ring)" stroke-width="${size * 0.1}"
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="url(#st-ring)" stroke-width="${size * 0.1}" class="st-ring-arc" style="--c:${c.toFixed(2)}"
         stroke-linecap="round" stroke-dasharray="${(c * p) / 100} ${c}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
       <circle cx="${size / 2}" cy="${size / 2}" r="${size * 0.32}" class="st-ring-core"/>
       <text x="50%" y="50%" dy=".35em" text-anchor="middle" class="st-ring-text" style="font-size:${size * 0.17}px">${text}</text>
@@ -4098,12 +4237,12 @@ function drawLineChart(box, series, { toValue, axis, tipValue, tipTitle, integer
   });
   const line = values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('');
   const area = `${line}L${x(values.length - 1).toFixed(1)},${y(0)}L${x(0).toFixed(1)},${y(0)}Z`;
-  const dots = values.map((v, i) => `<circle data-i="${i}" cx="${x(i)}" cy="${y(v)}" r="5" class="st-dot"/>`).join('');
+  const dots = values.map((v, i) => `<circle data-i="${i}" cx="${x(i)}" cy="${y(v)}" r="5" class="st-dot" style="--i:${i}"/>`).join('');
   box.innerHTML = `
     <svg width="${W}" height="${H}" aria-hidden="true">
       ${grid.join('')}
-      <path d="${area}" fill="url(#st-area)"/>
-      <path d="${line}" class="st-line"/>
+      <path d="${area}" fill="url(#st-area)" class="st-area"/>
+      <path d="${line}" class="st-line" pathLength="1"/>
       ${dots}
     </svg>`;
   attachChartTip(box, series.map((s, i) => ({ x: x(i), y: y(values[i]), value: tipValue(s.value), title: tipTitle(s) })));
@@ -4130,7 +4269,7 @@ function drawBarChart(box, series, { axis, tipValue, tipTitle }) {
   const every = xLabelStep(series.length, iw);
   series.forEach((s, i) => {
     const h = Math.max(s.value ? 3 : 0, y(0) - y(s.value));
-    parts.push(`<rect data-i="${i}" x="${cx(i) - bw / 2}" y="${y(0) - h}" width="${bw}" height="${h}" rx="${Math.min(6, bw / 2)}" class="st-bar"/>`);
+    parts.push(`<rect data-i="${i}" x="${cx(i) - bw / 2}" y="${y(0) - h}" width="${bw}" height="${h}" rx="${Math.min(6, bw / 2)}" class="st-bar" style="--i:${i}"/>`);
     if ((series.length - 1 - i) % every === 0) {
       parts.push(`<text x="${cx(i)}" y="${H - 8}" text-anchor="middle" class="st-axis">${esc(s.label)}</text>`);
     }
@@ -4187,10 +4326,11 @@ function drawRadarChart(box, items) {
       + `<tspan x="${lx}" dy="1.2em" class="st-radar-value">${esc(fmtHours(it.value))}</tspan></text>`);
   });
   const poly = items.map((it, i) => pt(i, Math.max(0.02, it.value / max)).map(v => v.toFixed(1)).join(',')).join(' ');
-  parts.push(`<polygon points="${poly}" class="st-radar-shape"/>`);
+  const origin = `transform-origin:${cx}px ${cy}px`; // a teia cresce a partir do centro
+  parts.push(`<polygon points="${poly}" class="st-radar-shape" style="${origin}"/>`);
   items.forEach((it, i) => {
     const [x, y] = pt(i, Math.max(0.02, it.value / max));
-    parts.push(`<circle cx="${x}" cy="${y}" r="3.5" class="st-radar-dot"/>`);
+    parts.push(`<circle cx="${x}" cy="${y}" r="3.5" class="st-radar-dot" style="${origin}"/>`);
   });
   box.innerHTML = `<svg width="${W}" height="${H}" aria-hidden="true">${parts.join('')}</svg>`;
 }
@@ -4217,7 +4357,7 @@ function statsCalendarHTML(data) {
     const vids = data.dayVids.get(key)?.size || 0;
     const alpha = sec ? (0.25 + 0.75 * (sec / max)).toFixed(2) : 0;
     const title = `${date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}: ${sec ? fmtHours(sec) : 'nada'}${vids ? ` · ${vids} ${vids === 1 ? 'vídeo' : 'vídeos'}` : ''}`;
-    cells.push(`<span class="st-day${sec ? ' has' : ''}${key === today ? ' today' : ''}" style="--a:${alpha}" title="${esc(title)}">${i + 1}</span>`);
+    cells.push(`<span class="st-day${sec ? ' has' : ''}${key === today ? ' today' : ''}" style="--a:${alpha};--i:${i}" title="${esc(title)}">${i + 1}</span>`);
   });
   const name = month.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
   return `
@@ -4232,9 +4372,38 @@ function statsCalendarHTML(data) {
     </div>`;
 }
 
-function renderStats({ refresh = true } = {}) {
+let statsAnimTimer = 0;
+
+/** Pílula azul das abas Dia/Semana/Mês: desliza da aba anterior até a escolhida. */
+function placeTabPill(prev) {
+  const tabs = $('#stats .st-tabs');
+  const active = tabs?.querySelector('[aria-pressed="true"]');
+  if (!active) return;
+  const pill = document.createElement('span');
+  pill.className = 'st-tab-pill';
+  pill.setAttribute('aria-hidden', 'true');
+  tabs.prepend(pill);
+  const place = () => { pill.style.left = `${active.offsetLeft}px`; pill.style.width = `${active.offsetWidth}px`; };
+  if (prev && motionOK()) {
+    pill.style.transition = 'none';
+    pill.style.left = prev.left;
+    pill.style.width = prev.width;
+    void pill.offsetWidth;
+    pill.style.transition = '';
+  }
+  place();
+}
+
+function renderStats({ refresh = true, animate = refresh } = {}) {
   const box = $('#stats');
   if (!box) return;
+  // Gráficos se desenhando e cartões em cascata só ao abrir a página ou trocar o período
+  // (atualizações em segundo plano não repetem a animação).
+  const prevPill = box.querySelector('.st-tab-pill');
+  const pillFrom = prevPill ? { left: prevPill.style.left, width: prevPill.style.width } : null;
+  clearTimeout(statsAnimTimer);
+  box.classList.toggle('st-anim', animate && motionOK());
+  if (animate) statsAnimTimer = setTimeout(() => box.classList.remove('st-anim'), 2200);
   loadCatalogsFromCache(homeChannels());
   const data = computeStats();
   statsData = data;
@@ -4363,11 +4532,11 @@ function renderStats({ refresh = true } = {}) {
       <article class="st-card st-perch">
         <div class="st-card-head"><h2>Vídeos por canal</h2><span class="st-sub">até o fim</span></div>
         <ul class="st-bars">
-          ${byVideos.map(({ ch, value }) => `
+          ${byVideos.map(({ ch, value }, i) => `
             <li>
               ${channelAvatar(ch)}
               <span class="st-bars-name" title="${esc(ch.title)}">${esc(ch.title)}</span>
-              <span class="st-bars-track"><span style="width:${((value / maxVideos) * 100).toFixed(1)}%"></span></span>
+              <span class="st-bars-track"><span style="width:${((value / maxVideos) * 100).toFixed(1)}%;--i:${i}"></span></span>
               <b>${intFmt.format(value)}</b>
             </li>`).join('') || '<li class="st-empty">Adicione canais nas Configurações.</li>'}
         </ul>
@@ -4386,6 +4555,7 @@ function renderStats({ refresh = true } = {}) {
     </div>`;
 
   drawStatsCharts();
+  placeTabPill(pillFrom);
 
   if (refresh) {
     // Busca o que falta (canal dos vídeos antigos, total de vídeos dos canais) e redesenha uma vez.
@@ -4440,15 +4610,18 @@ function setupStats() {
   box.addEventListener('click', e => {
     const tab = e.target.closest('[data-period]');
     if (tab) {
+      if (tab.dataset.period === statsPeriod) return;
       statsPeriod = tab.dataset.period;
       store.set(KEYS.statsPeriod, statsPeriod);
-      renderStats({ refresh: false });
+      renderStats({ refresh: false, animate: true });
       return;
     }
     const nav = e.target.closest('[data-cal]');
     if (nav && !nav.disabled) {
       statsMonthOffset = Math.min(0, statsMonthOffset + Number(nav.dataset.cal));
       box.querySelector('.st-cal').innerHTML = statsCalendarHTML(statsData || computeStats());
+      // Os dias deslizam na direção da seta.
+      if (motionOK()) box.querySelector('.st-cal-grid').classList.add(Number(nav.dataset.cal) < 0 ? 'slide-prev' : 'slide-next');
     }
   });
   let lastSize = '';
