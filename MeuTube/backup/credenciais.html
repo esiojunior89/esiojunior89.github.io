@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#0f0f12">
   <meta name="robots" content="noindex, nofollow">
   <title>Credenciais · MeuTube</title>
-  <meta name="app-version" content="1.15.0">
+  <meta name="app-version" content="1.16.0">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -4 28 28'%3E%3Crect width='28' height='20' rx='6' fill='%23ff3d3d'/%3E%3Cpath d='M11.5 5.8v8.4L18.6 10z' fill='%23fff'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=1.15.0">
+  <link rel="stylesheet" href="styles.css?v=1.16.0">
 </head>
 <body class="cred-body">
   <!-- =========================================================
@@ -91,7 +91,7 @@
     </section>
   </main>
 
-  <script src="config.js?v=1.15.0"></script>
+  <script src="config.js?v=1.16.0"></script>
   <script>
     'use strict';
     const KEYS = { config: 'meutube.config', sync: 'meutube.sync', authSession: 'meutube.authSession' };
@@ -135,9 +135,18 @@
       $('#login-pass').value = '';
       if (ok) {
         $('#login-user').value = '';
-        $('#cred-login').hidden = true;
-        $('#cred-panel').hidden = false;
-        fillForm();
+        // O cartão de login se transforma no painel (transição suave, quando o navegador permite).
+        const swap = () => {
+          $('#cred-login').hidden = true;
+          $('#cred-panel').hidden = false;
+          fillForm();
+        };
+        if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          $('#cred-panel').style.animation = 'none';
+          document.startViewTransition(swap);
+        } else {
+          swap();
+        }
         return;
       }
       // Errou: espera um pouco mais a cada tentativa.
@@ -145,6 +154,11 @@
       const wait = Math.min(30, failures * 2);
       error.textContent = `Usuário ou senha incorretos. Tente de novo em ${wait} s.`;
       error.hidden = false;
+      // O cartão "balança", como uma senha errada no iPhone.
+      const card = $('#cred-login');
+      card.classList.remove('shake');
+      void card.offsetWidth;
+      card.classList.add('shake');
       btn.textContent = 'Entrar';
       setTimeout(() => { btn.disabled = false; $('#login-pass').focus(); }, wait * 1000);
     });
