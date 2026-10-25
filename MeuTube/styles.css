@@ -49,6 +49,8 @@ html {
   -webkit-text-size-adjust: 100%;
   scrollbar-gutter: stable;
 }
+/* Em tela cheia não há barra de rolagem: sem o espaço reservado para ela (senão sobra uma faixa à direita). */
+html:has(:fullscreen) { scrollbar-gutter: auto; }
 
 body {
   margin: 0;
@@ -1861,3 +1863,47 @@ body.sidebar-mini .side-sep-lives { display: none; }
 /* Campo com o texto escondido (bolinhas) sem ser "senha": o navegador não oferece salvar. */
 .masked { -webkit-text-security: disc; text-security: disc; }
 #save-msg:empty { display: none; }
+
+/* =========================================================
+   Modo teatro (só no computador)
+   =========================================================
+   O player vira uma faixa preta de ponta a ponta, com o vídeo
+   centralizado no maior tamanho que cabe deixando o título visível.
+   Embaixo: informações e comentários à esquerda, "A seguir" à
+   direita, em lista. Em telas muito largas, essa parte de baixo fica
+   limitada à largura do vídeo (no mínimo 1800 px), centralizada.
+   ========================================================= */
+#pc-theater { display: none; }
+@media (min-width: 1001px) {
+  #pc-theater { display: grid; }
+  #view-watch.theater {
+    --theater-h: min(calc(100vw * 9 / 16), calc(100vh - var(--topbar-h) - 150px));
+    --theater-content: max(calc(var(--theater-h) * 16 / 9), 1800px);
+    padding-top: 0;
+  }
+  #view-watch.theater .watch-layout {
+    grid-template-columns: 1fr minmax(0, calc(var(--theater-content) - var(--side-col) - 24px)) var(--side-col) 1fr;
+    grid-template-areas:
+      "player player   player player"
+      ".      info     side   ."
+      ".      comments side   .";
+    justify-content: stretch;
+  }
+  #view-watch.theater .watch-player { margin: 0 calc(var(--watch-pad) * -1); background: #000; }
+  #view-watch.theater .player-wrap {
+    width: auto;
+    height: var(--theater-h);
+    margin: 0 auto;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  #view-watch.theater .watch-side { margin-top: 16px; }
+  /* "A seguir" em lista, como no YouTube */
+  #view-watch.theater .watch-side .side-head { height: auto; margin: 0 0 12px; }
+  #view-watch.theater .upnext .mini,
+  #view-watch.theater .upnext .sk-mini { height: auto; grid-template-columns: 168px minmax(0, 1fr); gap: 8px; }
+  #view-watch.theater .upnext .mini-title { font-size: 14px; line-height: 20px; -webkit-line-clamp: 2; }
+  #view-watch.theater .upnext .mini-meta { font-size: 12px; line-height: 18px; }
+  #view-watch.theater .upnext .mini .thumb { border-radius: 8px; }
+  #view-watch.theater .upnext .mini .badge { font-size: 11px; right: 4px; bottom: 4px; }
+}
