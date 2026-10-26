@@ -1,7 +1,14 @@
 'use strict';
 
+// Não funciona dentro de outro site (moldura/iframe): evita "clickjacking", em que um site
+// esconde o MeuTube por baixo de um botão falso para capturar os seus cliques.
+if (window.top !== window.self) {
+  document.documentElement.style.display = 'none';
+  throw new Error('O MeuTube não pode ser aberto dentro de outro site.');
+}
+
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.17.1';
+const APP_VERSION = '1.17.2';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -109,6 +116,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ESC_MAP[c]);
+
+// Foto que não carrega (ex.: canal sem foto) some. Feito aqui, e não com onerror="…" no HTML,
+// porque a política de segurança da página bloqueia código escrito dentro do HTML.
+document.addEventListener('error', e => {
+  if (e.target instanceof HTMLImageElement && e.target.hasAttribute('data-hide-broken')) e.target.style.visibility = 'hidden';
+}, true);
 
 const store = {
   get(key, fallback) {
@@ -433,7 +446,7 @@ const Auth = {
     } else if (q.get('error') || !q.get('code')) {
       setTimeout(() => toast('Login cancelado ou não autorizado.', 'error'), 0);
     } else {
-      this.pendingCode = { code: q.get('code'), redirectUri: pending.redirectUri };
+      this.pendingCode = { code: q.get('code'), redirectUri: pending.redirectUri, verifier: pending.verifier };
     }
   },
 
@@ -443,9 +456,14 @@ const Auth = {
   },
 
   /** Login com servidor: vai ao Google pedindo também a chave de renovação. */
-  signInWithServer(clientId) {
+  async signInWithServer(clientId) {
     const st = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
-    store.set(KEYS.oauthState, { state: st, hash: location.hash || '#/', redirectUri: this.redirectUri(), at: Date.now() });
+    // PKCE: um segundo código secreto criado aqui. O código que volta do Google só vale junto
+    // com ele, então quem interceptar o código (extensão, histórico) não consegue usá-lo.
+    const b64url = bytes => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
+    const challenge = b64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
+    store.set(KEYS.oauthState, { state: st, verifier, hash: location.hash || '#/', redirectUri: this.redirectUri(), at: Date.now() });
     const email = this.profile?.email || this.remembered?.profile?.email;
     const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     url.search = new URLSearchParams({
@@ -457,20 +475,22 @@ const Auth = {
       prompt: 'consent',      // o Google só manda a chave quando mostra a tela de permissões
       include_granted_scopes: 'true',
       state: st,
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
       ...(email && { login_hint: email }),
     });
     location.assign(url);
   },
 
   async exchangeCode() {
-    const { code, redirectUri } = this.pendingCode;
+    const { code, redirectUri, verifier } = this.pendingCode;
     this.pendingCode = null;
     let data = null;
     try {
       const res = await fetch(`${this.server()}/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, redirect_uri: redirectUri }),
+        body: JSON.stringify({ code, redirect_uri: redirectUri, ...(verifier && { code_verifier: verifier }) }),
       });
       data = await res.json().catch(() => null);
       if (!res.ok || !data?.access_token) throw new Error(data?.error || `erro ${res.status}`);
@@ -587,7 +607,7 @@ const Auth = {
       return;
     }
     if (this.server()) {
-      this.signInWithServer(clientId);
+      this.signInWithServer(clientId).catch(() => toast('Não foi possível iniciar o login com o Google. Tente de novo.', 'error'));
       return;
     }
     try {
@@ -999,7 +1019,7 @@ function tileHTML(v, i) {
         ${progressBarHTML(v.id)}
       </div>
       <div class="tile-info">
-        <img class="avatar" src="${esc(ch?.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
+        <img class="avatar" src="${esc(ch?.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hide-broken>
         <div>
           <h3 class="tile-title" title="${esc(v.title)}">${esc(v.title)}</h3>
           <p class="tile-channel">${esc(v.channelTitle)}</p>
@@ -1065,7 +1085,7 @@ function renderFeedHeader() {
     return;
   }
   box.innerHTML = `
-    <img class="avatar lg" src="${esc(ch.thumb || '')}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
+    <img class="avatar lg" src="${esc(ch.thumb || '')}" alt="" referrerpolicy="no-referrer" data-hide-broken>
     <div>
       <h1>${esc(ch.title)}</h1>
       <span class="muted">${esc(ch.handle || '')}</span>
@@ -1195,7 +1215,7 @@ function renderSidebar() {
   box.innerHTML = list.length
     ? list.map(c => `
         <a class="side-item" href="#/c/${esc(c.id)}" data-channel="${esc(c.id)}" title="${esc(c.title)}">
-          <img class="side-avatar" src="${esc(c.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
+          <img class="side-avatar" src="${esc(c.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hide-broken>
           <span class="side-label">${esc(c.title)}</span>
         </a>`).join('')
     : state.channels.length
@@ -1278,7 +1298,7 @@ function renderLives() {
         <a class="side-item side-live" href="#/watch/${v.id}" data-vid="${v.id}"
            title="${esc(`${v.channelTitle} — ${v.title}${viewers ? ` (${viewers} assistindo)` : ''}`)}">
           <span class="live-avatar">
-            <img class="side-avatar" src="${esc(ch?.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
+            <img class="side-avatar" src="${esc(ch?.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hide-broken>
             <span class="live-dot"></span>
           </span>
           <span class="side-label">
@@ -1841,7 +1861,7 @@ function setYouTubeTitleShowing(showing) {
 function renderPlayerTitle(v) {
   const ch = channelById(v.channelId);
   $('#pc-top').innerHTML = `
-    <img class="pc-top-avatar" src="${esc(ch?.thumb || '')}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
+    <img class="pc-top-avatar" src="${esc(ch?.thumb || '')}" alt="" referrerpolicy="no-referrer" data-hide-broken>
     <div class="pc-top-text">
       <div class="pc-top-title">${esc(v.title)}</div>
       <div class="pc-top-channel">${esc(v.channelTitle)}</div>
@@ -2462,7 +2482,7 @@ function renderWatchInfo(v) {
     <h1 class="watch-title">${esc(v.title)}</h1>
     <div class="watch-meta">
       <div class="watch-channel">
-        <img class="avatar watch-avatar" src="${esc(ch?.thumb || '')}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
+        <img class="avatar watch-avatar" src="${esc(ch?.thumb || '')}" alt="" referrerpolicy="no-referrer" data-hide-broken>
         <div>
           <strong>${esc(v.channelTitle)}</strong>
           <span class="muted" id="watch-subs">${esc(subscribersText(v.channelId) || ch?.handle || '')}</span>
@@ -2687,7 +2707,7 @@ function commentBody(s) {
   const edited = s.updatedAt && s.updatedAt !== s.publishedAt ? ' (editado)' : '';
   return `
     <div class="comment-row">
-      <img class="avatar sm" src="${esc(s.authorProfileImageUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
+      <img class="avatar sm" src="${esc(s.authorProfileImageUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hide-broken>
       <div class="comment-content">
         <div class="comment-head">
           <strong>${esc(s.authorDisplayName)}</strong>
@@ -2818,7 +2838,7 @@ function renderAccount() {
   const p = account.profile;
   const name = p?.name || account.ytChannel?.title || 'Conta Google';
   const pic = p?.picture || account.ytChannel?.thumb || '';
-  const avatar = cls => `<img class="${cls}" src="${esc(pic)}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">`;
+  const avatar = cls => `<img class="${cls}" src="${esc(pic)}" alt="" referrerpolicy="no-referrer" data-hide-broken>`;
 
   header.innerHTML = connected
     ? `<a class="account-chip" href="#/settings" title="${esc(name)}">${avatar('')}<span>${esc(p?.given_name || name)}</span></a>`
@@ -2883,7 +2903,7 @@ function renderChannelList() {
   }
   ul.innerHTML = state.channels.map(c => `
     <li class="channel-item" data-id="${esc(c.id)}">
-      <img class="avatar" src="${esc(c.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
+      <img class="avatar" src="${esc(c.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hide-broken>
       <div>
         <strong>${esc(c.title)}</strong>
         <span>${esc(c.handle || c.id)}</span>
@@ -4390,7 +4410,7 @@ function drawRadarChart(box, items) {
 let statsData = null;
 
 function channelAvatar(ch, cls = 'st-avatar') {
-  return `<img class="${cls}" src="${esc(ch?.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">`;
+  return `<img class="${cls}" src="${esc(ch?.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hide-broken>`;
 }
 
 function statsCalendarHTML(data) {

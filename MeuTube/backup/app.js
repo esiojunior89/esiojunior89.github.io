@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.17.0';
+const APP_VERSION = '1.17.1';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -210,7 +210,7 @@ const state = {
   channels: store.get(KEYS.channels, []), // [{ id, title, handle, thumb, uploads }]
   autoplay: store.get(KEYS.autoplay, true),
   sidebarMini: store.get(KEYS.sidebar, false),
-  watchSidebar: false, // menu aberto na página do vídeo (sempre começa fechado, como no YouTube)
+  pageSidebar: false, // menu aberto no vídeo/estatísticas/configurações (sempre começa fechado, como no YouTube)
   hideWatched: store.get(KEYS.hideWatched, false), // esconde os vídeos assistidos até o fim
   filter: null,      // ID do canal selecionado no menu lateral (null = todos)
   sort: 'new',       // ordem na página do canal: 'new' (mais recentes) | 'old' (mais antigos)
@@ -932,6 +932,14 @@ function currentFeed() {
   return feeds.get(key);
 }
 
+/** Endereço de um vídeo levando o filtro atual (canal e ordem), para os vídeos seguintes continuarem nele. */
+function watchContext() {
+  return state.filter ? `/c/${state.filter}${state.sort === 'old' ? '/antigos' : ''}` : '';
+}
+function watchHref(id, context = watchContext()) {
+  return `#/watch/${id}${context}`;
+}
+
 function findLoadedVideo(id) {
   for (const feed of feeds.values()) {
     const v = feed.items.find(item => item.id === id);
@@ -984,7 +992,7 @@ function newTag(v) {
 function tileHTML(v, i) {
   const ch = channelById(v.channelId);
   return `
-    <a class="tile${isWatched(v.id) ? ' is-watched' : ''}" href="#/watch/${v.id}" data-vid="${v.id}" style="--i:${i}">
+    <a class="tile${isWatched(v.id) ? ' is-watched' : ''}" href="${watchHref(v.id)}" data-vid="${v.id}" style="--i:${i}">
       <div class="thumb">
         <img src="${esc(v.thumb)}" alt="" loading="lazy" decoding="async">
         ${thumbBadge(v)}
@@ -1290,16 +1298,19 @@ function renderLives() {
   updateSidebarActive();
 }
 
+/** Páginas em que, no PC, o menu recolhido fica escondido e a página usa a largura toda. */
+const SIDEBAR_HIDDEN_VIEWS = new Set(['watch', 'stats', 'settings']);
+
 /** No PC o menu nunca cobre o conteúdo: ao abrir, empurra tudo para o lado (igual ao YouTube).
- *  Na página do vídeo, recolhido = escondido (o vídeo usa a largura toda). Só em telas
+ *  No vídeo, nas estatísticas e nas configurações, recolhido = escondido. Só em telas
  *  estreitas (celular) ele é uma gaveta sobreposta. */
 function updateSidebarMode() {
   const overlay = overlayQuery.matches;
-  const watchPush = !overlay && state.view === 'watch';
+  const pagePush = !overlay && SIDEBAR_HIDDEN_VIEWS.has(state.view);
   const body = document.body;
   body.classList.toggle('sidebar-overlay', overlay);
-  body.classList.toggle('sidebar-mini', !overlay && !watchPush && state.sidebarMini);
-  body.classList.toggle('sidebar-hidden', watchPush && !state.watchSidebar);
+  body.classList.toggle('sidebar-mini', !overlay && !pagePush && state.sidebarMini);
+  body.classList.toggle('sidebar-hidden', pagePush && !state.pageSidebar);
   if (!overlay) body.classList.remove('sidebar-open');
   $('#menu-btn').setAttribute('aria-expanded', String(isSidebarExpanded()));
   // Ao expandir o menu, verifica as lives na hora se a última verificação tiver mais de 5 min.
@@ -1310,14 +1321,14 @@ function updateSidebarMode() {
 function isSidebarExpanded() {
   const body = document.body;
   if (body.classList.contains('sidebar-overlay')) return body.classList.contains('sidebar-open');
-  return state.view === 'watch' ? state.watchSidebar : !state.sidebarMini;
+  return SIDEBAR_HIDDEN_VIEWS.has(state.view) ? state.pageSidebar : !state.sidebarMini;
 }
 
 function toggleSidebar() {
   if (document.body.classList.contains('sidebar-overlay')) {
     document.body.classList.toggle('sidebar-open');
-  } else if (state.view === 'watch') {
-    state.watchSidebar = !state.watchSidebar;
+  } else if (SIDEBAR_HIDDEN_VIEWS.has(state.view)) {
+    state.pageSidebar = !state.pageSidebar;
   } else {
     state.sidebarMini = !state.sidebarMini;
     store.set(KEYS.sidebar, state.sidebarMini);
@@ -1604,7 +1615,7 @@ function onPlayerStateChange(e) {
   } catch { /* ignora */ }
   if (!state.autoplay || state.view !== 'watch') return;
   const next = nextVideoAfter(state.currentVideo);
-  if (next) location.hash = `#/watch/${next.id}`;
+  if (next) location.hash = watchHref(next.id);
 }
 
 function onPlayerError(e) {
@@ -1763,7 +1774,7 @@ function setControlsVisible(visible) {
 const WATCH_HISTORY_KEY = 'meutube.watchHistory';
 const WATCH_HISTORY_MAX = 50;
 const watchHistory = (() => {
-  try { return { stack: [], last: null, ...JSON.parse(sessionStorage.getItem(WATCH_HISTORY_KEY)) }; } catch { return { stack: [], last: null }; }
+  try { return { stack: [], last: null, ctx: {}, ...JSON.parse(sessionStorage.getItem(WATCH_HISTORY_KEY)) }; } catch { return { stack: [], last: null, ctx: {} }; }
 })();
 let goingBack = false;
 
@@ -1779,6 +1790,10 @@ function recordWatchHistory(id) {
     watchHistory.stack = watchHistory.stack.slice(-WATCH_HISTORY_MAX);
   }
   watchHistory.last = id;
+  // Filtro em que cada vídeo foi visto ("Anterior" volta para ele com os mesmos vídeos seguintes).
+  watchHistory.ctx[id] = watchContext();
+  const keep = new Set([...watchHistory.stack, id]);
+  for (const k of Object.keys(watchHistory.ctx)) if (!keep.has(k)) delete watchHistory.ctx[k];
   saveWatchHistory();
   updateSkipButtons();
 }
@@ -1794,12 +1809,12 @@ function playPrevious() {
   watchHistory.stack.pop();
   saveWatchHistory();
   goingBack = true;
-  location.hash = `#/watch/${id}`;
+  location.hash = watchHref(id, watchHistory.ctx[id] ?? watchContext());
 }
 
 function playNext() {
   const next = nextVideoAfter(state.currentVideo);
-  if (next) location.hash = `#/watch/${next.id}`;
+  if (next) location.hash = watchHref(next.id);
 }
 
 function updateSkipButtons() {
@@ -2616,7 +2631,7 @@ function nextVideoAfter(video) {
 
 function miniHTML(v, i) {
   return `
-    <a class="mini${isWatched(v.id) ? ' is-watched' : ''}" href="#/watch/${v.id}" data-vid="${v.id}" style="--i:${i}">
+    <a class="mini${isWatched(v.id) ? ' is-watched' : ''}" href="${watchHref(v.id)}" data-vid="${v.id}" style="--i:${i}">
       <div class="thumb">
         <img src="${esc(v.thumbSmall)}" alt="" loading="lazy" decoding="async">
         ${thumbBadge(v)}
@@ -2654,9 +2669,11 @@ async function renderUpNext(video) {
   if (slice.list.length) {
     box.innerHTML = slice.list.map(miniHTML).join('');
   } else {
+    // "Mais antigo" só quando a lista acabou de verdade; se ainda há o que buscar, fica o "Mostrar mais".
     box.innerHTML = failure
       ? `<p class="error">${esc(failure.message)}</p>`
-      : '<p class="muted">Não há vídeos seguintes. Este é o vídeo mais antigo dos seus canais.</p>';
+      : slice.hasMore ? ''
+      : `<p class="muted">Não há vídeos seguintes. Este é o vídeo mais antigo ${state.filter ? 'deste canal' : 'dos seus canais'}.</p>`;
   }
   more.hidden = !slice.hasMore || Boolean(failure);
   more.disabled = false;
@@ -3425,8 +3442,10 @@ let pendingHero = null;
 
 function parseRoute() {
   const hash = location.hash || '#/';
-  const watch = /^#\/watch\/([\w-]{11})$/.exec(hash);
-  if (watch) return { view: 'watch', id: watch[1] };
+  // O filtro de canal vai junto no endereço do vídeo (#/watch/ID/c/UC…[/antigos]): recarregar
+  // a página mantém os vídeos seguintes do mesmo canal.
+  const watch = /^#\/watch\/([\w-]{11})(?:\/c\/(UC[\w-]{22})(\/antigos)?)?$/.exec(hash);
+  if (watch) return { view: 'watch', id: watch[1], channel: watch[2] || null, sort: watch[3] ? 'old' : 'new' };
   if (hash === '#/settings') return { view: 'settings' };
   if (hash === '#/stats') return { view: 'stats' };
   const channel = /^#\/c\/(UC[\w-]{22})(\/antigos)?$/.exec(hash);
@@ -3459,7 +3478,7 @@ function applyView(view, id, channel, sort = 'new') {
     state.currentVideoId = null;
   }
 
-  if (view === 'watch' && prev !== 'watch') state.watchSidebar = false;
+  if (view !== prev) state.pageSidebar = false;
   state.view = view;
   $('#view-home').hidden = view !== 'home';
   $('#view-watch').hidden = view !== 'watch';
@@ -3477,6 +3496,9 @@ function applyView(view, id, channel, sort = 'new') {
     showHome();
     window.scrollTo({ top: filterChanged ? 0 : state.homeScroll, behavior: 'instant' });
   } else if (view === 'watch') {
+    const filter = channel && isHomeChannel(channel) ? channel : null;
+    state.filter = filter;
+    state.sort = filter ? sort : 'new';
     window.scrollTo({ top: 0, behavior: 'instant' });
     enterWatch(id);
   } else if (view === 'stats') {
@@ -3783,6 +3805,14 @@ function setupFooterLinks() {
   $$('.side-footer a[data-nav="stats"], .side-footer a[data-nav="settings"], #cred-link').forEach(a => {
     a.target = '_blank';
     a.rel = 'noopener';
+  });
+  // A página abre em outra aba; nesta, o menu que estava aberto só por um momento fecha.
+  $$('.side-footer a[data-nav="stats"], .side-footer a[data-nav="settings"]').forEach(a => {
+    a.addEventListener('click', () => {
+      if (SIDEBAR_HIDDEN_VIEWS.has(state.view)) state.pageSidebar = false;
+      document.body.classList.remove('sidebar-open');
+      updateSidebarMode();
+    });
   });
 }
 
