@@ -52,14 +52,38 @@ html {
 /* Em tela cheia não há barra de rolagem: sem o espaço reservado para ela (senão sobra uma faixa à direita). */
 html.is-fullscreen { scrollbar-gutter: auto; }
 
+/* Fonte: a Inter, a mais parecida com a da Apple (San Francisco) — licença livre (fonts/OFL.txt),
+   hospedada junto com o app. Nos navegadores da Apple (Safari, iPhone, iPad) usa a própria
+   San Francisco (veja o @supports logo abaixo do body). */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("fonts/inter-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("fonts/inter-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font: 15px/1.5 "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+}
+/* Só os navegadores da Apple entendem "-apple-system-body": neles, a fonte original da Apple. */
+@supports (font: -apple-system-body) {
+  body { font-family: -apple-system, "Inter", system-ui, sans-serif; }
 }
 
 img { display: block; max-width: 100%; }
@@ -1306,6 +1330,20 @@ body.sidebar-mini .app-version { margin: 2px 0 0; padding: 0; font-size: 10px; }
   font-variant-numeric: tabular-nums;
 }
 .pc-time span { margin-left: 4px; color: #ddd; font-weight: 500; }
+/* O tempo é o único item da barra que cede espaço: se não couber numa linha (vídeo longo,
+   celular estreito ou com a fonte do sistema aumentada), "/ duração" desce para uma segunda
+   linha dentro da pílula. Os botões nunca encolhem nem saem da tela. */
+.pc-bar > .pc-pill, .pc-bar > .pc-btn { flex-shrink: 0; }
+.pc-bar > .pc-time {
+  flex-shrink: 1;
+  flex-wrap: wrap;
+  align-content: center;
+  justify-content: center;
+  min-width: 0;
+  line-height: 1.15;
+  text-align: center;
+}
+.pc-time span { white-space: nowrap; }
 .pc-live-dot {
   width: 8px;
   height: 8px;
@@ -1556,6 +1594,10 @@ body.sidebar-mini .side-sep-lives { display: none; }
   .pc-bar { gap: 3px; }
   .pc-pill { padding: 0 1px; }
   .pc-time { padding: 0 7px; font-size: 11px; }
+  .pc-time span { margin-left: 3px; }
+}
+@container (max-width: 340px) {
+  .pc-time { padding: 0 5px; font-size: 10px; }
 }
 
 /* =========================================================
@@ -1573,7 +1615,7 @@ body.sidebar-mini .side-sep-lives { display: none; }
   --st-bg: #0f0f12; /* o preto original do app (fixo, também no tema claro do sistema) */
   --st-line: rgba(255, 255, 255, .09);
   --st-text: #eef0ff;
-  --st-muted: #8e96d8;
+  --st-muted: #aeb5e8; /* lilás mais claro: textos pequenos com contraste AAA (7:1) sobre os cartões */
   --st-blue: #3f7bff;
   --st-cyan: #39c6ff;
   --st-orange: #ffa41b;
@@ -1692,7 +1734,7 @@ body.sidebar-mini .side-sep-lives { display: none; }
 .st-vs { color: var(--st-muted); font-size: 11px; }
 .st-kpi-ring { flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px; }
 .st-kpi-ring > div { display: grid; gap: 1px; min-width: 0; }
-.st-kpi-ring .st-kpi-label { color: #6f8bff; }
+.st-kpi-ring .st-kpi-label { color: #9db0ff; }
 
 /* Anéis */
 .st-rings { flex-direction: row; align-items: center; justify-content: space-around; gap: 8px; padding: 10px 12px; }
@@ -1734,49 +1776,102 @@ body.sidebar-mini .side-sep-lives { display: none; }
 .st-radar-shape { fill: rgba(91, 124, 255, .22); stroke: #6f8bff; stroke-width: 2; stroke-linejoin: round; }
 .st-radar-dot { fill: var(--st-orange); }
 .st-radar-label { fill: var(--st-text); font-size: 11px; }
-.st-radar-value { fill: #6f8bff; font-size: 10px; }
+.st-radar-value { fill: #9db0ff; font-size: 10px; }
 
-/* Calendário: os dias se ajustam à altura do cartão */
-.st-cal-head { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-.st-cal-head h2 { letter-spacing: .1em; }
-.st-cal-nav {
+/* Previsão: número grande em cima; no rodapé, "Todos" fixo + carrossel com as fotos dos canais */
+.st-fc-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-height: 0;
+  padding: 10px 0;
+}
+.st-fc-big { font-size: 30px; font-weight: 700; line-height: 1.1; letter-spacing: -.02em; }
+.st-fc-line { color: var(--st-text); font-size: 13px; }
+.st-fc-facts { display: flex; flex-wrap: wrap; gap: 4px 22px; margin-top: 6px; }
+.st-fc-facts span { display: grid; gap: 1px; }
+.st-fc-facts small { color: var(--st-muted); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.st-fc-facts b { color: var(--st-text); font-size: 16px; }
+.st-fc-facts em { color: var(--st-muted); font-size: 12px; font-style: normal; font-weight: 500; }
+.st-fc-support { margin-top: 2px; color: var(--st-muted); font-size: 11px; }
+.st-fc-swap { animation: viewIn .45s var(--ease-smooth); }
+
+.st-fc-rail { display: flex; flex-shrink: 0; align-items: flex-start; gap: 6px; padding-top: 10px; border-top: 1px solid var(--st-line); }
+.st-fc-pick {
+  display: grid;
+  flex: 0 0 auto;
+  justify-items: center;
+  align-content: start;
+  gap: 4px;
+  width: 58px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--st-muted);
+  font: inherit;
+  cursor: pointer;
+  scroll-snap-align: start;
+}
+.st-fc-face, .st-fc-all {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .1);
+  color: var(--st-text);
+  transition: box-shadow .25s var(--ease), transform .35s var(--ease-spring);
+}
+/* inicial do canal por baixo da foto (aparece se o canal não tiver foto) */
+.st-fc-face::before { content: attr(data-initial); font-size: 15px; font-weight: 700; }
+.st-fc-photo { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.st-fc-all svg { width: 18px; height: 18px; fill: currentColor; }
+/* nome inteiro, quebrando a linha (sem "…") */
+.st-fc-name { max-width: 100%; font-size: 10px; line-height: 1.2; text-align: center; overflow-wrap: anywhere; }
+.st-fc-pick:hover { color: var(--st-text); }
+.st-fc-pick:hover :is(.st-fc-face, .st-fc-all) { transform: scale(1.06); }
+.st-fc-pick[aria-pressed="true"] { color: var(--st-text); font-weight: 600; }
+.st-fc-pick[aria-pressed="true"] :is(.st-fc-face, .st-fc-all) { box-shadow: 0 0 0 2px var(--st-bg), 0 0 0 4px var(--st-blue); }
+.st-fc-pick:focus-visible { outline: 2px solid var(--st-blue); outline-offset: 2px; border-radius: 8px; }
+.st-fc-carousel { position: relative; flex: 1; min-width: 0; }
+.st-fc-scroll {
+  display: flex;
+  gap: 6px;
+  padding: 0 2px 2px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+.st-fc-scroll::-webkit-scrollbar { display: none; }
+.st-fc-carousel.more-next .st-fc-scroll { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); }
+.st-fc-carousel.more-prev .st-fc-scroll { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 40px), transparent); }
+.st-fc-carousel.more-prev.more-next .st-fc-scroll { -webkit-mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent); }
+.st-fc-arrow {
+  position: absolute;
+  top: 6px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
   width: 26px;
   height: 26px;
   border: 0;
   border-radius: 50%;
-  background: rgba(255, 255, 255, .06);
+  background: rgba(40, 42, 56, .95);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .5);
   color: var(--st-text);
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
 }
-.st-cal-nav:hover { background: rgba(255, 255, 255, .14); }
-.st-cal-nav:disabled { opacity: .3; cursor: default; }
-.st-cal-grid {
-  display: grid;
-  flex: 1;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  grid-template-rows: auto repeat(6, minmax(24px, 1fr));
-  gap: 3px;
-  min-height: 0;
-  text-align: center;
-}
-.st-cal-grid b { padding-bottom: 2px; color: #6f8bff; font-size: 11px; }
-.st-cal-grid > span { display: grid; place-items: center; min-height: 0; }
-.st-day {
-  display: grid;
-  place-items: center;
-  height: min(100%, 34px);
-  aspect-ratio: 1;
-  justify-self: center;
-  align-self: center;
-  border-radius: 50%;
-  color: var(--st-muted);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-.st-day.has { color: #fff; background: rgba(63, 123, 255, var(--a)); }
-.st-day.today { box-shadow: 0 0 0 2px var(--st-orange); }
+.st-fc-arrow[data-fc-scroll="-1"] { left: -4px; }
+.st-fc-arrow[data-fc-scroll="1"] { right: -4px; }
+.st-fc-arrow[hidden] { display: none; }
+.st-fc-arrow:hover { background: rgba(60, 64, 84, .98); }
+@media (hover: none) { .st-fc-arrow { display: none; } } /* no celular, arrasta com o dedo */
 
 /* Vídeos por canal */
 .st-avatar { width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; object-fit: cover; background: rgba(255, 255, 255, .1); }
@@ -1807,8 +1902,7 @@ body.sidebar-mini .side-sep-lives { display: none; }
 
 /* Celular / tela estreita: empilhado, compacto */
 .st-rings { grid-column: span 12; }
-.st-hours, .st-videos, .st-radar, .st-cal, .st-perch, .st-catalog-card { grid-column: span 12; }
-.st-cal .st-cal-grid { grid-template-rows: auto repeat(6, 34px); }
+.st-hours, .st-videos, .st-radar, .st-fc, .st-perch, .st-catalog-card { grid-column: span 12; }
 .st-perch .st-bars { overflow: visible; }
 
 /* Tablet: duas colunas */
@@ -1816,7 +1910,7 @@ body.sidebar-mini .side-sep-lives { display: none; }
   .st-kpi { grid-column: span 3; }
   .st-rings { grid-column: span 12; }
   .st-hours, .st-videos { grid-column: span 6; }
-  .st-radar, .st-cal, .st-perch { grid-column: span 4; }
+  .st-radar, .st-fc, .st-perch { grid-column: span 4; }
 }
 
 /* Computador: tudo numa tela só, sem rolagem */
@@ -1827,17 +1921,15 @@ body.sidebar-mini .side-sep-lives { display: none; }
   .st-hours { grid-column: span 5; }
   .st-videos { grid-column: span 4; }
   .st-radar { grid-column: span 3; }
-  .st-cal { grid-column: span 3; }
+  .st-fc { grid-column: span 3; }
   .st-perch { grid-column: span 3; }
   .st-catalog-card { grid-column: span 6; }
   .st-chart { min-height: 0; }
-  .st-cal .st-cal-grid { grid-template-rows: auto repeat(6, minmax(0, 1fr)); }
   .st-perch .st-bars { overflow-y: auto; }
   /* Os anéis crescem com a altura do cartão (telas grandes aproveitam o espaço) */
   .st-catalog-card { container-type: size; }
   .st-catalog-card .st-catalog { grid-template-columns: repeat(auto-fill, minmax(max(104px, calc(22cqh + 30px)), 1fr)); }
   .st-catalog-item .st-ring { width: clamp(56px, 22cqh, 110px); height: auto; }
-  .st-day { height: min(100%, 40px); font-size: 13px; }
 }
 @media (min-width: 900px) and (min-height: 600px) {
   .stats { height: calc(100dvh - var(--topbar-h) - 30px); min-height: 560px; }
@@ -1990,7 +2082,7 @@ body.sidebar-mini .side-sep-lives { display: none; }
 .settings > :nth-child(n+7) { animation-delay: 300ms; }
 
 /* ---------- Toque/clique: afunda e volta com mola ---------- */
-.btn, .btn-icon, .side-icon-btn, .menu-btn, .chip, .st-tabs button, .st-cal-nav, .link-btn {
+.btn, .btn-icon, .side-icon-btn, .menu-btn, .chip, .st-tabs button, .st-fc-arrow, .link-btn {
   transition-property: background, background-color, border-color, color, opacity, box-shadow, transform;
   transition-duration: .2s, .2s, .2s, .2s, .2s, .3s, .45s;
   transition-timing-function: ease, ease, ease, ease, ease, var(--ease), var(--ease-spring);
@@ -2000,7 +2092,7 @@ body.sidebar-mini .side-sep-lives { display: none; }
   transition-duration: .2s, .2s, .2s, .45s;
   transition-timing-function: ease, ease, ease, var(--ease-spring);
 }
-:is(.btn, .btn-icon, .side-icon-btn, .menu-btn, .chip, .st-tabs button, .st-cal-nav, .pc-btn):active:not(:disabled) {
+:is(.btn, .btn-icon, .side-icon-btn, .menu-btn, .chip, .st-tabs button, .st-fc-arrow, .pc-btn):active:not(:disabled) {
   transform: scale(.94);
   transition-duration: .2s, .2s, .2s, .2s, .2s, .3s, .08s;
   transition-timing-function: ease, ease, ease, ease, ease, var(--ease), var(--ease-press);
@@ -2102,13 +2194,9 @@ body { transition: --side-now .5s var(--ease-smooth); }
 .stats.st-anim .st-radar-shape, .stats.st-anim .st-radar-dot { animation: stRadar .9s var(--ease-spring) .3s both; }
 @keyframes stGrow { from { width: 0; } }
 .stats.st-anim .st-bars-track span { animation: stGrow 1s var(--ease-smooth) both; animation-delay: calc(.3s + var(--i, 0) * 50ms); }
-.stats.st-anim .st-day { animation: popIn .45s var(--ease-spring) backwards; animation-delay: calc(.15s + var(--i, 0) * 12ms); }
+.stats.st-anim .st-fc-big { animation: viewIn .6s var(--ease-smooth) .2s backwards; }
+.stats.st-anim .st-fc-pick { animation: popIn .45s var(--ease-spring) backwards; animation-delay: .25s; }
 .stats.st-anim .st-kpi-value { animation: viewIn .6s var(--ease-smooth) .2s backwards; }
-/* Troca de mês no calendário: os dias deslizam na direção da seta */
-@keyframes stSlideL { from { opacity: 0; transform: translateX(-24px); filter: blur(4px); } }
-@keyframes stSlideR { from { opacity: 0; transform: translateX(24px); filter: blur(4px); } }
-.st-cal-grid.slide-prev > span { animation: stSlideL .45s var(--ease-smooth) backwards; }
-.st-cal-grid.slide-next > span { animation: stSlideR .45s var(--ease-smooth) backwards; }
 /* Abas Dia/Semana/Mês: a pílula azul desliza até a aba escolhida */
 .st-tabs { position: relative; isolation: isolate; }
 .st-tab-pill {

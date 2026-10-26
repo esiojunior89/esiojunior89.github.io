@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.17.2';
+const APP_VERSION = '1.18.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -3523,6 +3523,7 @@ function applyView(view, id, channel, sort = 'new') {
     enterWatch(id);
   } else if (view === 'stats') {
     window.scrollTo({ top: 0, behavior: 'instant' });
+    statsForecast = ''; // a Previsão sempre abre em "Todos"
     renderStats();
   } else {
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -4142,7 +4143,6 @@ const STATS_PERIODS = {
   month: { label: 'Mês', count: 12, now: 'este mês', prev: 'mês passado', span: 'últimos 12 meses' },
 };
 let statsPeriod = STATS_PERIODS[store.get(KEYS.statsPeriod, 'day')] ? store.get(KEYS.statsPeriod, 'day') : 'day';
-let statsMonthOffset = 0; // calendário: 0 = mês atual, -1 = anterior...
 
 function bucketStart(date, period) {
   const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -4413,34 +4413,143 @@ function channelAvatar(ch, cls = 'st-avatar') {
   return `<img class="${cls}" src="${esc(ch?.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hide-broken>`;
 }
 
-function statsCalendarHTML(data) {
-  const now = new Date();
-  const month = new Date(now.getFullYear(), now.getMonth() + statsMonthOffset, 1);
-  const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
-  const lead = month.getDay(); // domingo = 0, como no calendário da imagem
-  const values = Array.from({ length: days }, (_, i) => data.daySec.get(dayKey(new Date(month.getFullYear(), month.getMonth(), i + 1))) || 0);
-  const max = Math.max(...values, 1);
-  const today = dayKey();
-  const cells = Array.from({ length: lead }, () => '<span></span>');
-  values.forEach((sec, i) => {
-    const date = new Date(month.getFullYear(), month.getMonth(), i + 1);
-    const key = dayKey(date);
-    const vids = data.dayVids.get(key)?.size || 0;
-    const alpha = sec ? (0.25 + 0.75 * (sec / max)).toFixed(2) : 0;
-    const title = `${date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}: ${sec ? fmtHours(sec) : 'nada'}${vids ? ` · ${vids} ${vids === 1 ? 'vídeo' : 'vídeos'}` : ''}`;
-    cells.push(`<span class="st-day${sec ? ' has' : ''}${key === today ? ' today' : ''}" style="--a:${alpha};--i:${i}" title="${esc(title)}">${i + 1}</span>`);
-  });
-  const name = month.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+/* ---------- Previsão: quanto falta para assistir tudo, no seu ritmo ---------- */
+// Base: só o que o MeuTube mostra (aba "Vídeos", dentro do limite de duração, sem os canais
+// "Apenas lives"). Ritmo: média por dia dos últimos 30 dias (ou desde o início do registro, se
+// for mais recente), contando também os dias sem vídeo — o mesmo tempo assistido do resto da página.
+const FORECAST_DAYS = 30;
+let statsForecast = ''; // '' = Todos; ou o ID do canal escolhido
+
+function forecastFor(data, chId) {
+  const channels = chId ? homeChannels().filter(c => c.id === chId) : homeChannels();
+  let remaining = 0;
+  let total = 0;
+  let done = 0;
+  let known = true;
+  for (const c of channels) {
+    const catalog = channelCatalogs.get(c.id);
+    if (!catalog) { known = false; continue; }
+    for (const [id, dur] of catalog) {
+      if (c.maxDur && dur > c.maxDur) continue;
+      total++;
+      const p = progressStore[id];
+      if (p?.done) { done++; continue; }
+      remaining += Math.max(0, dur - (p && !p.gone ? p.t || 0 : 0)); // começado: só o que falta
+    }
+  }
+  const today = new Date();
+  const first = new Date(data.since);
+  const elapsed = Math.floor((new Date(today.getFullYear(), today.getMonth(), today.getDate()) - new Date(first.getFullYear(), first.getMonth(), first.getDate())) / 864e5) + 1;
+  const span = Math.max(1, Math.min(FORECAST_DAYS, elapsed));
+  let watched = 0;
+  for (let i = 0; i < span; i++) {
+    const day = dayKey(Date.now() - i * 864e5);
+    watched += chId ? data.dayChSec.get(day)?.get(chId) || 0 : data.daySec.get(day) || 0;
+  }
+  const pace = watched / span; // segundos por dia
+  const days = pace > 0 ? Math.max(1, Math.ceil(remaining / pace)) : null;
+  return {
+    remaining, total, done, known, pace, span, days,
+    hours: chId ? data.chSec.get(chId) || 0 : 0,
+    finish: days != null ? new Date(Date.now() + days * 864e5) : null,
+  };
+}
+
+function forecastBodyHTML(data) {
+  const ch = statsForecast ? channelById(statsForecast) : null;
+  const f = forecastFor(data, statsForecast);
+  const what = ch ? `o que falta de ${esc(ch.title)}` : 'tudo o que está no MeuTube';
+  let big;
+  let line;
+  if (!f.known && !f.total) {
+    big = '…';
+    line = 'contando os vídeos dos canais';
+  } else if (f.total && f.done >= f.total) {
+    big = 'Tudo assistido ✓';
+    line = ch ? `você viu todos os vídeos de ${esc(ch.title)}` : 'você viu todos os vídeos do MeuTube';
+  } else if (f.days == null) {
+    big = '—';
+    line = ch ? 'assista algo deste canal para estimar' : 'assista algo para estimar';
+  } else {
+    big = `~ ${intFmt.format(f.days)} ${f.days === 1 ? 'dia' : 'dias'}`;
+    line = `para assistir ${what}`;
+  }
+  const year = f.finish && f.finish.getFullYear() !== new Date().getFullYear();
+  const finish = f.finish ? f.finish.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', ...(year && { year: 'numeric' }) }).replace(/\./g, '') : '';
+  const support = [
+    f.remaining ? `${fmtHours(f.remaining)} restantes` : '',
+    f.pace ? `ritmo${ch ? ' neste canal' : ''}: ${f.pace < 30 ? 'menos de 1 min' : fmtHours(f.pace)} por dia` : '',
+    finish && f.days != null && f.done < f.total ? `por volta de ${finish}` : '',
+  ].filter(Boolean);
+  const pct = f.total ? Math.round((f.done / f.total) * 100) : 0;
   return `
-    <div class="st-cal-head">
-      <button class="st-cal-nav" type="button" data-cal="-1" aria-label="Mês anterior">‹</button>
-      <h2>${esc(name)}</h2>
-      <button class="st-cal-nav" type="button" data-cal="1" aria-label="Próximo mês"${statsMonthOffset >= 0 ? ' disabled' : ''}>›</button>
-    </div>
-    <div class="st-cal-grid">
-      ${['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map(d => `<b>${d}</b>`).join('')}
-      ${cells.join('')}
+    <strong class="st-fc-big">${big}</strong>
+    <span class="st-fc-line">${line}</span>
+    ${ch ? `
+      <div class="st-fc-facts">
+        <span><small>Horas vistas</small><b>${fmtHours(f.hours)}</b></span>
+        <span><small>Concluídos</small><b>${pct}% <em>(${intFmt.format(f.done)} de ${intFmt.format(f.total)})</em></b></span>
+      </div>` : ''}
+    ${support.length ? `<span class="st-fc-support">${support.join(' · ')}</span>` : ''}`;
+}
+
+function forecastCardHTML(data) {
+  const channels = [...homeChannels()].sort((a, b) => byName(a.title, b.title));
+  if (statsForecast && !channels.some(c => c.id === statsForecast)) statsForecast = '';
+  const pick = (id, inner, label) => `
+    <button type="button" class="st-fc-pick" data-fc="${esc(id)}" aria-pressed="${statsForecast === id}" title="${esc(label)}">
+      ${inner}<span class="st-fc-name">${esc(label)}</span>
+    </button>`;
+  return `
+    <div class="st-card-head"><h2>Previsão</h2><span class="st-sub">no seu ritmo dos últimos ${FORECAST_DAYS} dias</span></div>
+    <div class="st-fc-body" aria-live="polite">${forecastBodyHTML(data)}</div>
+    <div class="st-fc-rail">
+      ${pick('', '<span class="st-fc-all"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z"/></svg></span>', 'Todos')}
+      <div class="st-fc-carousel">
+        <button type="button" class="st-fc-arrow" data-fc-scroll="-1" aria-label="Canais anteriores" hidden>‹</button>
+        <div class="st-fc-scroll">
+          ${channels.map(c => pick(c.id, `<span class="st-fc-face" data-initial="${esc([...c.title.trim()][0]?.toUpperCase() || '?')}">${channelAvatar(c, 'st-fc-photo')}</span>`, c.title)).join('')}
+        </div>
+        <button type="button" class="st-fc-arrow" data-fc-scroll="1" aria-label="Mais canais" hidden>›</button>
+      </div>
     </div>`;
+}
+
+/** Setas do carrossel: aparecem só quando há canais escondidos para aquele lado. */
+function updateForecastArrows() {
+  const scroller = $('#stats .st-fc-scroll');
+  if (!scroller) return;
+  const [prev, next] = $$('#stats .st-fc-arrow');
+  const max = scroller.scrollWidth - scroller.clientWidth;
+  prev.hidden = scroller.scrollLeft <= 2;
+  next.hidden = scroller.scrollLeft >= max - 2;
+  // Borda esmaecida do lado em que há mais canais.
+  scroller.parentElement.classList.toggle('more-prev', !prev.hidden);
+  scroller.parentElement.classList.toggle('more-next', !next.hidden);
+}
+
+function setupForecastCarousel() {
+  const scroller = $('#stats .st-fc-scroll');
+  if (!scroller) return;
+  scroller.addEventListener('scroll', updateForecastArrows, { passive: true });
+  scroller.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  updateForecastArrows();
+}
+
+/** Troca Todos/canal: só o miolo do cartão muda, com uma transição suave. */
+function selectForecast(id) {
+  if (id === statsForecast) return;
+  statsForecast = id;
+  $$('#stats .st-fc-pick').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.fc === id)));
+  const body = $('#stats .st-fc-body');
+  if (!body) return;
+  body.innerHTML = forecastBodyHTML(statsData || computeStats());
+  if (motionOK()) {
+    body.classList.remove('st-fc-swap');
+    void body.offsetWidth;
+    body.classList.add('st-fc-swap');
+  }
+  $(`#stats .st-fc-pick[data-fc="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: motionOK() ? 'smooth' : 'auto' });
 }
 
 let statsAnimTimer = 0;
@@ -4599,7 +4708,7 @@ function renderStats({ refresh = true, animate = refresh } = {}) {
         <div class="st-chart" id="st-radar" role="img" aria-label="Horas assistidas por canal"></div>
       </article>
 
-      <article class="st-card st-cal">${statsCalendarHTML(data)}</article>
+      <article class="st-card st-fc">${forecastCardHTML(data)}</article>
       <article class="st-card st-perch">
         <div class="st-card-head"><h2>Vídeos por canal</h2><span class="st-sub">até o fim</span></div>
         <ul class="st-bars">
@@ -4627,6 +4736,7 @@ function renderStats({ refresh = true, animate = refresh } = {}) {
 
   drawStatsCharts();
   placeTabPill(pillFrom);
+  setupForecastCarousel();
 
   if (refresh) {
     // Busca o que falta (canal dos vídeos antigos, total de vídeos dos canais) e redesenha uma vez.
@@ -4687,12 +4797,15 @@ function setupStats() {
       renderStats({ refresh: false, animate: true });
       return;
     }
-    const nav = e.target.closest('[data-cal]');
-    if (nav && !nav.disabled) {
-      statsMonthOffset = Math.min(0, statsMonthOffset + Number(nav.dataset.cal));
-      box.querySelector('.st-cal').innerHTML = statsCalendarHTML(statsData || computeStats());
-      // Os dias deslizam na direção da seta.
-      if (motionOK()) box.querySelector('.st-cal-grid').classList.add(Number(nav.dataset.cal) < 0 ? 'slide-prev' : 'slide-next');
+    const pick = e.target.closest('[data-fc]');
+    if (pick) {
+      selectForecast(pick.dataset.fc);
+      return;
+    }
+    const arrow = e.target.closest('[data-fc-scroll]');
+    if (arrow) {
+      const scroller = box.querySelector('.st-fc-scroll');
+      scroller.scrollBy({ left: Number(arrow.dataset.fcScroll) * scroller.clientWidth * 0.8, behavior: motionOK() ? 'smooth' : 'auto' });
     }
   });
   let lastSize = '';
@@ -4702,7 +4815,7 @@ function setupStats() {
     if (size === lastSize) return;
     lastSize = size;
     cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(drawStatsCharts);
+    frame = requestAnimationFrame(() => { drawStatsCharts(); updateForecastArrows(); });
   }).observe(box);
   setInterval(tickWatchTime, STATS_TICK_MS);
 }

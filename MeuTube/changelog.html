@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0f0f12">
   <title>Changelog — MeuTube</title>
-  <meta name="description" content="Tudo o que mudou no MeuTube, da primeira publicação até a v1.17.2.">
+  <meta name="description" content="Tudo o que mudou no MeuTube, da primeira publicação até a v1.18.0.">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -4 28 28'%3E%3Crect width='28' height='20' rx='6' fill='%23ff3d3d'/%3E%3Cpath d='M11.5 5.8v8.4L18.6 10z' fill='%23fff'/%3E%3C/svg%3E">
   <style>
     :root {
@@ -163,9 +163,9 @@
       <h1>O que mudou no MeuTube</h1>
       <p>Da primeira publicação à versão atual: menu de canais, sincronização na nuvem, app instalável e um player com controles próprios.</p>
       <div class="stats">
-        <div class="stat"><b>v1.17.2</b><span>versão atual</span></div>
-        <div class="stat"><b>31</b><span>versões numeradas</span></div>
-        <div class="stat"><b>45</b><span>entregas registradas</span></div>
+        <div class="stat"><b>v1.18.0</b><span>versão atual</span></div>
+        <div class="stat"><b>32</b><span>versões numeradas</span></div>
+        <div class="stat"><b>46</b><span>entregas registradas</span></div>
         <div class="stat"><b>2</b><span>dias de história</span></div>
       </div>
       <div class="legend" aria-label="Legenda">
@@ -179,7 +179,19 @@
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
-          <h3><span class="ver">v1.17.2</span> <span class="now">atual</span></h3>
+          <h3><span class="ver">v1.18.0</span> <span class="now">atual</span></h3>
+          <span class="tag new">Novo</span>
+          <time>26/10 · 14:06</time>
+        </header>
+        <p class="title">Previsão nas estatísticas e fonte Inter</p>
+        <ul><li>O calendário das estatísticas deu lugar à Previsão: quantos dias faltam para assistir tudo, no ritmo dos últimos 30 dias, com as horas restantes, o ritmo diário e a data aproximada de conclusão.</li><li>Dá para ver a previsão de todos os canais juntos ou de um canal só, escolhido num carrossel com as fotos dos canais (com setas quando há mais canais do que cabem); por canal aparecem também as horas vistas e a porcentagem concluída. A conta considera só a aba “Vídeos”, o limite de duração de cada canal e o que já foi assistido.</li><li>Nova fonte: a Inter, hospedada junto com o app (pasta fonts/, licença OFL incluída), parecida com a San Francisco da Apple; nos navegadores da Apple continua a própria San Francisco.</li><li>A barra do player cede espaço ao tempo: se “tempo / duração” não couber, a duração desce para uma segunda linha, sem empurrar os botões para fora da tela.</li><li>Textos pequenos das estatísticas ficaram mais claros, com contraste AAA sobre os cartões.</li></ul>
+      </article>
+    </li>
+    <li class="entry" style="--i:1">
+      <div class="dot" aria-hidden="true"></div>
+      <article class="card">
+        <header>
+          <h3><span class="ver">v1.17.2</span></h3>
           <span class="tag imp">Melhoria</span>
           <time>25/10 · 22:41</time>
         </header>
@@ -187,7 +199,7 @@
         <ul><li>Política de segurança de conteúdo (CSP) no app e na página de credenciais: o navegador só executa scripts do próprio site, do Google e do YouTube, e só conversa com os servidores que o app realmente usa (YouTube/Google e o seu servidor de login *.workers.dev).</li><li>Login com o Google com PKCE: o código que volta do Google só vale junto com um segredo criado no seu navegador, então quem interceptar o código não consegue usá-lo.</li><li>O app e a página de credenciais não abrem dentro de moldura (iframe) de outro site, o que evita clickjacking.</li><li>O código da página de credenciais saiu de dentro do HTML para o novo arquivo credenciais.js, e as fotos que não carregam passam a sumir por um tratador no app.js, pois a CSP bloqueia código escrito dentro do HTML.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:1">
+    <li class="entry" style="--i:2">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -199,7 +211,7 @@
         <ul><li>Ao abrir um vídeo a partir de um canal (ou da ordem “Mais antigos”), o filtro vai junto no endereço do vídeo: os vídeos seguintes, os botões Anterior/Próximo e o recarregar da página continuam nesse canal.</li><li>“Anterior” volta ao vídeo anterior com o mesmo filtro em que ele foi visto.</li><li>O aviso “vídeo mais antigo” só aparece quando a lista realmente acabou e diz “deste canal” quando há um canal escolhido.</li><li>Estatísticas e Configurações também passam a começar com o menu lateral escondido no PC, como a tela do vídeo; ele abre e fecha pelo botão do menu e fecha ao escolher uma dessas páginas.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:2">
+    <li class="entry" style="--i:3">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -211,7 +223,7 @@
         <ul><li>No computador, o menu lateral agora empurra a página (em vez de ficar por cima) e o conteúdo desliza junto, com a largura animada de forma suave.</li><li>Na tela do vídeo, o menu começa recolhido e abre/fecha pelo botão do menu, empurrando o conteúdo; em telas estreitas continua aparecendo por cima.</li><li>Curtidas dos comentários com o ícone de polegar (contorno) alinhado ao número.</li><li>O fundo escurecido do menu sobreposto não usa mais desfoque, para não pesar no vídeo.</li><li>A barra de controles do player não aparece mais sozinha quando o vídeo começa a tocar com ela escondida.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:3">
+    <li class="entry" style="--i:4">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -223,7 +235,7 @@
         <ul><li>Corrigida a queda de quadros do vídeo em telas 4K: a barra de controles não desfoca mais o vídeo que passa por baixo (botão de play central, barra e menu do player ficam um pouco mais escuros no lugar).</li><li>A barra de progresso, o tempo e a qualidade só são redesenhados quando algo visível muda, em vez de quatro vezes por segundo, o que poupava repintura por cima do vídeo.</li><li>O pontinho vermelho de “Ao vivo” agora pulsa só com transformação e opacidade (feito pela placa de vídeo), em vez de uma sombra que repintava a lateral a cada quadro.</li><li>Em tela cheia, a faixa reservada para a barra de rolagem sai por uma classe no próprio documento, sem consulta CSS pesada.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:4">
+    <li class="entry" style="--i:5">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -235,7 +247,7 @@
         <ul><li>Uma linguagem de movimento única para o app inteiro: entradas que surgem subindo um pouco e saindo do desfoque, e molas suaves (com um leve “quique”) em menus, botões, avisos e interruptores.</li><li>Telas, miniaturas, comentários, cartões de Configurações e o menu lateral aparecem em sequência; botões e miniaturas afundam um pouco ao toque e voltam com mola.</li><li>Player: a barra e o título deslizam ao aparecer e sumir, o menu de engrenagem abre com mola e troca de página (Velocidade, Legendas…) deslizando para o lado, e os botões de reprodução automática, legendas e modo teatro dão um pequeno pulo ao mudar de estado.</li><li>Modo teatro: o player, as informações, os comentários e o “A seguir” viajam até o novo lugar, com o vídeo continuando a tocar.</li><li>Ocultar assistidos: os vídeos assistidos saem desfocando e os outros deslizam até o novo lugar.</li><li>Estatísticas: cartões em cascata, anel, linha, barras e radar se desenhando, e os dias do calendário deslizando na direção da seta. A pílula azul das abas Dia/Semana/Mês desliza até a aba escolhida. Só acontece ao abrir a página ou trocar o período, não nas atualizações em segundo plano.</li><li>Página de credenciais: o cartão de login vira o painel com transição suave e “balança” quando a senha está errada.</li><li>Tudo é desligado quando o sistema está com “Reduzir movimento”. Nada muda no que o app faz, só em como ele se move.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:5">
+    <li class="entry" style="--i:6">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -247,7 +259,7 @@
         <ul><li>Novo botão “Modo teatro” na barra do player (ao lado da tela cheia), ou a tecla T, só no computador. O player vira uma faixa preta de ponta a ponta, com o vídeo centralizado no maior tamanho que cabe deixando o título visível.</li><li>Embaixo ficam as informações e os comentários à esquerda e o “A seguir” à direita, em lista como no YouTube (10 vídeos por vez no modo teatro, em vez de 3). Em telas muito largas essa parte fica limitada à largura do vídeo (no mínimo 1800 px), centralizada.</li><li>A escolha fica guardada neste aparelho. No celular o botão não existe, porque o player já ocupa a largura toda.</li><li>Corrigida uma faixa sobrando à direita da tela quando o vídeo está em tela cheia no computador.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:6">
+    <li class="entry" style="--i:7">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -259,7 +271,7 @@
         <ul><li>Novo ícone do MeuTube: fundo vermelho com o botão de play branco, de cantos arredondados, nos cinco tamanhos (180, 192 e 512 px, mais as versões “maskable” que o Android recorta no formato do aparelho).</li><li>Os ícones agora carregam com o número da versão no endereço (manifest.json e ícone da Apple), para o navegador baixar o novo em vez de usar o antigo guardado.</li><li>No celular com o app instalado, o Android pode levar algumas horas para trocar o ícone da tela inicial; se não trocar, remova e instale o app de novo.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:7">
+    <li class="entry" style="--i:8">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -271,7 +283,7 @@
         <ul><li>O MeuTube passa a mostrar apenas a aba “Vídeos” de cada canal. Shorts e lives gravadas não entram mais no app; só as lives que estão no ar aparecem, no menu lateral, em “Ao vivo”.</li><li>A opção “Ocultar Shorts” saiu de Configurações (e da sincronização), já que os Shorts nunca aparecem.</li><li>Abrir um vídeo que não é do MeuTube (outro canal, Short, live gravada ou acima do limite de duração) não mostra mais aviso: o app segue para o vídeo anterior válido ou para o Início.</li><li>Estatísticas: horas, vídeos assistidos e o total de cada canal contam só os vídeos que o MeuTube mostra (aba “Vídeos”, dentro do limite de duração). As lives assistidas ao vivo continuam contando nas horas. As horas registradas antes da 1.13.0 não podem ser separadas por limite.</li><li>O total de cada canal é calculado pelo app (lista do canal + duração dos vídeos, cerca de 4 unidades de cota a cada 100 vídeos, uma vez) e guardado no aparelho; depois só confere vídeos novos, no máximo a cada 3 horas. Mudar o limite de duração recalcula na hora, sem gastar cota.</li><li>Na primeira contagem aparece “Contando os vídeos dos canais… (x de y)” nas Estatísticas.</li><li>Mudanças nos canais feitas em outra aba (como o limite de duração) são aplicadas na hora nas Estatísticas, no Início e nas Configurações abertas.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:8">
+    <li class="entry" style="--i:9">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -283,7 +295,7 @@
         <ul><li>Em Configurações › Canais, cada canal ganhou o campo “Até hh:mm:ss” (ao lado de “Apenas lives”): vídeos mais longos que o limite não aparecem no Início nem em “Mais antigos” e não contam nas Estatísticas. O limite inclui o tempo exato; vazio = sem limite.</li><li>Se alguém abrir direto um vídeo acima do limite, o player mostra um aviso explicando o motivo em vez de tocar.</li><li>Nas Estatísticas, o canal com limite conta só os vídeos dentro dele: horas assistidas, vídeos assistidos e o total do canal (“assistidos x total”).</li><li>Para saber quantos vídeos do canal cabem no limite, o app lê a lista do canal e a duração de cada vídeo uma única vez (cerca de 4 unidades de cota a cada 100 vídeos) e guarda no aparelho; nas próximas vezes só busca os vídeos novos.</li><li>No celular, os controles de cada canal (duração e “Apenas lives”) descem para uma segunda linha, abaixo do nome.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:9">
+    <li class="entry" style="--i:10">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -295,7 +307,7 @@
         <ul><li>Chave da YouTube Data API, Client ID do Google e servidor de login saíram de Configurações e foram para a página credenciais.html, aberta por um botão em Configurações › Credenciais da API (no PC, em aba nova).</li><li>A página pede usuário e senha toda vez que é aberta; nada fica salvo. A senha não está escrita no código: só uma “impressão digital” dela (PBKDF2), que não pode ser revertida. Cada erro aumenta a espera para tentar de novo.</li><li>O botão “Bloquear” (e voltar ou reabrir a aba) pede a senha de novo.</li><li>O que for salvo na página vale na hora no MeuTube aberto em outra aba, sem recarregar; trocar a chave da API ou o servidor de login continua sincronizando e zerando a renovação como antes.</li><li>As credenciais padrão (Client ID e servidor de login) passaram para o arquivo config.js, lido pelo app e pela página de credenciais.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:10">
+    <li class="entry" style="--i:11">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -307,7 +319,7 @@
         <ul><li>Novo campo “Servidor de login (opcional)” em Configurações › Credenciais da API: o endereço do seu Worker no Cloudflare (arquivo worker.js). Com ele, o login do Google se renova sozinho por até 7 dias, em vez de expirar a cada 1 hora.</li><li>O app troca o código do Google pelo login de 1 hora + uma chave de renovação (criptografada pelo servidor e guardada só neste aparelho) e pede um login novo em segundo plano, 5 minutos antes de vencer.</li><li>Se o servidor sair do ar ou ficar sem internet, o login atual continua até expirar e o app tenta de novo a cada minuto. Sem servidor configurado, tudo funciona como antes.</li><li>Passados os 7 dias (limite do Google para apps em modo Teste) ou se o acesso for revogado, aparece o aviso para clicar em “Reconectar”.</li><li>Quem já estava conectado vê o botão “Ativar renovação automática”: basta entrar de novo uma vez.</li><li>O Client ID e o endereço do servidor de login agora vêm preenchidos no app; o Client ID antigo salvo nos aparelhos é trocado uma única vez (um ID escolhido depois é respeitado).</li><li>O Google Drive também tenta renovar o login sozinho quando responde “não autorizado”.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:11">
+    <li class="entry" style="--i:12">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -319,7 +331,7 @@
         <ul><li>No computador, os botões Estatísticas e Configurações do rodapé do menu abrem numa aba nova, sem tirar você do vídeo ou da lista que está vendo.</li><li>No celular e no app instalado nada muda: continuam abrindo na mesma tela.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:12">
+    <li class="entry" style="--i:13">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -331,7 +343,7 @@
         <ul><li>Na página de um canal, dois botões no estilo do YouTube — “Mais recentes” e “Mais antigos” — escolhem a ordem dos vídeos. O endereço da ordem antiga termina em /antigos.</li><li>Em “Mais antigos”, o app lê a lista completa do canal (só IDs e datas: 1 unidade de cota a cada 50 vídeos), inverte a ordem e carrega os detalhes de 20 em 20, como no Início.</li><li>A lista fica guardada no aparelho: nas próximas visitas só são buscados os vídeos publicados desde a última leitura.</li><li>Na primeira leitura de um canal grande aparece o andamento (“… vídeos lidos”).</li><li>O “A seguir” e o próximo vídeo automático acompanham a ordem escolhida (do mais antigo para o mais novo).</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:13">
+    <li class="entry" style="--i:14">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -343,7 +355,7 @@
         <ul><li>Canais marcados como “Apenas lives” deixam de contar horas e vídeos e de aparecer nas estatísticas (radar, catálogo e rankings).</li><li>Ao desmarcar a opção, o canal volta a contar e a aparecer, com o histórico que já tinha.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:14">
+    <li class="entry" style="--i:15">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -355,7 +367,7 @@
         <ul><li>No computador, o painel ocupa exatamente a altura da tela, sem rolagem: uma faixa de números em cima e duas linhas de gráficos.</li><li>Cabeçalho numa linha só, com um botão (i) que explica como os números são calculados (a nota do rodapé saiu).</li><li>Os anéis Concluídos, Catálogo e Canal nº 1 viraram um cartão compacto, com os detalhes na dica ao passar o mouse.</li><li>Nomes do gráfico “Horas por canal” quebram em até duas linhas em vez de serem cortados.</li><li>Em celular e telas estreitas os cartões se empilham, mais compactos.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:15">
+    <li class="entry" style="--i:16">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -367,7 +379,7 @@
         <ul><li>Nova tela “Estatísticas”, aberta por um ícone no rodapé do menu lateral, com visual de painel escuro.</li><li>Horas assistidas por dia, semana, mês ou ano (linha do tempo), horas por canal e vídeos assistidos até o fim, por período e por canal.</li><li>Comparação de vídeos assistidos x total publicado pelo canal, calendário mensal e cartões com concluídos, catálogo e canal nº 1.</li><li>O app registra o tempo enquanto o vídeo toca, por dia e por canal; cada aparelho guarda o seu registro e a sincronização com o Drive soma todos.</li><li>Antes de o registro existir, os números são estimados pelo progresso salvo; o canal dos vídeos antigos é descoberto com 1 unidade de cota a cada 50 vídeos.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:16">
+    <li class="entry" style="--i:17">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -379,7 +391,7 @@
         <ul><li>Dois botões novos na barra do player, ao lado do play: Anterior e Próximo.</li><li>“Próximo” toca o primeiro vídeo de “A seguir”; “Anterior” volta ao último vídeo visto antes deste, mesmo passando pelo Início, e o histórico (até 50 vídeos) sobrevive ao recarregar a página.</li><li>Atalhos Shift+N (próximo) e Shift+P (anterior).</li><li>O botão fica apagado quando não há vídeo anterior ou seguinte.</li><li>No celular estreito a barra ficou mais compacta para caber os botões, e o botão de som sai (o volume fica nos botões do aparelho).</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:17">
+    <li class="entry" style="--i:18">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -391,7 +403,7 @@
         <ul><li>Novo cartão “Novidades” nas Configurações, com o botão “Ver o changelog”, que abre esta página em outra aba.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:18">
+    <li class="entry" style="--i:19">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -403,7 +415,7 @@
         <ul><li>Faixa no topo do player com a logo do canal, o título e o nome do canal.</li><li>Aparece e some junto com a barra de baixo.</li><li>Fica escondida enquanto o YouTube mostra o título dele (pausado e logo ao voltar a tocar), para não aparecerem dois.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:19">
+    <li class="entry" style="--i:20">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -415,7 +427,7 @@
         <ul><li>Removido o aviso “O YouTube escolhe a qualidade sozinho; o app só mostra a atual.”</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:20">
+    <li class="entry" style="--i:21">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -427,7 +439,7 @@
         <ul><li>Controles desenhados pelo app: play/pausa, volume, tempo, reprodução automática, legendas, engrenagem e tela cheia.</li><li>Menu da engrenagem com velocidade, legendas e a qualidade atual.</li><li>Barra de progresso vermelha com dica de tempo ao passar o mouse.</li><li>Os controles somem com o vídeo tocando; a camada de cliques cobre o vídeo inteiro.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:21">
+    <li class="entry" style="--i:22">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -439,7 +451,7 @@
         <ul><li>“Ocultar assistidos” e “Configurações” saem da barra superior e viram ícones no rodapé do menu, junto da versão.</li><li>Com o menu recolhido, os ícones ficam um embaixo do outro.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:22">
+    <li class="entry" style="--i:23">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -451,7 +463,7 @@
         <ul><li>Botão de tela cheia do app no lugar do botão do YouTube.</li><li>Clique duplo e tecla F funcionam sempre, inclusive para sair da tela cheia.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:23">
+    <li class="entry" style="--i:24">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -463,7 +475,7 @@
         <ul><li>Três tiles grandes, juntos com a altura do player.</li><li>“Mostrar mais” acrescenta 3 vídeos por vez.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:24">
+    <li class="entry" style="--i:25">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -475,7 +487,7 @@
         <ul><li>Player a 12 px do topo e conjunto encostado à esquerda.</li><li>Espaço reservado para título, canal e a 1ª linha da descrição sem rolar.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:25">
+    <li class="entry" style="--i:26">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -487,7 +499,7 @@
         <ul><li>Margens de 24 px e coluna “A seguir” de cerca de 400 px.</li><li>Altura do player limitada à da janela; título e avatar ajustados.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:26">
+    <li class="entry" style="--i:27">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -499,7 +511,7 @@
         <ul><li>Caixa de descrição com visualizações e data em negrito, 3 linhas e “mais”.</li><li>Avatar do canal maior.</li><li>Saem o chip de retomar e as pílulas de estatísticas.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:27">
+    <li class="entry" style="--i:28">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -511,7 +523,7 @@
         <ul><li>Lives só são verificadas com o menu expandido e o app visível; ao expandir, verifica na hora se a última checagem tiver mais de 5 min.</li><li>“A seguir” passa a mostrar 4 vídeos.</li><li>Limite de 5 páginas por busca ao ocultar assistidos.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:28">
+    <li class="entry" style="--i:29">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -523,7 +535,7 @@
         <ul><li>Clique pausa e continua; clique duplo alterna a tela cheia sem pausar; tecla F.</li><li>Cursor some parado sobre o vídeo.</li><li>Correções de estado do player em cliques seguidos e clique duplo sem selecionar texto.</li><li>A primeira tentativa (18:56) foi revertida dois minutos depois e reentregue já corrigida.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:29">
+    <li class="entry" style="--i:30">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
@@ -535,7 +547,7 @@
         <ul><li>Vídeo já assistido mantém a marca ao ser revisto.</li><li>Voltar ao início zera só o ponto onde parou, sem tirar a marca de assistido.</li><li>Barra de progresso acompanha o ponto atual.</li></ul>
       </article>
     </li>
-    <li class="entry" style="--i:30">
+    <li class="entry" style="--i:31">
       <div class="dot" aria-hidden="true"></div>
       <article class="card">
         <header>
