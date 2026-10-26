@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.16.0';
+const APP_VERSION = '1.16.1';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -2031,6 +2031,15 @@ function progressFraction(e) {
   return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
 }
 
+// Roda 4 vezes por segundo: só mexe na página quando algo visível mudou (cada mudança
+// repinta a barra por cima do vídeo, e repintar à toa custava quadros do vídeo).
+const progressShown = {};
+function setShown(key, value, apply) {
+  if (progressShown[key] === value) return;
+  progressShown[key] = value;
+  apply(value);
+}
+
 function updateProgressUI(previewFraction = null) {
   if (!player?.getDuration) return;
   const live = state.currentVideo?.live === 'live';
@@ -2039,15 +2048,14 @@ function updateProgressUI(previewFraction = null) {
   const played = d ? Math.min(100, (t / d) * 100) : 0;
   const loaded = Math.min(100, (player.getVideoLoadedFraction?.() || 0) * 100);
   const bar = $('#pc-progress');
-  bar.style.setProperty('--played', `${live ? 100 : played}%`);
-  bar.style.setProperty('--loaded', `${live ? 100 : loaded}%`);
-  $('#pc-time').innerHTML = live
+  setShown('played', `${live ? 100 : played.toFixed(2)}%`, v => bar.style.setProperty('--played', v));
+  setShown('loaded', `${live ? 100 : loaded.toFixed(1)}%`, v => bar.style.setProperty('--loaded', v));
+  setShown('time', live
     ? '<span class="pc-live-dot"></span>AO VIVO'
-    : `${fmtClock(t)} <span>/ ${fmtClock(d)}</span>`;
+    : `${fmtClock(t)} <span>/ ${fmtClock(d)}</span>`, v => { $('#pc-time').innerHTML = v; });
   const q = currentQuality().badge;
   const badge = $('#pc-quality');
-  badge.textContent = q;
-  badge.hidden = !q;
+  setShown('quality', q, v => { badge.textContent = v; badge.hidden = !v; });
 }
 
 function setupProgressBar() {
@@ -3638,6 +3646,7 @@ function bindEvents() {
   let playerWasFullscreen = false;
   const onFullscreenChange = () => {
     const el = document.fullscreenElement || document.webkitFullscreenElement;
+    document.documentElement.classList.toggle('is-fullscreen', !!el);
     if (el?.closest?.('.player-wrap')) {
       playerWasFullscreen = true;
       if (isMobile()) {
