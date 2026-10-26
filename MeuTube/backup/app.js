@@ -1,7 +1,7 @@
 'use strict';
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.16.1';
+const APP_VERSION = '1.17.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -210,6 +210,7 @@ const state = {
   channels: store.get(KEYS.channels, []), // [{ id, title, handle, thumb, uploads }]
   autoplay: store.get(KEYS.autoplay, true),
   sidebarMini: store.get(KEYS.sidebar, false),
+  watchSidebar: false, // menu aberto na página do vídeo (sempre começa fechado, como no YouTube)
   hideWatched: store.get(KEYS.hideWatched, false), // esconde os vídeos assistidos até o fim
   filter: null,      // ID do canal selecionado no menu lateral (null = todos)
   sort: 'new',       // ordem na página do canal: 'new' (mais recentes) | 'old' (mais antigos)
@@ -1289,29 +1290,34 @@ function renderLives() {
   updateSidebarActive();
 }
 
-/** Telas estreitas e a página do vídeo usam o menu como gaveta sobreposta (igual ao YouTube). */
+/** No PC o menu nunca cobre o conteúdo: ao abrir, empurra tudo para o lado (igual ao YouTube).
+ *  Na página do vídeo, recolhido = escondido (o vídeo usa a largura toda). Só em telas
+ *  estreitas (celular) ele é uma gaveta sobreposta. */
 function updateSidebarMode() {
-  const overlay = overlayQuery.matches || state.view === 'watch';
+  const overlay = overlayQuery.matches;
+  const watchPush = !overlay && state.view === 'watch';
   const body = document.body;
   body.classList.toggle('sidebar-overlay', overlay);
-  body.classList.toggle('sidebar-mini', !overlay && state.sidebarMini);
+  body.classList.toggle('sidebar-mini', !overlay && !watchPush && state.sidebarMini);
+  body.classList.toggle('sidebar-hidden', watchPush && !state.watchSidebar);
   if (!overlay) body.classList.remove('sidebar-open');
-  $('#menu-btn').setAttribute('aria-expanded', String(overlay
-    ? body.classList.contains('sidebar-open')
-    : !state.sidebarMini));
+  $('#menu-btn').setAttribute('aria-expanded', String(isSidebarExpanded()));
   // Ao expandir o menu, verifica as lives na hora se a última verificação tiver mais de 5 min.
   if (isSidebarExpanded()) refreshLives();
 }
 
-/** Menu lateral expandido: no PC, aberto com os nomes; no celular/página do vídeo, gaveta aberta. */
+/** Menu lateral expandido: no PC, aberto com os nomes; no celular, gaveta aberta. */
 function isSidebarExpanded() {
   const body = document.body;
-  return body.classList.contains('sidebar-overlay') ? body.classList.contains('sidebar-open') : !state.sidebarMini;
+  if (body.classList.contains('sidebar-overlay')) return body.classList.contains('sidebar-open');
+  return state.view === 'watch' ? state.watchSidebar : !state.sidebarMini;
 }
 
 function toggleSidebar() {
   if (document.body.classList.contains('sidebar-overlay')) {
     document.body.classList.toggle('sidebar-open');
+  } else if (state.view === 'watch') {
+    state.watchSidebar = !state.watchSidebar;
   } else {
     state.sidebarMini = !state.sidebarMini;
     store.set(KEYS.sidebar, state.sidebarMini);
@@ -1653,6 +1659,8 @@ function seekTo(seconds) {
    A qualidade é escolhida pelo YouTube; o app só a mostra.
    ========================================================= */
 const ICON = (d, extra = '') => `<svg viewBox="0 0 24 24" aria-hidden="true"${extra}><path d="${d}"/></svg>`;
+// "Gostei" dos comentários: polegar só com o contorno, como no YouTube.
+const LIKE_ICON = ICON('M9 21h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.58 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2zM9 9l4.34-4.34L12 10h9v2l-3 7H9V9zM1 9h4v12H1z');
 const PLAY_ICONS = {
   play: ICON('M8 5v14l11-7z'),
   pause: ICON('M6 5h4v14H6zm8 0h4v14h-4z'),
@@ -2112,7 +2120,10 @@ function onPlayerControlsState(stateCode) {
   if (stateCode === S.PLAYING) {
     if (playbackRate !== 1) player.setPlaybackRate?.(playbackRate);
     if (playerPrefs.cc && ccAppliedFor !== playerVideoId) { ccAppliedFor = playerVideoId; applyCaptions(); }
-    pokeControls();
+    // Voltar a tocar não mostra os controles: depois de carregar um trecho ou trocar de
+    // qualidade o YouTube avisa "tocando" de novo, e a barra aparecia sem ninguém mexer
+    // no mouse. Se já estão visíveis (ex.: estava pausado), só começa a contar para sumir.
+    if (!$('.player-wrap').classList.contains('pc-hidden')) pokeControls();
   }
 }
 
@@ -2666,7 +2677,7 @@ function commentBody(s) {
           <span class="muted">${esc(timeAgo(Date.parse(s.publishedAt)) + edited)}</span>
         </div>
         <div class="comment-text">${richText(s.textOriginal ?? s.textDisplay)}</div>
-        ${s.likeCount ? `<div class="comment-likes">👍 ${esc(compact.format(s.likeCount))}</div>` : ''}
+        ${s.likeCount ? `<div class="comment-likes">${LIKE_ICON}${esc(compact.format(s.likeCount))}</div>` : ''}
       </div>
     </div>`;
 }
@@ -3448,6 +3459,7 @@ function applyView(view, id, channel, sort = 'new') {
     state.currentVideoId = null;
   }
 
+  if (view === 'watch' && prev !== 'watch') state.watchSidebar = false;
   state.view = view;
   $('#view-home').hidden = view !== 'home';
   $('#view-watch').hidden = view !== 'watch';

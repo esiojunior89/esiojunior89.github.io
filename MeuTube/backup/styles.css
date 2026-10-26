@@ -206,13 +206,16 @@ input[type="text"]:focus, input[type="password"]:focus {
 /* =========================================================
    Views + transições
    ========================================================= */
+/* Largura que o menu lateral ocupa agora (o conteúdo fica ao lado dele, nunca embaixo).
+   Registrada para poder ser animada: margem, player e modo teatro acompanham juntos. */
+@property --side-now { syntax: '<length>'; inherits: true; initial-value: 0px; }
+body { --side-now: var(--side-w); }
+body.sidebar-mini { --side-now: var(--side-mini-w); }
+body.sidebar-overlay, body.sidebar-hidden { --side-now: 0px; }
 main {
   min-height: calc(100vh - var(--topbar-h));
-  margin-left: var(--side-w);
-  transition: margin-left .3s var(--ease);
+  margin-left: var(--side-now);
 }
-body.sidebar-mini main { margin-left: var(--side-mini-w); }
-body.sidebar-overlay main { margin-left: 0; }
 .view { padding: 24px var(--gutter) 56px; }
 .view.view-enter { animation: viewIn .42s var(--ease) both; }
 
@@ -598,7 +601,8 @@ body.sidebar-overlay main { margin-left: 0; }
 .comment-content { min-width: 0; flex: 1; }
 .comment-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-size: 13.5px; }
 .comment-text { margin-top: 3px; font-size: 14.5px; word-break: break-word; }
-.comment-likes { margin-top: 6px; font-size: 13px; color: var(--muted); }
+.comment-likes { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 13px; color: var(--muted); }
+.comment-likes svg { width: 16px; height: 16px; fill: var(--text); }
 .comment-replies { margin: 8px 0 0 46px; }
 .comment-replies > .link-btn { color: #3ea6ff; font-size: 14px; }
 .replies { display: grid; gap: 16px; margin-top: 14px; }
@@ -856,7 +860,10 @@ body.sidebar-mini .side-title { display: none; }
 body.sidebar-mini .side-item { justify-content: center; padding: 8px 0; }
 body.sidebar-mini .side-avatar { width: 32px; height: 32px; }
 
-/* Gaveta sobreposta: telas estreitas e página do vídeo */
+/* Página do vídeo no PC: recolhido = escondido (o vídeo usa a largura toda); aberto, empurra o conteúdo */
+body.sidebar-hidden .sidebar { transform: translateX(-100%); }
+
+/* Gaveta sobreposta: telas estreitas (celular) */
 body.sidebar-overlay .sidebar {
   width: min(280px, 85vw);
   transform: translateX(-100%);
@@ -1518,7 +1525,7 @@ body.sidebar-mini .side-sep-lives { display: none; }
     --upnext-gap: 12px;
     --player-max-w: max(560px, min(
       calc((100vh - var(--topbar-h) - var(--watch-top) - var(--below-player)) * 16 / 9),
-      calc((100vw - 266px) * .75)));
+      calc((100vw - var(--side-now) - 266px) * .75)));
   }
   .watch-side .side-head { height: var(--upnext-head); margin: 0; }
   .upnext { gap: var(--upnext-gap); margin-bottom: 16px; }
@@ -1883,7 +1890,7 @@ body.sidebar-mini .side-sep-lives { display: none; }
 @media (min-width: 1001px) {
   #pc-theater { display: grid; }
   #view-watch.theater {
-    --theater-h: min(calc(100vw * 9 / 16), calc(100vh - var(--topbar-h) - 150px));
+    --theater-h: min(calc((100vw - var(--side-now)) * 9 / 16), calc(100vh - var(--topbar-h) - 150px));
     --theater-content: max(calc(var(--theater-h) * 16 / 9), 1800px);
     padding-top: 0;
   }
@@ -2018,9 +2025,9 @@ body.sidebar-mini .side-sep-lives { display: none; }
 
 /* ---------- Menu lateral ---------- */
 .sidebar { transition: width .5s var(--ease-smooth), transform .5s var(--ease-smooth), box-shadow .4s, padding .5s var(--ease-smooth); }
-main { transition: margin-left .5s var(--ease-smooth); }
-.sidebar-backdrop { transition: opacity .4s var(--ease), backdrop-filter .4s var(--ease); }
-body.sidebar-overlay.sidebar-open .sidebar-backdrop { -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+body { transition: --side-now .5s var(--ease-smooth); }
+/* Fundo da gaveta só escurece: desfocar (backdrop-filter) a página inteira, com o vídeo por baixo, travava o vídeo. */
+.sidebar-backdrop { transition: opacity .4s var(--ease); }
 .side-avatar { transition: box-shadow .2s, width .5s var(--ease-smooth), height .5s var(--ease-smooth); }
 
 /* ---------- Avisos e botões flutuantes ---------- */
