@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.19.0';
+const APP_VERSION = '1.19.1';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -712,10 +712,14 @@ const Auth = {
    Feed: mescla os uploads dos canais por data
    =========================================================
    Cada canal tem playlists automáticas já ordenadas do mais
-   novo para o mais antigo. Mantemos um buffer por playlist e
-   fazemos uma mescla (k-way merge) sempre pegando o vídeo mais
-   recente entre os topos dos buffers. Assim a ordem global por
-   data é sempre correta, página após página.
+   novo para o mais antigo. A lista sai em RODADAS: 1 vídeo de
+   cada canal por rodada, e dentro da rodada do mais novo para o
+   mais antigo — um canal que posta muito não enche a tela sozinho.
+
+   As vagas (qual canal ocupa cada posição) são sempre calculadas
+   com todos os vídeos. Com o olho escondendo os assistidos, cada
+   vaga de um canal recebe o próximo vídeo NÃO assistido dele: as
+   posições não mudam, só o vídeo que ocupa a vaga.
 
    Só a aba "Vídeos" de cada canal: em vez da playlist de
    uploads completa (UU…), usamos a playlist automática de
@@ -725,111 +729,152 @@ const Auth = {
    ========================================================= */
 class FeedStream {
   constructor(channels) {
-    this.sources = channels.flatMap(c => ['UULF'].map(prefix => ({
+    this.sources = channels.map(c => ({
       channelId: c.id,
-      playlistId: prefix + c.id.slice(2),
-      buffer: [],
+      playlistId: 'UULF' + c.id.slice(2),
+      list: [],        // vídeos do canal já lidos, do mais novo para o mais antigo
+      ids: new Set(),
       token: null,
       done: false,
-    })));
-    this.items = [];
-    this.seen = new Set();
-    this.roundTaken = new Set(); // canais que já entraram na rodada atual
+      slot: 0,         // próximo vídeo que define a vaga do canal na rodada
+      show: 0,         // próximo não assistido (olho escondendo os assistidos)
+    }));
     this.loading = null;
-    this.exhausted = this.sources.length === 0;
     this.error = null;
     this.dead = false;
     this.uiBusy = false;
+    this.gen = 0;
+    this.restart();
+  }
+
+  /** Recomeça a lista do zero (olho mudou, vídeo assistido...) sem buscar de novo o que já foi lido. */
+  restart() {
+    this.gen++;
+    this.loading = null;
+    this.items = [];
+    this.roundTaken = new Set(); // canais que já entraram na rodada atual
+    this.exhausted = this.sources.length === 0;
+    this.error = null;
+    this.hideMode = state.hideWatched;
+    this.watchedSig = watchedSignature();
+    for (const s of this.sources) { s.slot = 0; s.show = 0; }
   }
 
   dispose() {
     this.dead = true;
   }
 
-  async fill(src) {
-    while (!src.buffer.length && !src.done) {
-      let data;
-      try {
-        data = await api('playlistItems', {
-          part: 'snippet,contentDetails',
-          playlistId: src.playlistId,
-          maxResults: 50,
-          pageToken: src.token,
-        });
-      } catch (e) {
-        // 404: o canal não tem essa playlist (ex.: nunca fez live).
-        if (e.status === 404) { src.done = true; return; }
-        throw e;
+  /** Algum vídeo válido já lido (com o olho escondendo tudo, diferencia "já assistiu tudo" de "sem vídeos"). */
+  hasVideos() {
+    return this.sources.some(s => s.list.some(it => it.video));
+  }
+
+  /** Lê a próxima página da playlist do canal. */
+  async fetchPage(src) {
+    let data;
+    try {
+      data = await api('playlistItems', {
+        part: 'snippet,contentDetails',
+        playlistId: src.playlistId,
+        maxResults: 50,
+        pageToken: src.token,
+      });
+    } catch (e) {
+      // 404: o canal não tem essa playlist.
+      if (e.status === 404) { src.done = true; return; }
+      throw e;
+    }
+    if (this.dead) return;
+    const page = [];
+    for (const it of data.items || []) {
+      const id = it.contentDetails?.videoId;
+      const published = it.contentDetails?.videoPublishedAt; // ausente em vídeos privados/excluídos
+      const owner = it.snippet?.videoOwnerChannelId;
+      if (!id || !published || src.ids.has(id)) continue;
+      if (owner && owner !== src.channelId) continue;
+      src.ids.add(id);
+      page.push({ id, ts: Date.parse(published) });
+    }
+    src.list.push(...page.sort((a, b) => b.ts - a.ts));
+    src.token = data.nextPageToken || null;
+    if (!src.token) src.done = true;
+  }
+
+  /** Detalhes de um lote de vídeos (até 50 por chamada, que custa o mesmo que 1): só fica válido
+      o que é da aba "Vídeos", não está ao vivo/agendado e está dentro do limite de duração. */
+  async check(items) {
+    const details = await fetchVideos(items.map(it => it.id));
+    for (const it of items) {
+      const v = details.get(it.id);
+      it.checked = true;
+      it.video = v && v.live === 'none' && withinDurationLimit(v) ? v : null;
+    }
+  }
+
+  /** Leva o cursor (slot ou show) de cada canal até o próximo vídeo válido (no "show", também
+      não assistido), lendo páginas e detalhes quando falta. Os lotes juntam vários canais. */
+  async advance(sources, key) {
+    for (;;) {
+      const fetches = [];
+      const need = [];
+      for (const s of sources) {
+        for (;;) {
+          const it = s.list[s[key]];
+          if (!it) { if (!s.done) fetches.push(s); break; }
+          if (!it.checked) { need.push(s); break; }
+          if (!it.video || (key === 'show' && isWatched(it.id))) { s[key]++; continue; }
+          break;
+        }
+      }
+      if (!fetches.length && !need.length) return;
+      if (fetches.length) await Promise.all(fetches.map(s => this.fetchPage(s)));
+      if (need.length) {
+        const ahead = Math.max(2, Math.ceil(50 / need.length));
+        await this.check(need.flatMap(s => s.list.slice(s[key], s[key] + ahead).filter(it => !it.checked)).slice(0, 50));
       }
       if (this.dead) return;
-      for (const it of data.items || []) {
-        const id = it.contentDetails?.videoId;
-        const published = it.contentDetails?.videoPublishedAt; // ausente em vídeos privados/excluídos
-        const owner = it.snippet?.videoOwnerChannelId;
-        if (!id || !published) continue;
-        if (owner && owner !== src.channelId) continue;
-        src.buffer.push({ id, ts: Date.parse(published) });
-      }
-      src.buffer.sort((a, b) => b.ts - a.ts);
-      src.token = data.nextPageToken || null;
-      if (!src.token) src.done = true;
     }
   }
 
   loadMore(count = PAGE_SIZE) {
     if (this.loading) return this.loading;
     if (this.exhausted || this.dead) return Promise.resolve([]);
-    this.loading = this._load(count).finally(() => { this.loading = null; });
-    return this.loading;
-  }
-
-  /** Garante que o próximo vídeo de cada canal é válido (aba "Vídeos", fora do ar não, dentro do
-      limite de duração). Os detalhes são pedidos de uma vez para o começo das filas de todos os
-      canais (até 50 por chamada, que custa o mesmo que 1) e ficam guardados na própria fila. */
-  async validateHeads() {
-    for (;;) {
-      await Promise.all(this.sources.map(s => this.fill(s)));
-      if (this.dead) return;
-      for (const s of this.sources) {
-        while (s.buffer.length && (this.seen.has(s.buffer[0].id) || (s.buffer[0].checked && !s.buffer[0].video))) s.buffer.shift();
-      }
-      const need = this.sources.filter(s => s.buffer.length && !s.buffer[0].checked);
-      if (!need.length) {
-        if (this.sources.some(s => !s.buffer.length && !s.done)) continue; // fila esvaziou: busca mais
-        return;
-      }
-      const ahead = Math.max(2, Math.ceil(50 / need.length));
-      const items = need.flatMap(s => s.buffer.slice(0, ahead).filter(it => !it.checked)).slice(0, 50);
-      const details = await fetchVideos(items.map(it => it.id));
-      if (this.dead) return;
-      for (const it of items) {
-        const v = details.get(it.id);
-        it.checked = true;
-        // Garantia extra: nada que esteja ao vivo ou agendado entra na página inicial.
-        it.video = v && v.live === 'none' && withinDurationLimit(v) ? v : null;
-      }
-    }
+    const loading = this._load(count).finally(() => { if (this.loading === loading) this.loading = null; });
+    this.loading = loading;
+    return loading;
   }
 
   async _load(count) {
+    const gen = this.gen;
     const added = [];
+    const stale = () => this.dead || gen !== this.gen;
     while (added.length < count) {
-      await this.validateHeads();
-      if (this.dead) return [];
-      // Rodadas: 1 vídeo de cada canal por rodada (o mais novo que ele ainda não mostrou),
-      // e dentro da rodada do mais novo para o mais antigo. Assim um canal que posta muito
-      // não enche a tela sozinho. Quando todos os canais com vídeos já entraram, começa outra.
-      const pending = this.sources.filter(s => s.buffer.length);
+      await this.advance(this.sources, 'slot');
+      if (stale()) return [];
+      // Rodadas: a vaga vai para o canal (que ainda não entrou nesta rodada) cujo próximo vídeo
+      // é o mais novo. Quando todos os canais com vídeos já entraram, começa outra rodada.
+      const pending = this.sources.filter(s => s.list[s.slot]);
       if (!pending.length) { this.exhausted = true; break; }
       if (pending.every(s => this.roundTaken.has(s))) this.roundTaken.clear();
       let best = null;
       for (const s of pending) {
-        if (!this.roundTaken.has(s) && (!best || s.buffer[0].ts > best.buffer[0].ts)) best = s;
+        if (!this.roundTaken.has(s) && (!best || s.list[s.slot].ts > best.list[best.slot].ts)) best = s;
       }
-      const next = best.buffer.shift();
+      const slot = best.list[best.slot++];
       this.roundTaken.add(best);
-      this.seen.add(next.id);
-      added.push(next.video);
+      if (!this.hideMode) {
+        added.push(slot.video);
+        continue;
+      }
+      // Olho escondendo os assistidos: a vaga recebe o próximo não assistido do mesmo canal
+      // (se o canal não tiver mais nenhum, a vaga sai e os seguintes sobem).
+      await this.advance([best], 'show');
+      if (stale()) return [];
+      const show = best.list[best.show];
+      if (show) {
+        best.show++;
+        added.push(show.video);
+      }
     }
     this.items.push(...added);
     return added;
@@ -1015,6 +1060,7 @@ function markSeen(id) {
    ========================================================= */
 let gridFeed = null;
 let renderedCount = 0;
+let gridGen; // versão da lista (FeedStream.gen) que está desenhada na grade
 
 function thumbBadge(v) {
   if (v.live === 'live') return '<span class="badge badge-live">AO VIVO</span>';
@@ -1080,11 +1126,55 @@ function syncGrid() {
     grid.innerHTML = '';
     renderedCount = 0;
     gridFeed = feed;
+    gridGen = feed.gen;
   }
+  if (gridGen !== feed.gen) return; // a lista está sendo remontada: rebuildFeed troca a grade de uma vez
   const fresh = feed.items.slice(renderedCount);
   if (!fresh.length) return;
   grid.insertAdjacentHTML('beforeend', fresh.map((v, i) => tileHTML(v, Math.min(i, PAGE_SIZE - 1))).join(''));
   renderedCount = feed.items.length;
+}
+
+/** A lista do Início depende do olho (com ele escondendo, cada vaga mostra o próximo não assistido
+    do canal) e do que já foi assistido: se algo disso mudou desde que foi montada, precisa remontar. */
+function feedIsStale(feed) {
+  return feed instanceof FeedStream && (feed.hideMode !== state.hideWatched || (feed.hideMode && feed.watchedSig !== watchedSignature()));
+}
+
+/** Remonta a lista com o que já foi lido (quase sem chamadas à API) e troca a grade de uma vez,
+    com o mesmo número de vídeos — a posição na tela não muda. Com animate (olho), os vídeos que
+    continuam na tela deslizam até o novo lugar e os outros entram ou saem suavemente. */
+async function rebuildFeed(feed, { animate = false } = {}) {
+  const target = Math.max(renderedCount, feed.items.length, PAGE_SIZE);
+  feed.restart();
+  feed.uiBusy = true;
+  try {
+    await feed.loadMore(target);
+  } catch (e) {
+    if (!feed.dead) feed.error = e;
+  }
+  feed.uiBusy = false;
+  if (feed.dead || feed !== currentFeed() || state.view !== 'home') return;
+  const grid = $('#feed');
+  const swap = () => {
+    grid.innerHTML = feed.items.map((v, i) => tileHTML(v, Math.min(i, PAGE_SIZE - 1))).join('');
+    grid.querySelectorAll('.tile').forEach(t => { t.style.animation = 'none'; }); // sem a entrada em cascata
+    renderedCount = feed.items.length;
+    gridFeed = feed;
+    gridGen = feed.gen;
+    setSkeletons(false);
+    updateFeedStatus();
+  };
+  const visible = () => [...grid.querySelectorAll('.tile')].filter(t => t.offsetParent && inViewport(t)).slice(0, 40);
+  const name = t => { t.style.viewTransitionName = `vt-${t.dataset.vid}`; t.style.viewTransitionClass = 'feed-tile'; };
+  if (animate && motionOK() && document.startViewTransition) {
+    visible().forEach(name);
+    const transition = document.startViewTransition(() => { swap(); visible().forEach(name); });
+    transition.finished.finally(() => grid.querySelectorAll('.tile').forEach(t => { t.style.viewTransitionName = ''; }));
+  } else {
+    swap();
+  }
+  requestAnimationFrame(checkSentinel);
 }
 
 function resetFeed() {
@@ -1159,12 +1249,12 @@ function updateFeedStatus() {
   if (feed.error) {
     status.innerHTML = emptyState('error', 'Não foi possível carregar os vídeos', esc(feed.error.message),
       '<button class="btn btn-ghost" type="button" data-action="retry-feed">Tentar novamente</button>');
+  } else if (feed.exhausted && state.hideWatched && (feed.items.length ? feed.items.every(v => isWatched(v.id)) : Boolean(feed.hasVideos?.()))) {
+    status.innerHTML = emptyState('channels', 'Você já assistiu tudo',
+      'Todos os vídeos daqui foram assistidos até o fim. Clique no ícone de olho, no rodapé do menu lateral, para vê-los de novo.');
   } else if (feed.exhausted && !feed.items.length) {
     status.innerHTML = emptyState('channels', 'Nenhum vídeo encontrado',
       state.filter ? 'Este canal ainda não tem vídeos públicos.' : 'Os canais adicionados ainda não têm vídeos públicos.');
-  } else if (feed.exhausted && state.hideWatched && feed.items.every(v => isWatched(v.id))) {
-    status.innerHTML = emptyState('channels', 'Você já assistiu tudo',
-      'Todos os vídeos daqui foram assistidos até o fim. Clique no ícone de olho, no rodapé do menu lateral, para vê-los de novo.');
   } else if (feed.exhausted) {
     status.innerHTML = `<p>Você chegou ao fim. Esses são todos os vídeos ${state.filter ? 'deste canal' : 'dos seus canais'}.</p>`;
   } else {
@@ -1219,6 +1309,9 @@ function showHome() {
     return;
   }
   const feed = currentFeed();
+  // Voltando de um vídeo: se algo foi assistido (olho escondendo) ou a lista foi remontada na
+  // página do vídeo, remonta a grade sem animação; as posições continuam as mesmas.
+  if (gridFeed === feed && (feedIsStale(feed) || gridGen !== feed.gen)) return rebuildFeed(feed);
   syncGrid();
   setSkeletons(feed.uiBusy);
   updateFeedStatus();
@@ -1458,6 +1551,13 @@ function isWatched(id) {
   return Boolean(progressStore[id]?.done);
 }
 
+/** Muda sempre que um vídeo passa a contar como assistido (aqui ou vindo de outro aparelho). */
+function watchedSignature() {
+  let n = 0;
+  for (const id in progressStore) if (progressStore[id]?.done) n++;
+  return n;
+}
+
 function updateProgressBars(id) {
   $$(`[data-vid="${id}"] .thumb`).forEach(thumb => {
     thumb.querySelector('.watch-progress')?.remove();
@@ -1499,13 +1599,21 @@ function toggleHideWatched() {
     applyHideWatched();
     pop($('#watched-toggle'));
     if (state.view === 'home') {
+      if (feedIsStale(currentFeed())) {
+        // Rodadas: as vagas ficam; com o olho escondendo, cada uma recebe o próximo não assistido do canal.
+        rebuildFeed(currentFeed(), { animate: true });
+        return;
+      }
       updateFeedStatus();
       requestAnimationFrame(checkSentinel); // se sobrou pouco na tela, carrega mais
     } else if (state.view === 'watch' && state.currentVideo) {
+      if (state.watchFeed instanceof FeedStream) state.watchFeed.restart();
       renderUpNext(state.currentVideo);
     }
   };
-  // Início: os assistidos saem desfocando e os outros deslizam até o novo lugar (só os que estão na tela).
+  // Rodadas ("Todos os canais", página do canal): a lista é remontada com animação (rebuildFeed).
+  if (state.view === 'home' && currentFeed() instanceof FeedStream) { run(); return; }
+  // "Mais antigos": os assistidos saem desfocando e os outros deslizam até o novo lugar (só os que estão na tela).
   const tiles = state.view === 'home' && motionOK() ? [...$$('#feed .tile')].filter(t => t.offsetParent && inViewport(t)) : [];
   if (!tiles.length) { run(); return; }
   const hiding = !state.hideWatched;
@@ -3511,7 +3619,9 @@ function inViewport(el) {
   return r.bottom > 0 && r.top < innerHeight;
 }
 
+/** Retorna uma promessa quando o Início está remontando a lista (a transição espera por ela). */
 function applyView(view, id, channel, sort = 'new') {
+  let pending = null;
   const prev = state.view;
   if (prev === 'home') state.homeScroll = scrollY;
   if (prev === 'watch' && view !== 'watch') {
@@ -3534,7 +3644,7 @@ function applyView(view, id, channel, sort = 'new') {
     const filterChanged = filter !== state.filter || order !== state.sort;
     state.filter = filter;
     state.sort = order;
-    showHome();
+    pending = showHome();
     window.scrollTo({ top: filterChanged ? 0 : state.homeScroll, behavior: 'instant' });
   } else if (view === 'watch') {
     const filter = channel && isHomeChannel(channel) ? channel : null;
@@ -3552,6 +3662,7 @@ function applyView(view, id, channel, sort = 'new') {
   }
   updateSidebarActive();
   updateToTop();
+  return pending;
 }
 
 function route(animate = true) {
@@ -3569,13 +3680,18 @@ function route(animate = true) {
 
   const update = () => {
     clearHeroNames();
-    applyView(view, id, channel, sort);
-    if (view === 'watch') {
-      setHero($('.player-wrap'));
-    } else if (view === 'home' && prevView === 'watch' && prevVideo) {
-      const thumb = $(`#feed [data-vid="${prevVideo}"] .thumb`);
-      if (thumb && inViewport(thumb)) setHero(thumb);
-    }
+    const pending = applyView(view, id, channel, sort);
+    const heroes = () => {
+      if (view === 'watch') {
+        setHero($('.player-wrap'));
+      } else if (view === 'home' && prevView === 'watch' && prevVideo) {
+        const thumb = $(`#feed [data-vid="${prevVideo}"] .thumb`);
+        if (thumb && inViewport(thumb)) setHero(thumb);
+      }
+    };
+    // Início remontando a lista (vídeo assistido com o olho escondendo): a transição espera.
+    if (pending) return pending.then(heroes);
+    heroes();
   };
 
   if (canAnimate && document.startViewTransition) {
