@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.18.0';
+const APP_VERSION = '1.19.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -734,6 +734,7 @@ class FeedStream {
     })));
     this.items = [];
     this.seen = new Set();
+    this.roundTaken = new Set(); // canais que já entraram na rodada atual
     this.loading = null;
     this.exhausted = this.sources.length === 0;
     this.error = null;
@@ -782,33 +783,53 @@ class FeedStream {
     return this.loading;
   }
 
+  /** Garante que o próximo vídeo de cada canal é válido (aba "Vídeos", fora do ar não, dentro do
+      limite de duração). Os detalhes são pedidos de uma vez para o começo das filas de todos os
+      canais (até 50 por chamada, que custa o mesmo que 1) e ficam guardados na própria fila. */
+  async validateHeads() {
+    for (;;) {
+      await Promise.all(this.sources.map(s => this.fill(s)));
+      if (this.dead) return;
+      for (const s of this.sources) {
+        while (s.buffer.length && (this.seen.has(s.buffer[0].id) || (s.buffer[0].checked && !s.buffer[0].video))) s.buffer.shift();
+      }
+      const need = this.sources.filter(s => s.buffer.length && !s.buffer[0].checked);
+      if (!need.length) {
+        if (this.sources.some(s => !s.buffer.length && !s.done)) continue; // fila esvaziou: busca mais
+        return;
+      }
+      const ahead = Math.max(2, Math.ceil(50 / need.length));
+      const items = need.flatMap(s => s.buffer.slice(0, ahead).filter(it => !it.checked)).slice(0, 50);
+      const details = await fetchVideos(items.map(it => it.id));
+      if (this.dead) return;
+      for (const it of items) {
+        const v = details.get(it.id);
+        it.checked = true;
+        // Garantia extra: nada que esteja ao vivo ou agendado entra na página inicial.
+        it.video = v && v.live === 'none' && withinDurationLimit(v) ? v : null;
+      }
+    }
+  }
+
   async _load(count) {
     const added = [];
-    // Repete até completar a página: vídeos descartados pelo filtro de canal são repostos.
-    while (added.length < count && !this.exhausted) {
-      const picked = [];
-      while (picked.length < count - added.length) {
-        await Promise.all(this.sources.map(s => this.fill(s)));
-        if (this.dead) return [];
-
-        let best = null;
-        for (const s of this.sources) {
-          if (s.buffer.length && (!best || s.buffer[0].ts > best.buffer[0].ts)) best = s;
-        }
-        if (!best) { this.exhausted = true; break; }
-
-        const next = best.buffer.shift();
-        if (!this.seen.has(next.id)) {
-          this.seen.add(next.id);
-          picked.push(next);
-        }
-      }
-      if (!picked.length) break;
-
-      const details = await fetchVideos(picked.map(p => p.id));
+    while (added.length < count) {
+      await this.validateHeads();
       if (this.dead) return [];
-      // Garantia extra: nada que esteja ao vivo ou agendado entra na página inicial.
-      added.push(...picked.map(p => details.get(p.id)).filter(v => v && v.live === 'none' && withinDurationLimit(v)));
+      // Rodadas: 1 vídeo de cada canal por rodada (o mais novo que ele ainda não mostrou),
+      // e dentro da rodada do mais novo para o mais antigo. Assim um canal que posta muito
+      // não enche a tela sozinho. Quando todos os canais com vídeos já entraram, começa outra.
+      const pending = this.sources.filter(s => s.buffer.length);
+      if (!pending.length) { this.exhausted = true; break; }
+      if (pending.every(s => this.roundTaken.has(s))) this.roundTaken.clear();
+      let best = null;
+      for (const s of pending) {
+        if (!this.roundTaken.has(s) && (!best || s.buffer[0].ts > best.buffer[0].ts)) best = s;
+      }
+      const next = best.buffer.shift();
+      this.roundTaken.add(best);
+      this.seen.add(next.id);
+      added.push(next.video);
     }
     this.items.push(...added);
     return added;

@@ -2197,6 +2197,8 @@ body { transition: --side-now .5s var(--ease-smooth); }
 .stats.st-anim .st-fc-big { animation: viewIn .6s var(--ease-smooth) .2s backwards; }
 .stats.st-anim .st-fc-pick { animation: popIn .45s var(--ease-spring) backwards; animation-delay: .25s; }
 .stats.st-anim .st-kpi-value { animation: viewIn .6s var(--ease-smooth) .2s backwards; }
+/* Olho no Início: os vídeos que continuam na tela deslizam até o novo lugar */
+::view-transition-group(*.feed-tile) { animation-duration: .55s; animation-timing-function: var(--ease-smooth); }
 /* Abas Dia/Semana/Mês: a pílula azul desliza até a aba escolhida */
 .st-tabs { position: relative; isolation: isolate; }
 .st-tab-pill {
