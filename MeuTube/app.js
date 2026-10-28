@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.21.1';
+const APP_VERSION = '1.21.2';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -25,6 +25,7 @@ const VIDEO_ID_RE = /^[\w-]{11}$/;
 const CHANNEL_ID_RE = /^UC[\w-]{22}$/;
 const KEYS = {
   unplayable: 'meutube.unplayable', // vídeos que o player recusou (dono não permite tocar fora do YouTube)
+  playFails: 'meutube.playFails',   // vídeos que travaram no meio: { vídeo: { n: dias com falha, day } }
   config: 'meutube.config',
   channels: 'meutube.channels',
   autoplay: 'meutube.autoplay',
@@ -252,7 +253,8 @@ function withinDurationLimit(v) {
 /* Vídeos que não tocam fora do YouTube (o dono não permite, restrição de idade ou de país) não
    existem no MeuTube. A API avisa a maioria; os poucos que ela não avisa são descobertos quando o
    player recusa e ficam guardados aqui, para nunca mais aparecer. */
-const unplayable = new Set(store.get(KEYS.unplayable, []));
+const unplayableSaved = new Set(store.get(KEYS.unplayable, [])); // os que saíram de vez
+const unplayable = new Set(unplayableSaved);                      // + os que saíram só até recarregar a página
 const USER_COUNTRY = (/-([A-Za-z]{2})\b/.exec(navigator.language || '')?.[1] || 'BR').toUpperCase();
 
 /** O dono não deixa tocar fora do YouTube? (pelos dados da API; v = item bruto de videos.list) */
@@ -1738,6 +1740,7 @@ async function playVideo(id) {
   if (!player) {
     playerVideoId = id;
     playerLoadedAt = Date.now();
+    resetHealth(id);
     playerReady = new Promise(resolve => {
       player = new YT.Player('player', {
         videoId: id,
@@ -1770,11 +1773,13 @@ async function playVideo(id) {
   if (playerVideoId && playerVideoId !== id) saveProgress();
   playerVideoId = id;
   playerLoadedAt = Date.now();
+  resetHealth(id);
   player.loadVideoById({ videoId: id, startSeconds: start });
 }
 
 function onPlayerStateChange(e) {
   const S = window.YT.PlayerState;
+  if (e.data === S.PLAYING && health.id === playerVideoId) health.played = true;
   onPlayerControlsState(e.data);
   if (e.data === S.PAUSED) saveProgress();
   if (e.data !== S.ENDED) return;
@@ -1795,11 +1800,15 @@ function onPlayerStateChange(e) {
   if (next) location.hash = watchHref(next.id);
 }
 
-/** Vídeo que o player recusou: some do app (Início, página do canal, "A seguir", Estatísticas) e fica guardado. */
-function markUnplayable(id) {
-  if (unplayable.has(id)) return;
+/** Vídeo que o player recusou: some do app (Início, página do canal, "A seguir", Estatísticas) e fica
+    guardado. Com persist = false, some só até recarregar a página (falha que pode ser passageira). */
+function markUnplayable(id, { persist = true } = {}) {
+  if (persist && !unplayableSaved.has(id)) {
+    unplayableSaved.add(id);
+    store.set(KEYS.unplayable, [...unplayableSaved].slice(-3000));
+  }
+  if (unplayable.has(id) && !persist) return;
   unplayable.add(id);
-  store.set(KEYS.unplayable, [...unplayable].slice(-3000));
   for (const feed of feeds.values()) {
     const i = feed.items.findIndex(v => v.id === id);
     if (i >= 0) {
@@ -1809,6 +1818,7 @@ function markUnplayable(id) {
     feed.sources?.forEach(s => s.list.forEach(it => { if (it.id === id) it.video = null; }));
   }
   $(`#feed .tile[data-vid="${id}"]`)?.remove();
+  if (!persist) return; // nas Estatísticas, continua contando
   for (const catalog of channelCatalogs.values()) catalog.delete(id);
   const info = store.get(VIDEO_INFO_KEY, {});
   let touched = false;
@@ -1818,7 +1828,7 @@ function markUnplayable(id) {
 
 /** O dono não deixa tocar fora do YouTube (ou o vídeo saiu do ar): sem mensagem, vai direto para o
     próximo de "A seguir" (sem voltar a ele pelo "voltar" do navegador). Sem próximo, volta. */
-async function skipUnplayable(id) {
+async function skipUnplayable(id, { persist = true } = {}) {
   const video = state.currentVideo?.id === id ? state.currentVideo : null;
   let next = video ? nextVideoAfter(video) : null;
   if (!next && video) {
@@ -1826,7 +1836,7 @@ async function skipUnplayable(id) {
     try { await (state.watchFeed || currentFeed()).loadMore(); } catch { /* sem conexão */ }
     next = nextVideoAfter(video);
   }
-  markUnplayable(id);
+  markUnplayable(id, { persist });
   if (mini.on && state.currentVideoId === id) {
     if (next) miniPlay(next);
     else closeMini();
@@ -1843,17 +1853,80 @@ async function skipUnplayable(id) {
   location.replace(watchHref(next.id));
 }
 
+/* ---------- Vídeo que trava ou dá erro no meio ----------
+   Às vezes o YouTube falha ao entregar um vídeo no meio (no próprio site também): o player mostra
+   um erro — nem sempre avisando o app — e o vídeo fica parado. O app vigia: se o vídeo está
+   "tocando" ou "carregando" e o tempo não anda por 15 s, ou se o player dá erro depois de já ter
+   tocado, recarrega o vídeo do ponto em que estava (como atualizar a página). Falhando de novo,
+   guarda o ponto e vai para o próximo de "A seguir"; o vídeo some até recarregar a página e só sai
+   de vez se falhar em dois dias diferentes. A recusa logo de cara (o dono não permite fora do
+   YouTube) continua tirando o vídeo do app na hora. Pausa e fim do vídeo nunca contam. */
+const STALL_MS = 15_000;
+const health = { id: null, lastT: 0, lastAt: 0, played: false, retried: new Set() };
+
+function resetHealth(id) {
+  Object.assign(health, { id, lastT: 0, lastAt: Date.now(), played: false });
+}
+
+function checkPlayerHealth() {
+  const id = playerVideoId;
+  const S = window.YT?.PlayerState;
+  if (!id || !S || !player?.getPlayerState || !(state.view === 'watch' || mini.on) || state.currentVideoId !== id || document.hidden) {
+    health.lastAt = Date.now();
+    return;
+  }
+  if (health.id !== id) resetHealth(id);
+  let st, t;
+  try { st = player.getPlayerState(); t = player.getCurrentTime() || 0; } catch { return; }
+  if (st === S.PLAYING) health.played = true;
+  // Pausado, terminado ou esperando o clique no play (navegador bloqueou o início automático): não é falha.
+  const stuckState = st === S.PLAYING || st === S.BUFFERING || (st === -1 && health.played);
+  if (!stuckState || Math.abs(t - health.lastT) > 0.2) {
+    health.lastT = t;
+    health.lastAt = Date.now();
+    return;
+  }
+  if (Date.now() - health.lastAt > STALL_MS) playbackFailed(id);
+}
+
+function playbackFailed(id) {
+  if (state.currentVideoId !== id || playerVideoId !== id) return;
+  const at = Math.max(health.lastT, resumeTime(id));
+  if (!health.retried.has(id)) {
+    // 1ª falha: recarrega do ponto em que estava.
+    health.retried.add(id);
+    resetHealth(id);
+    health.lastT = at;
+    playerLoadedAt = Date.now();
+    player.loadVideoById({ videoId: id, startSeconds: Math.floor(at) });
+    return;
+  }
+  // 2ª falha: guarda o ponto e vai para o próximo. Sai de vez só se falhar também em outro dia.
+  const d = videoForProgress(id)?.durationSec || player.getDuration?.() || 0;
+  if (health.lastT > 0 && d) recordProgress(id, health.lastT, d);
+  const fails = store.get(KEYS.playFails, {});
+  const today = dayKey();
+  const f = fails[id] || { n: 0, day: '' };
+  if (f.day !== today) fails[id] = { n: f.n + 1, day: today };
+  const ids = Object.keys(fails);
+  if (ids.length > 500) ids.sort((a, b) => fails[a].day.localeCompare(fails[b].day)).slice(0, ids.length - 500).forEach(k => delete fails[k]);
+  store.set(KEYS.playFails, fails);
+  resetHealth(null);
+  skipUnplayable(id, { persist: fails[id].n >= 2 });
+}
+
 function onPlayerError(e) {
   const id = state.currentVideoId;
-  if ([100, 101, 150].includes(e.data) && id) {
+  if (!id) return;
+  // Recusa logo de cara num vídeo que nunca tocou aqui (2 = identificador inválido; 100 = removido/
+  // privado; 101/150 = o dono não permite fora do YouTube): sai do app. Se já tocou (agora, ou tem
+  // ponto salvo de antes), é falha de entrega do YouTube: recupera em vez de descartar.
+  const playedHere = (health.id === id && health.played) || health.retried.has(id) || progressStore[id]?.t > 0 || progressStore[id]?.done;
+  if ([2, 100, 101, 150].includes(e.data) && !playedHere) {
     skipUnplayable(id);
     return;
   }
-  const messages = {
-    2: 'O identificador do vídeo é inválido.',
-    5: 'Este vídeo não pode ser reproduzido no player HTML5.',
-  };
-  showPlayerError(messages[e.data] || 'Não foi possível reproduzir este vídeo.');
+  playbackFailed(id); // sem mensagem: tenta de novo e, se preciso, segue para o próximo
 }
 
 function showPlayerError(message, action = '') {
@@ -2684,6 +2757,7 @@ function miniPlay(video) {
   markSeen(video.id);
   playerVideoId = video.id;
   playerLoadedAt = Date.now();
+  resetHealth(video.id);
   player.loadVideoById({ videoId: video.id, startSeconds: Math.floor(resumeTime(video.id)) });
   renderPlayerTitle(video);
   renderMiniInfo();
@@ -4205,6 +4279,7 @@ function bindEvents() {
     if ((state.view === 'watch' || mini.on) && player?.getPlayerState?.() === window.YT?.PlayerState?.PLAYING) saveProgress();
   }, 5000);
   window.addEventListener('pagehide', saveProgress);
+  setInterval(checkPlayerHealth, 2000);
 
   // Tela cheia: a entrada é animada só com CSS (iframe:fullscreen); a saída, por esta classe.
   // No celular, o vídeo em tela cheia gira sozinho para a horizontal.
