@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.20.0';
+const APP_VERSION = '1.21.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -1179,6 +1179,7 @@ async function rebuildFeed(feed, { animate = false } = {}) {
   if (feed.dead || feed !== currentFeed() || state.view !== 'home') return;
   const grid = $('#feed');
   const swap = () => {
+    stopPreview();
     grid.innerHTML = feed.items.map((v, i) => tileHTML(v, Math.min(i, PAGE_SIZE - 1))).join('');
     grid.querySelectorAll('.tile').forEach(t => { t.style.animation = 'none'; }); // sem a entrada em cascata
     renderedCount = feed.items.length;
@@ -1784,8 +1785,13 @@ function onPlayerStateChange(e) {
   try {
     recordProgress(playerVideoId, 0, videoForProgress(playerVideoId)?.durationSec || player.getDuration(), true);
   } catch { /* ignora */ }
-  if (!state.autoplay || state.view !== 'watch') return;
+  if (!state.autoplay) return;
   const next = nextVideoAfter(state.currentVideo);
+  if (mini.on) {
+    if (next) miniPlay(next); // reprodução automática continua no mini player
+    return;
+  }
+  if (state.view !== 'watch') return;
   if (next) location.hash = watchHref(next.id);
 }
 
@@ -1821,6 +1827,11 @@ async function skipUnplayable(id) {
     next = nextVideoAfter(video);
   }
   markUnplayable(id);
+  if (mini.on && state.currentVideoId === id) {
+    if (next) miniPlay(next);
+    else closeMini();
+    return;
+  }
   if (state.view !== 'watch' || state.currentVideoId !== id) return;
   if (!next) {
     skipNonMeuTube(id);
@@ -2339,6 +2350,7 @@ function onPlayerControlsState(stateCode) {
   const S = window.YT.PlayerState;
   tickWatchTime();
   updatePlayButton(stateCode === S.PLAYING || stateCode === S.BUFFERING);
+  updateMiniUI();
   if (stateCode !== S.BUFFERING) {
     clearTimeout(ytTitleTimer);
     setYouTubeTitleShowing(true);
@@ -2599,6 +2611,266 @@ function setupPlayerControls() {
 }
 
 /* =========================================================
+   Mini player
+   =========================================================
+   Saindo da página do vídeo, o vídeo continua no mesmo player, que
+   só muda de tamanho e lugar (canto inferior direito; no celular, uma
+   faixa no rodapé) — nada é recarregado. Expandir volta à página do
+   vídeo do ponto em que está; clicar em outro vídeo fecha o mini player
+   e abre o outro normalmente; fechar salva o ponto e para o vídeo.
+   O tempo assistido nele conta nas Estatísticas, como na página do vídeo. */
+const MINI_ICONS = {
+  expand: ICON('M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2zM14 3v2h3.6l-9.8 9.8 1.4 1.4L19 6.4V10h2V3z'),
+  close: ICON('M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z'),
+};
+const mini = { on: false, context: '', timer: 0 };
+
+/** Dá para continuar no mini player? (há um vídeo carregado e sem erro no player) */
+function canMini() {
+  return Boolean(player && state.currentVideo && playerVideoId === state.currentVideo.id && $('#player-error').hidden);
+}
+
+function startMini() {
+  mini.on = true;
+  mini.context = watchContext(); // filtro em que o vídeo estava (para expandir no mesmo "A seguir")
+  $('#pc-menu').hidden = true;
+  $('#pc-settings').setAttribute('aria-expanded', 'false');
+  $('#view-watch').classList.remove('theater');
+  document.body.classList.add('mini-player');
+  renderMiniInfo();
+  updateMiniUI();
+  clearInterval(mini.timer);
+  mini.timer = setInterval(updateMiniUI, 500);
+}
+
+function endMini() {
+  if (!mini.on) return;
+  mini.on = false;
+  clearInterval(mini.timer);
+  document.body.classList.remove('mini-player');
+  applyTheater();
+}
+
+/** Fechar (✕): salva o ponto, para o vídeo e some. */
+function closeMini() {
+  if (!mini.on) return;
+  saveProgress();
+  try { player?.pauseVideo?.(); } catch { /* player ainda não pronto */ }
+  tickWatchTime();
+  const box = $('#view-watch');
+  const done = () => {
+    endMini();
+    if (state.view !== 'watch') {
+      box.hidden = true;
+      state.currentVideoId = null;
+      state.currentVideo = null;
+    }
+  };
+  if (motionOK()) box.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(16px) scale(.96)' }], { duration: 260, easing: 'ease-in' }).finished.then(done, done);
+  else done();
+}
+
+/** Expandir: volta à página do vídeo (o player continua de onde está). */
+function expandMini() {
+  if (mini.on && state.currentVideo) location.hash = watchHref(state.currentVideo.id, mini.context);
+}
+
+/** Fim do vídeo no mini player (reprodução automática) ou vídeo recusado: o próximo toca ali mesmo. */
+function miniPlay(video) {
+  saveProgress();
+  state.currentVideo = video;
+  state.currentVideoId = video.id;
+  recordWatchHistory(video.id);
+  markSeen(video.id);
+  playerVideoId = video.id;
+  playerLoadedAt = Date.now();
+  player.loadVideoById({ videoId: video.id, startSeconds: Math.floor(resumeTime(video.id)) });
+  renderPlayerTitle(video);
+  renderMiniInfo();
+}
+
+function renderMiniInfo() {
+  const v = state.currentVideo;
+  if (!v) return;
+  $('#mini-info .mini-info-title').textContent = v.title;
+  $('#mini-info .mini-info-channel').textContent = v.channelTitle;
+}
+
+function updateMiniUI() {
+  if (!mini.on) return;
+  const playing = isPlaying();
+  $$('[data-mini="play"]').forEach(b => {
+    b.innerHTML = playing ? PLAY_ICONS.pause : PLAY_ICONS.play;
+    b.setAttribute('aria-label', playing ? 'Pausar' : 'Reproduzir');
+    b.title = b.getAttribute('aria-label');
+  });
+  $('#mini-ui').classList.toggle('paused', !playing);
+  let t = 0, d = 0;
+  try { t = player.getCurrentTime() || 0; d = player.getDuration() || 0; } catch { /* ignora */ }
+  $('#mini-ui .mini-progress span').style.width = d ? `${Math.min(100, (t / d) * 100)}%` : '0';
+}
+
+function setupMini() {
+  $$('[data-mini="expand"].mini-btn').forEach(b => { b.innerHTML = MINI_ICONS.expand; });
+  $$('[data-mini="close"]').forEach(b => { b.innerHTML = MINI_ICONS.close; });
+  const act = e => {
+    if (!mini.on) return;
+    const btn = e.target.closest('[data-mini]');
+    const action = btn?.dataset.mini || 'expand'; // clicar no vídeo ou no título expande
+    e.preventDefault();
+    e.stopPropagation();
+    if (action === 'play') {
+      if (isPlaying()) player.pauseVideo(); else player.playVideo();
+      setTimeout(updateMiniUI, 150);
+    } else if (action === 'close') {
+      closeMini();
+    } else {
+      expandMini();
+    }
+  };
+  $('#mini-ui').addEventListener('click', act);
+  $('#mini-info').addEventListener('click', act);
+}
+
+/* =========================================================
+   Prévia ao passar o mouse (só com mouse)
+   =========================================================
+   Início e página do canal: parando o mouse sobre um vídeo, ele
+   toca sem som dentro do bloco (até o fim, se o mouse ficar), com
+   botão de som e barrinha de progresso. É um player separado do
+   principal: não salva progresso, não marca como assistido e não
+   conta nas Estatísticas. Clicar abre o vídeo normalmente (do começo
+   ou do ponto salvo antes). "A seguir": a capa e os 3 quadros que o
+   YouTube publica de cada vídeo (~25%, 50% e 75%) alternando em loop. */
+const hoverQuery = matchMedia('(hover: hover) and (pointer: fine)');
+const PREVIEW_DELAY = 600;
+const preview = { tile: null, timer: 0, player: null, box: null, tick: 0, muted: true, seq: 0 };
+const frames = { mini: null, timer: 0, wait: 0, img: null };
+
+function startPreview(tile) {
+  const id = tile.dataset.vid;
+  const thumb = tile.querySelector('.thumb');
+  if (!id || !thumb || !tile.isConnected) return;
+  const seq = ++preview.seq;
+  const box = document.createElement('div');
+  box.className = 'tile-preview';
+  box.innerHTML = `<div id="tp-player-${seq}"></div><div class="tp-shield"></div>
+    <button class="tp-mute" type="button" aria-label="Ativar o som" title="Ativar o som">${VOL_ICONS.muted}</button>
+    <div class="tp-progress" aria-hidden="true"><span></span></div>`;
+  thumb.append(box);
+  preview.box = box;
+  preview.muted = true;
+  box.querySelector('.tp-mute').addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    const p = preview.player;
+    if (!p?.isMuted) return;
+    preview.muted = !preview.muted;
+    if (preview.muted) p.mute(); else p.unMute();
+    e.currentTarget.innerHTML = preview.muted ? VOL_ICONS.muted : VOL_ICONS.high;
+    e.currentTarget.title = preview.muted ? 'Ativar o som' : 'Desativar o som';
+    e.currentTarget.setAttribute('aria-label', e.currentTarget.title);
+  });
+  loadYouTubeApi().then(YT => {
+    if (seq !== preview.seq) return;
+    preview.player = new YT.Player(`tp-player-${seq}`, {
+      videoId: id,
+      host: 'https://www.youtube.com',
+      playerVars: {
+        autoplay: 1, mute: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, playsinline: 1,
+        iv_load_policy: 3, modestbranding: 1, start: Math.floor(resumeTime(id)), origin: location.origin,
+      },
+      events: {
+        onReady: e => { if (seq === preview.seq) { e.target.mute(); e.target.playVideo(); } },
+        onStateChange: e => { if (seq === preview.seq && e.data === YT.PlayerState.PLAYING) box.classList.add('playing'); },
+        // Não toca fora do YouTube: some do app, como no player principal.
+        onError: e => { if (seq === preview.seq && [100, 101, 150].includes(e.data)) { stopPreview(); markUnplayable(id); } },
+      },
+    });
+    preview.tick = setInterval(() => {
+      const p = preview.player;
+      let t = 0, d = 0;
+      try { t = p.getCurrentTime() || 0; d = p.getDuration() || 0; } catch { return; }
+      box.querySelector('.tp-progress span').style.width = d ? `${Math.min(100, (t / d) * 100)}%` : '0';
+    }, 250);
+  }).catch(() => { /* sem o player do YouTube: fica só a capa */ });
+}
+
+function stopPreview() {
+  clearTimeout(preview.timer);
+  clearInterval(preview.tick);
+  preview.seq++;
+  try { preview.player?.destroy?.(); } catch { /* ignora */ }
+  preview.box?.remove();
+  Object.assign(preview, { tile: null, timer: 0, player: null, box: null, tick: 0 });
+}
+
+function startFrames(mini) {
+  const id = mini.dataset.vid;
+  const thumb = mini.querySelector('.thumb');
+  if (!id || !thumb) return;
+  const urls = ['hq1', 'hq2', 'hq3'].map(n => `https://i.ytimg.com/vi/${id}/${n}.jpg`);
+  urls.forEach(u => { new Image().src = u; }); // já baixa os 3 quadros
+  const img = document.createElement('img');
+  img.className = 'mini-frames';
+  img.alt = '';
+  img.referrerPolicy = 'no-referrer';
+  img.decoding = 'async';
+  thumb.append(img);
+  frames.img = img;
+  let i = 0;
+  const show = () => {
+    img.src = urls[i++ % urls.length];
+    img.classList.remove('swap');
+    void img.offsetWidth;
+    img.classList.add('swap');
+  };
+  frames.wait = setTimeout(() => { show(); frames.timer = setInterval(show, 900); }, 250);
+}
+
+function stopFrames() {
+  clearTimeout(frames.wait);
+  clearInterval(frames.timer);
+  frames.img?.remove();
+  Object.assign(frames, { mini: null, timer: 0, wait: 0, img: null });
+}
+
+function setupPreviews() {
+  const isMouse = e => e.pointerType === 'mouse' && hoverQuery.matches;
+  const feed = $('#feed');
+  feed.addEventListener('pointerover', e => {
+    if (!isMouse(e)) return;
+    const tile = e.target.closest('.tile');
+    if (!tile || tile === preview.tile) return;
+    stopPreview();
+    preview.tile = tile;
+    preview.timer = setTimeout(() => startPreview(tile), PREVIEW_DELAY);
+  });
+  feed.addEventListener('pointerout', e => {
+    const tile = e.target.closest('.tile');
+    if (tile && tile === preview.tile && !tile.contains(e.relatedTarget)) stopPreview();
+  });
+  const up = $('#upnext');
+  up.addEventListener('pointerover', e => {
+    if (!isMouse(e)) return;
+    const mini = e.target.closest('.mini');
+    if (!mini || mini === frames.mini) return;
+    stopFrames();
+    frames.mini = mini;
+    startFrames(mini);
+  });
+  up.addEventListener('pointerout', e => {
+    const mini = e.target.closest('.mini');
+    if (mini && mini === frames.mini && !mini.contains(e.relatedTarget)) stopFrames();
+  });
+  // Rolando a página com o mouse parado, o vídeo sai de baixo do mouse: a prévia para.
+  addEventListener('scroll', () => {
+    if (preview.tile && !preview.tile.matches(':hover')) stopPreview();
+    if (frames.mini && !frames.mini.matches(':hover')) stopFrames();
+  }, { passive: true });
+}
+
+/* =========================================================
    Página do vídeo
    ========================================================= */
 const UPNEXT_PAGE = 3;          // "A seguir" mostra 3 vídeos; "Mostrar mais" acrescenta outros 3
@@ -2673,13 +2945,13 @@ function renderWatchInfo(v) {
   $('#watch-info').innerHTML = `
     <h1 class="watch-title">${esc(v.title)}</h1>
     <div class="watch-meta">
-      <div class="watch-channel">
+      <${isHomeChannel(v.channelId) ? `a href="#/c/${esc(v.channelId)}" title="Ver os vídeos de ${esc(v.channelTitle)}"` : 'div'} class="watch-channel">
         <img class="avatar watch-avatar" src="${esc(ch?.thumb || '')}" alt="" referrerpolicy="no-referrer" data-hide-broken>
         <div>
           <strong>${esc(v.channelTitle)}</strong>
           <span class="muted" id="watch-subs">${esc(subscribersText(v.channelId) || ch?.handle || '')}</span>
         </div>
-      </div>
+      </${isHomeChannel(v.channelId) ? 'a' : 'div'}>
     </div>
     <div class="description collapsed" id="description" data-action="expand-desc">
       <div class="description-stats">
@@ -2726,17 +2998,19 @@ function showWatchBlocked(message) {
   $('#comments-title').textContent = 'Comentários';
 }
 
-function enterWatch(id) {
+function enterWatch(id, { resume = false } = {}) {
   if (playerVideoId && playerVideoId !== id) saveProgress();
+  const miniVideo = resume && state.currentVideo?.id === id ? state.currentVideo : null;
   state.currentVideoId = id;
   state.currentVideo = null;
+  pokeControls(); // abrindo um vídeo (ou voltando do mini player): os controles aparecem por um instante
   updateSkipButtons();
   upNextCount = upNextPage();
   Comments.req++; // cancela respostas de comentários do vídeo anterior
   $('#player-error').hidden = true;
 
   state.watchFeed = currentFeed();
-  const known = state.watchFeed.items.find(v => v.id === id) || findLoadedVideo(id);
+  const known = state.watchFeed.items.find(v => v.id === id) || findLoadedVideo(id) || miniVideo;
   if (known) renderWatchInfo(known);
   else $('#watch-info').innerHTML = watchInfoSkeleton();
   $('#upnext').innerHTML = miniSkeletons(upNextPage());
@@ -2774,7 +3048,13 @@ function enterWatch(id) {
     state.currentVideo = video;
     recordWatchHistory(id);
     markSeen(id);
-    playVideo(id);
+    if (resume && playerVideoId === id) {
+      // Veio do mini player: o vídeo já está tocando no mesmo player; só volta ao tamanho normal.
+      updatePlayButton();
+      updateProgressUI();
+    } else {
+      playVideo(id);
+    }
     loadComments(id, true);
     renderUpNext(video);
   })();
@@ -3689,14 +3969,25 @@ function applyView(view, id, channel, sort = 'new') {
   const prev = state.view;
   if (prev === 'home') state.homeScroll = scrollY;
   if (prev === 'watch' && view !== 'watch') {
-    pausePlayer();
-    state.currentVideoId = null;
+    // Saindo do vídeo (canal, filtro do menu, voltar): ele continua no mini player.
+    if (canMini()) {
+      startMini();
+    } else {
+      pausePlayer();
+      state.currentVideoId = null;
+    }
+  }
+  // Voltando para um vídeo com o mini player aberto: o mesmo vídeo continua de onde está.
+  let resume = false;
+  if (view === 'watch' && mini.on) {
+    resume = playerVideoId === id;
+    endMini();
   }
 
   if (view !== prev) state.pageSidebar = false;
   state.view = view;
   $('#view-home').hidden = view !== 'home';
-  $('#view-watch').hidden = view !== 'watch';
+  $('#view-watch').hidden = view !== 'watch' && !mini.on;
   $('#view-settings').hidden = view !== 'settings';
   $('#view-stats').hidden = view !== 'stats';
   $$('.side-footer [data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === view));
@@ -3715,7 +4006,7 @@ function applyView(view, id, channel, sort = 'new') {
     state.filter = filter;
     state.sort = filter ? sort : 'new';
     window.scrollTo({ top: 0, behavior: 'instant' });
-    enterWatch(id);
+    enterWatch(id, { resume });
   } else if (view === 'stats') {
     window.scrollTo({ top: 0, behavior: 'instant' });
     statsForecast = ''; // a Previsão sempre abre em "Todos"
@@ -3730,6 +4021,8 @@ function applyView(view, id, channel, sort = 'new') {
 }
 
 function route(animate = true) {
+  stopPreview();
+  stopFrames();
   const { view, id, channel, sort } = parseRoute();
   const prevView = state.view;
   closeSidebarOverlay();
@@ -3738,16 +4031,18 @@ function route(animate = true) {
 
   // Estado "antes": a miniatura clicada vira o player (ou o player volta para o tile).
   clearHeroNames();
-  if (view === 'watch' && pendingHero?.isConnected && inViewport(pendingHero)) setHero(pendingHero);
-  else if (prevView === 'watch' && view === 'home') setHero($('.player-wrap'));
+  const toMini = prevView === 'watch' && view !== 'watch' && canMini();
+  const fromMini = view === 'watch' && mini.on && playerVideoId === id;
+  if (view === 'watch' && !fromMini && pendingHero?.isConnected && inViewport(pendingHero)) setHero(pendingHero);
+  else if (toMini || fromMini || (prevView === 'watch' && view === 'home')) setHero($('.player-wrap'));
   pendingHero = null;
 
   const update = () => {
     clearHeroNames();
     const pending = applyView(view, id, channel, sort);
     const heroes = () => {
-      if (view === 'watch') {
-        setHero($('.player-wrap'));
+      if (view === 'watch' || toMini) {
+        setHero($('.player-wrap')); // o player vira o mini player (ou volta a ser o grande)
       } else if (view === 'home' && prevView === 'watch' && prevVideo) {
         const thumb = $(`#feed [data-vid="${prevVideo}"] .thumb`);
         if (thumb && inViewport(thumb)) setHero(thumb);
@@ -3893,7 +4188,7 @@ function bindEvents() {
 
   // Progresso: salva a cada 5 s enquanto toca, e ao esconder/fechar a aba.
   setInterval(() => {
-    if (state.view === 'watch' && player?.getPlayerState?.() === window.YT?.PlayerState?.PLAYING) saveProgress();
+    if ((state.view === 'watch' || mini.on) && player?.getPlayerState?.() === window.YT?.PlayerState?.PLAYING) saveProgress();
   }, 5000);
   window.addEventListener('pagehide', saveProgress);
 
@@ -4135,7 +4430,7 @@ function tickWatchTime() {
     }
     saveWatchLog();
   }
-  watchTick = same && state.view === 'watch' && isPlaying() ? now : 0;
+  watchTick = same && (state.view === 'watch' || mini.on) && isPlaying() ? now : 0;
 }
 
 /** Registra que o vídeo foi assistido até o fim hoje (uma vez por dia). */
@@ -5046,6 +5341,8 @@ function init() {
   setupMobileApp();
   setupFooterLinks();
   setupPlayerControls();
+  setupMini();
+  setupPreviews();
   setupStats();
   bindEvents();
   route(false);

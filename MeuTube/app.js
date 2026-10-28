@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.21.0';
+const APP_VERSION = '1.21.1';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -2745,7 +2745,9 @@ function setupMini() {
 const hoverQuery = matchMedia('(hover: hover) and (pointer: fine)');
 const PREVIEW_DELAY = 600;
 const preview = { tile: null, timer: 0, player: null, box: null, tick: 0, muted: true, seq: 0 };
-const frames = { mini: null, timer: 0, wait: 0, img: null };
+const frames = { mini: null, timer: 0, wait: 0, layers: [] };
+const FRAME_HOLD = 1500; // cada quadro fica 1,5 s inteiro na tela
+const FRAME_FADE = 600;  // e entra/sai com fade (igual a --frame-fade no styles.css)
 
 function startPreview(tile) {
   const id = tile.dataset.vid;
@@ -2811,28 +2813,40 @@ function startFrames(mini) {
   if (!id || !thumb) return;
   const urls = ['hq1', 'hq2', 'hq3'].map(n => `https://i.ytimg.com/vi/${id}/${n}.jpg`);
   urls.forEach(u => { new Image().src = u; }); // já baixa os 3 quadros
-  const img = document.createElement('img');
-  img.className = 'mini-frames';
-  img.alt = '';
-  img.referrerPolicy = 'no-referrer';
-  img.decoding = 'async';
-  thumb.append(img);
-  frames.img = img;
+  // Duas camadas: o próximo quadro entra com fade por cima enquanto o atual sai (só depois de carregado).
+  const layers = [0, 1].map(() => {
+    const img = document.createElement('img');
+    img.className = 'mini-frames';
+    img.alt = '';
+    img.referrerPolicy = 'no-referrer';
+    img.decoding = 'async';
+    thumb.append(img);
+    return img;
+  });
+  frames.layers = layers;
   let i = 0;
   const show = () => {
-    img.src = urls[i++ % urls.length];
-    img.classList.remove('swap');
-    void img.offsetWidth;
-    img.classList.add('swap');
+    const incoming = layers[i % 2];
+    const outgoing = layers[(i + 1) % 2];
+    incoming.src = urls[i++ % urls.length];
+    const reveal = () => {
+      if (frames.layers !== layers) return;
+      incoming.classList.add('on');
+      outgoing.classList.remove('on');
+    };
+    incoming.decode().then(reveal, reveal);
   };
-  frames.wait = setTimeout(() => { show(); frames.timer = setInterval(show, 900); }, 250);
+  frames.wait = setTimeout(() => { show(); frames.timer = setInterval(show, FRAME_HOLD + FRAME_FADE); }, 250);
 }
 
 function stopFrames() {
   clearTimeout(frames.wait);
   clearInterval(frames.timer);
-  frames.img?.remove();
-  Object.assign(frames, { mini: null, timer: 0, wait: 0, img: null });
+  // Sai com fade, voltando à capa.
+  const old = frames.layers;
+  old.forEach(img => img.classList.remove('on'));
+  setTimeout(() => old.forEach(img => img.remove()), FRAME_FADE);
+  Object.assign(frames, { mini: null, timer: 0, wait: 0, layers: [] });
 }
 
 function setupPreviews() {

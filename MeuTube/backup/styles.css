@@ -455,6 +455,7 @@ main {
 }
 
 .watch-layout {
+  container-type: inline-size; /* o modo teatro calcula a altura do player normal a partir desta largura */
   display: grid;
   grid-template-columns: minmax(0, var(--player-max-w)) minmax(var(--side-col), 1fr);
   grid-template-areas:
@@ -1972,18 +1973,19 @@ body.sidebar-mini .side-sep-lives { display: none; }
 /* =========================================================
    Modo teatro (só no computador)
    =========================================================
-   O player vira uma faixa preta de ponta a ponta, com o vídeo
-   centralizado no maior tamanho que cabe deixando o título visível.
-   Embaixo: informações e comentários à esquerda, "A seguir" à
-   direita, em lista. Em telas muito largas, essa parte de baixo fica
-   limitada à largura do vídeo (no mínimo 1800 px), centralizada.
+   Como no YouTube: o player mantém a ALTURA do player normal e
+   ganha largura, passando de 16:9 para 21:9, centralizado numa
+   faixa preta de ponta a ponta. Vídeos 21:9 preenchem o player;
+   vídeos 16:9 ficam no centro com bordas pretas dos lados. Sem
+   espaço para o 21:9 inteiro (janela estreita, menu aberto), usa
+   a largura disponível. As informações ficam na mesma altura de
+   antes; embaixo, "A seguir" à direita, em lista.
    ========================================================= */
 #pc-theater { display: none; }
 @media (min-width: 1001px) {
   #pc-theater { display: grid; }
   #view-watch.theater {
-    --theater-h: min(calc((100vw - var(--side-now)) * 9 / 16), calc(100vh - var(--topbar-h) - 150px));
-    --theater-content: max(calc(var(--theater-h) * 16 / 9), 1800px);
+    --theater-content: 1800px; /* largura máxima da parte de baixo (informações + "A seguir") */
     padding-top: 0;
   }
   #view-watch.theater .watch-layout {
@@ -1996,12 +1998,18 @@ body.sidebar-mini .side-sep-lives { display: none; }
   }
   #view-watch.theater .watch-player { margin: 0 calc(var(--watch-pad) * -1); background: #000; }
   #view-watch.theater .player-wrap {
-    width: auto;
+    /* mesma conta da grade normal: largura do player normal = o menor entre o limite e o que
+       sobra ao lado da coluna "A seguir"; a altura dele (16:9) é a altura do teatro */
+    --theater-h: calc(min(var(--player-max-w), 100cqw - var(--side-col) - 24px) * 9 / 16);
+    width: min(calc(var(--theater-h) * 21 / 9), 100%);
     height: var(--theater-h);
+    aspect-ratio: auto;
     margin: 0 auto;
     border-radius: 0;
     box-shadow: none;
   }
+  /* sem o espaço de cima (a faixa encosta no topo): as informações descem o mesmo tanto e ficam no lugar */
+  #view-watch.theater .watch-info { margin-top: calc(12px + var(--watch-top)); }
   #view-watch.theater .watch-side { margin-top: 16px; }
   /* "A seguir" em lista, como no YouTube */
   #view-watch.theater .watch-side .side-head { height: auto; margin: 0 0 12px; }
@@ -2011,6 +2019,112 @@ body.sidebar-mini .side-sep-lives { display: none; }
   #view-watch.theater .upnext .mini-meta { font-size: 12px; line-height: 18px; }
   #view-watch.theater .upnext .mini .thumb { border-radius: 8px; }
   #view-watch.theater .upnext .mini .badge { font-size: 11px; right: 4px; bottom: 4px; }
+}
+
+/* Prévia ao passar o mouse: o vídeo toca sem som dentro do bloco */
+.tile-preview { position: absolute; inset: 0; z-index: 3; overflow: hidden; background: #000; opacity: 0; transition: opacity .35s var(--ease); }
+.tile-preview.playing { opacity: 1; }
+.tile-preview iframe, .tile-preview > div:first-child { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
+.tp-shield { position: absolute; inset: 0; } /* o clique vai para o bloco (abre o vídeo), não para o player */
+.tp-mute {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .6);
+  color: #fff;
+  cursor: pointer;
+}
+.tp-mute svg { width: 18px; height: 18px; fill: currentColor; pointer-events: none; }
+.tp-mute:hover { background: rgba(0, 0, 0, .8); }
+.tp-progress { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; background: rgba(255, 255, 255, .3); }
+.tp-progress span { display: block; width: 0; height: 100%; background: #f00; transition: width .25s linear; }
+/* "A seguir": quadros do vídeo alternando por cima da capa */
+.mini-frames { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; object-fit: cover; }
+.mini-frames.swap { animation: framesIn .35s var(--ease); }
+@keyframes framesIn { from { opacity: 0; } }
+
+/* =========================================================
+   Mini player
+   =========================================================
+   Saindo da página do vídeo (canal, filtro do menu, voltar), o
+   vídeo continua no mesmo player — que só muda de tamanho e lugar
+   (mover o player na página recarregaria o vídeo). No computador
+   vai para o canto inferior direito; no celular, uma faixa no rodapé.
+   ========================================================= */
+.mini-ui, .mini-info { display: none; }
+a.watch-channel { color: inherit; text-decoration: none; border-radius: 10px; }
+a.watch-channel:hover strong { text-decoration: underline; text-underline-offset: 3px; }
+body.mini-player #view-watch {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 70;
+  width: clamp(320px, 24vw, 440px);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, .7);
+  view-transition-name: mini-player;
+}
+body.mini-player #view-watch .watch-layout { display: block; container-type: normal; }
+body.mini-player #view-watch :is(.watch-info, .watch-side, .watch-comments) { display: none; }
+body.mini-player #view-watch .watch-player { margin: 0; background: none; }
+body.mini-player #view-watch .player-wrap { width: 100%; height: auto; aspect-ratio: 16 / 9; margin: 0; border-radius: 0; box-shadow: none; }
+body.mini-player :is(#player-ui, #pc-top, #player-overlay, #player-error) { display: none; }
+body.mini-player .mini-ui { position: absolute; inset: 0; z-index: 5; display: block; cursor: pointer; }
+body.mini-player .mini-info { display: flex; align-items: center; gap: 4px; padding: 10px 8px 12px 14px; cursor: pointer; }
+.mini-info-text { flex: 1; min-width: 0; }
+.mini-info-title { display: -webkit-box; overflow: hidden; font-size: 14px; font-weight: 600; line-height: 1.3; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.mini-info-channel { margin-top: 2px; overflow: hidden; color: var(--muted); font-size: 12px; white-space: nowrap; text-overflow: ellipsis; }
+.mini-info .mini-btn { display: none; }
+.mini-btn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .55);
+  color: #fff;
+  cursor: pointer;
+}
+.mini-btn svg { width: 22px; height: 22px; fill: currentColor; pointer-events: none; }
+.mini-ui .mini-btn { position: absolute; opacity: 0; transition: opacity .25s var(--ease), background .2s, transform .35s var(--ease-spring); }
+.mini-ui .mini-expand { top: 8px; left: 8px; }
+.mini-ui .mini-close { top: 8px; right: 8px; }
+.mini-ui .mini-play { top: 50%; left: 50%; width: 52px; height: 52px; transform: translate(-50%, -50%); }
+.mini-ui .mini-play svg { width: 30px; height: 30px; }
+.mini-ui:hover .mini-btn, .mini-ui:focus-within .mini-btn, .mini-ui.paused .mini-btn { opacity: 1; }
+.mini-btn:hover { background: rgba(0, 0, 0, .75); }
+.mini-progress { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; background: rgba(255, 255, 255, .25); }
+.mini-progress span { display: block; width: 0; height: 100%; background: #f00; }
+.to-top { transition: bottom .45s var(--ease-smooth), opacity .3s var(--ease), transform .55s var(--ease-spring), background .2s; }
+body.mini-player .to-top { bottom: calc(clamp(320px, 24vw, 440px) * 9 / 16 + 110px); }
+::view-transition-group(mini-player) { animation-duration: .55s; animation-timing-function: var(--ease-smooth); }
+
+/* Celular: faixa no rodapé (vídeo pequeno, título, play e fechar), como no app do YouTube */
+@media (max-width: 760px) {
+  body.mini-player #view-watch { right: 0; bottom: 0; left: 0; width: auto; border-width: 1px 0 0; border-radius: 0; }
+  body.mini-player #view-watch .watch-player { display: flex; align-items: center; }
+  body.mini-player #view-watch .player-wrap { flex: 0 0 auto; width: 120px; }
+  body.mini-player .mini-ui .mini-btn { display: none; }
+  body.mini-player .mini-info { flex: 1; min-width: 0; padding: 6px 4px 6px 12px; }
+  body.mini-player .mini-info .mini-btn { display: grid; background: transparent; color: var(--text); }
+  body.mini-player .mini-info .mini-btn:hover { background: var(--surface-2); }
+  body.mini-player .mini-info-title { font-size: 13px; -webkit-line-clamp: 1; }
+  body.mini-player main { padding-bottom: 76px; }
+  body.mini-player .to-top { bottom: 92px; }
 }
 
 /* =========================================================

@@ -2047,9 +2047,19 @@ body.sidebar-mini .side-sep-lives { display: none; }
 .tp-progress { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; background: rgba(255, 255, 255, .3); }
 .tp-progress span { display: block; width: 0; height: 100%; background: #f00; transition: width .25s linear; }
 /* "A seguir": quadros do vídeo alternando por cima da capa */
-.mini-frames { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; object-fit: cover; }
-.mini-frames.swap { animation: framesIn .35s var(--ease); }
-@keyframes framesIn { from { opacity: 0; } }
+.thumb .mini-frames {
+  --frame-fade: .6s; /* igual a FRAME_FADE no app.js */
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  /* (mais específico que ".thumb img", que trocaria o fade por 0,4 s) */
+  transition: opacity var(--frame-fade) ease-in-out, transform .8s var(--ease-smooth);
+}
+.thumb .mini-frames.on { opacity: 1; }
 
 /* =========================================================
    Mini player
