@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.19.1';
+const APP_VERSION = '1.20.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -24,6 +24,7 @@ const YT_API = 'https://www.googleapis.com/youtube/v3/';
 const VIDEO_ID_RE = /^[\w-]{11}$/;
 const CHANNEL_ID_RE = /^UC[\w-]{22}$/;
 const KEYS = {
+  unplayable: 'meutube.unplayable', // vídeos que o player recusou (dono não permite tocar fora do YouTube)
   config: 'meutube.config',
   channels: 'meutube.channels',
   autoplay: 'meutube.autoplay',
@@ -248,6 +249,26 @@ function withinDurationLimit(v) {
   return !max || !v.durationSec || v.durationSec <= max;
 }
 
+/* Vídeos que não tocam fora do YouTube (o dono não permite, restrição de idade ou de país) não
+   existem no MeuTube. A API avisa a maioria; os poucos que ela não avisa são descobertos quando o
+   player recusa e ficam guardados aqui, para nunca mais aparecer. */
+const unplayable = new Set(store.get(KEYS.unplayable, []));
+const USER_COUNTRY = (/-([A-Za-z]{2})\b/.exec(navigator.language || '')?.[1] || 'BR').toUpperCase();
+
+/** O dono não deixa tocar fora do YouTube? (pelos dados da API; v = item bruto de videos.list) */
+function embedBlocked(v) {
+  if (v.status?.embeddable === false) return true;
+  if (v.contentDetails?.contentRating?.ytRating === 'ytAgeRestricted') return true; // pede login no YouTube
+  const r = v.contentDetails?.regionRestriction;
+  return Boolean(r?.blocked?.includes(USER_COUNTRY) || (r?.allowed && !r.allowed.includes(USER_COUNTRY)));
+}
+
+/** Vídeo que aparece no Início, na página do canal e em "A seguir": da aba "Vídeos" (não ao vivo
+    nem agendado), dentro do limite de duração e que toca no MeuTube. */
+function shownInApp(v) {
+  return Boolean(v) && v.live === 'none' && withinDurationLimit(v) && !v.blocked;
+}
+
 function fmtHms(sec) {
   const pad = n => String(n).padStart(2, '0');
   return `${pad(Math.floor(sec / 3600))}:${pad(Math.floor((sec % 3600) / 60))}:${pad(sec % 60)}`;
@@ -363,6 +384,7 @@ function normalizeVideo(v) {
     live: s.liveBroadcastContent || 'none',
     viewers: v.liveStreamingDetails?.concurrentViewers,
     liveSince: v.liveStreamingDetails?.actualStartTime ? Date.parse(v.liveStreamingDetails.actualStartTime) : null,
+    blocked: embedBlocked(v) || unplayable.has(v.id),
   };
 }
 
@@ -375,7 +397,7 @@ async function fetchVideos(ids) {
   const result = new Map();
   for (let i = 0; i < ids.length; i += 50) {
     const data = await api('videos', {
-      part: 'snippet,contentDetails,statistics,liveStreamingDetails',
+      part: 'snippet,contentDetails,statistics,liveStreamingDetails,status', // status: se toca fora do YouTube (sem custo a mais)
       id: ids.slice(i, i + 50).join(','),
       maxResults: 50,
     });
@@ -807,7 +829,7 @@ class FeedStream {
     for (const it of items) {
       const v = details.get(it.id);
       it.checked = true;
-      it.video = v && v.live === 'none' && withinDurationLimit(v) ? v : null;
+      it.video = shownInApp(v) ? v : null;
     }
   }
 
@@ -991,7 +1013,7 @@ class OldestFeedStream {
       this.pos += ids.length;
       const details = await fetchVideos(ids);
       if (this.dead) return [];
-      added.push(...ids.map(id => details.get(id)).filter(v => v && v.live === 'none' && withinDurationLimit(v)));
+      added.push(...ids.map(id => details.get(id)).filter(shownInApp));
     }
     if (this.pos >= this.order.length) this.exhausted = true;
     this.items.push(...added);
@@ -1386,7 +1408,7 @@ async function refreshLives(force = false) {
     const details = ids.length ? await fetchVideos(ids) : new Map();
     if (gen !== Lives.gen) return;
     Lives.items = [...details.values()]
-      .filter(v => v.live === 'live')
+      .filter(v => v.live === 'live' && !v.blocked)
       .sort((a, b) => byName(channelById(a.channelId)?.title || a.channelTitle, channelById(b.channelId)?.title || b.channelTitle));
     Lives.error = null;
     Lives.lastFetch = Date.now();
@@ -1767,19 +1789,60 @@ function onPlayerStateChange(e) {
   if (next) location.hash = watchHref(next.id);
 }
 
+/** Vídeo que o player recusou: some do app (Início, página do canal, "A seguir", Estatísticas) e fica guardado. */
+function markUnplayable(id) {
+  if (unplayable.has(id)) return;
+  unplayable.add(id);
+  store.set(KEYS.unplayable, [...unplayable].slice(-3000));
+  for (const feed of feeds.values()) {
+    const i = feed.items.findIndex(v => v.id === id);
+    if (i >= 0) {
+      feed.items.splice(i, 1);
+      if (gridFeed === feed && i < renderedCount) renderedCount--;
+    }
+    feed.sources?.forEach(s => s.list.forEach(it => { if (it.id === id) it.video = null; }));
+  }
+  $(`#feed .tile[data-vid="${id}"]`)?.remove();
+  for (const catalog of channelCatalogs.values()) catalog.delete(id);
+  const info = store.get(VIDEO_INFO_KEY, {});
+  let touched = false;
+  for (const ch of Object.values(info)) if (id in ch) { ch[id] = -3; touched = true; }
+  if (touched) store.set(VIDEO_INFO_KEY, info);
+}
+
+/** O dono não deixa tocar fora do YouTube (ou o vídeo saiu do ar): sem mensagem, vai direto para o
+    próximo de "A seguir" (sem voltar a ele pelo "voltar" do navegador). Sem próximo, volta. */
+async function skipUnplayable(id) {
+  const video = state.currentVideo?.id === id ? state.currentVideo : null;
+  let next = video ? nextVideoAfter(video) : null;
+  if (!next && video) {
+    // "A seguir" ainda carregando (link direto, recarregou a página): espera mais uma página.
+    try { await (state.watchFeed || currentFeed()).loadMore(); } catch { /* sem conexão */ }
+    next = nextVideoAfter(video);
+  }
+  markUnplayable(id);
+  if (state.view !== 'watch' || state.currentVideoId !== id) return;
+  if (!next) {
+    skipNonMeuTube(id);
+    return;
+  }
+  watchHistory.stack = watchHistory.stack.filter(x => x !== id);
+  if (watchHistory.last === id) watchHistory.last = null;
+  saveWatchHistory();
+  location.replace(watchHref(next.id));
+}
+
 function onPlayerError(e) {
+  const id = state.currentVideoId;
+  if ([100, 101, 150].includes(e.data) && id) {
+    skipUnplayable(id);
+    return;
+  }
   const messages = {
     2: 'O identificador do vídeo é inválido.',
     5: 'Este vídeo não pode ser reproduzido no player HTML5.',
-    100: 'O vídeo foi removido ou é privado.',
-    101: 'O dono do vídeo não permite a reprodução fora do YouTube.',
-    150: 'O dono do vídeo não permite a reprodução fora do YouTube.',
   };
-  const id = state.currentVideoId;
-  showPlayerError(messages[e.data] || 'Não foi possível reproduzir este vídeo.',
-    [101, 150].includes(e.data) && id
-      ? `<a class="btn btn-ghost btn-sm" href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener">Assistir no YouTube</a>`
-      : '');
+  showPlayerError(messages[e.data] || 'Não foi possível reproduzir este vídeo.');
 }
 
 function showPlayerError(message, action = '') {
@@ -2720,8 +2783,9 @@ function enterWatch(id) {
 /** Vídeo que o MeuTube mostra: live no ar (menu "Ao vivo") ou vídeo da aba "Vídeos" do canal,
     dentro do limite de duração. Shorts e lives gravadas ficam de fora. */
 async function isMeuTubeVideo(v) {
+  if (v.blocked) return false; // não toca fora do YouTube
   if (v.live === 'live') return true;
-  if (v.live !== 'none' || !withinDurationLimit(v)) return false;
+  if (!shownInApp(v)) return false;
   for (const feed of feeds.values()) if (feed.items.some(item => item.id === v.id)) return true; // veio da aba "Vídeos"
   return inVideosTab(v);
 }
@@ -4135,7 +4199,10 @@ function mergeWatchLog(remoteLog, remoteChannels) {
    depois, só confere os vídeos novos, no máximo a cada 3 horas.
    Mudar o limite de duração recalcula tudo na hora, sem cota.
    ========================================================= */
-const VIDEO_INFO_KEY = 'meutube.videoInfo'; // { canal: { vídeo: segundos | -1 indisponível | -2 estreia/ao vivo } }
+const VIDEO_INFO_KEY = 'meutube.videoInfo'; // { canal: { vídeo: segundos | -1 indisponível | -2 estreia/ao vivo | -3 não toca fora do YouTube } }
+// 2 = guarda também "não toca fora do YouTube": com cache antigo, confere de novo uma vez.
+const VIDEO_INFO_VERSION = 2;
+const VIDEO_INFO_VERSION_KEY = 'meutube.videoInfoVersion';
 const CATALOG_MAX_AGE = 3 * 60 * 60 * 1000;
 const channelCatalogs = new Map(); // canal -> Map(vídeo -> segundos): só os vídeos exibíveis da aba "Vídeos"
 
@@ -4149,7 +4216,7 @@ function loadCatalogsFromCache(channels) {
     const list = index['UULF' + c.id.slice(2)]?.list;
     const durations = info[c.id];
     if (list == null || !durations) continue;
-    channelCatalogs.set(c.id, new Map(parseIndexList(list).filter(e => durations[e.id] > 0).map(e => [e.id, durations[e.id]])));
+    channelCatalogs.set(c.id, new Map(parseIndexList(list).filter(e => durations[e.id] > 0 && !unplayable.has(e.id)).map(e => [e.id, durations[e.id]])));
   }
 }
 
@@ -4175,7 +4242,9 @@ async function loadCatalogs(channels, onProgress) {
   const all = store.get(VIDEO_INFO_KEY, {});
   for (const id of Object.keys(all)) if (!channelById(id)) delete all[id]; // canais removidos
   const indexes = store.get(UPLOAD_INDEX_KEY, {});
+  const recheck = store.get(VIDEO_INFO_VERSION_KEY, 1) < VIDEO_INFO_VERSION; // cache sem a informação nova
   let changed = false;
+  let failed = false;
   for (const [i, c] of channels.entries()) {
     onProgress?.(i, channels.length);
     try {
@@ -4190,28 +4259,33 @@ async function loadCatalogs(channels, onProgress) {
       const ids = list.map(e => e.id);
       const inList = new Set(ids);
       for (const id of Object.keys(info)) if (!inList.has(id)) delete info[id];
-      const missing = ids.filter(id => !(id in info) || info[id] === -2); // novos + estreias que podem ter saído
+      // novos + estreias que podem ter saído (+ todos, uma vez, quando o cache é de versão antiga)
+      const missing = ids.filter(id => !(id in info) || info[id] === -2 || (recheck && info[id] > 0));
       for (let j = 0; j < missing.length; j += 50) {
         const batch = missing.slice(j, j + 50);
         const data = await api('videos', {
-          part: 'contentDetails,snippet',
+          part: 'contentDetails,snippet,status',
           id: batch.join(','),
           maxResults: 50,
-          fields: 'items(id,contentDetails(duration),snippet(liveBroadcastContent))',
+          fields: 'items(id,status(embeddable),contentDetails(duration,regionRestriction,contentRating/ytRating),snippet(liveBroadcastContent))',
         });
         const found = new Map((data.items || []).map(v => [v.id, v]));
         batch.forEach(id => {
           const v = found.get(id);
-          info[id] = !v ? -1 : (v.snippet?.liveBroadcastContent || 'none') !== 'none' ? -2 : (isoSeconds(v.contentDetails?.duration) || -1);
+          info[id] = !v ? -1 : (v.snippet?.liveBroadcastContent || 'none') !== 'none' ? -2
+            : embedBlocked(v) || unplayable.has(id) ? -3 : (isoSeconds(v.contentDetails?.duration) || -1);
         });
       }
-      const next = new Map(ids.filter(id => info[id] > 0).map(id => [id, info[id]]));
+      const next = new Map(ids.filter(id => info[id] > 0 && !unplayable.has(id)).map(id => [id, info[id]]));
       if (!catalog || catalog.size !== next.size || missing.length) changed = true;
       channelCatalogs.set(c.id, next);
-    } catch { /* sem cota/conexão: usa o que já está guardado e tenta na próxima visita */ }
+    } catch {
+      failed = true; // sem cota/conexão: usa o que já está guardado e tenta na próxima visita
+    }
   }
   onProgress?.(channels.length, channels.length);
   store.set(VIDEO_INFO_KEY, all);
+  if (recheck && !failed) store.set(VIDEO_INFO_VERSION_KEY, VIDEO_INFO_VERSION);
   try { localStorage.removeItem('meutube.durations'); } catch { /* cache da versão 1.13.0 */ }
   return changed;
 }
