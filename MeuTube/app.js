@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.21.2';
+const APP_VERSION = '1.22.0';
 
 /* =========================================================
    MeuTube — só os vídeos dos canais que você escolher
@@ -21,11 +21,11 @@ const YT_SCOPE = 'https://www.googleapis.com/auth/youtube.readonly';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata'; // pasta oculta do app no Drive (sincronização)
 const SCOPES = `openid email profile ${YT_SCOPE} ${DRIVE_SCOPE}`;
 const YT_API = 'https://www.googleapis.com/youtube/v3/';
-const VIDEO_ID_RE = /^[\w-]{11}$/;
-const CHANNEL_ID_RE = /^UC[\w-]{22}$/;
 const KEYS = {
   unplayable: 'meutube.unplayable', // vídeos que o player recusou (dono não permite tocar fora do YouTube)
   playFails: 'meutube.playFails',   // vídeos que travaram no meio: { vídeo: { n: dias com falha, day } }
+  liveKnown: 'meutube.liveKnown',   // vídeos que já se sabe que não estão (nem vão estar) ao vivo
+  noLives: 'meutube.noLives',       // canais sem lista de lives (nunca fizeram live): { canal: quando conferiu }
   config: 'meutube.config',
   channels: 'meutube.channels',
   autoplay: 'meutube.autoplay',
@@ -781,7 +781,20 @@ class FeedStream {
     this.error = null;
     this.hideMode = state.hideWatched;
     this.watchedSig = watchedSignature();
+    this.info = this.hideMode ? store.get(VIDEO_INFO_KEY, {}) : null; // duração e "não toca", guardados pelas Estatísticas
     for (const s of this.sources) { s.slot = 0; s.show = 0; }
+  }
+
+  /** Olho escondendo os assistidos: a vaga de um vídeo assistido não aparece na tela, então basta saber se
+      ele é válido — e isso as Estatísticas já guardam no aparelho (duração e "não toca"), sem gastar cota.
+      true/false = válido ou não pelo que está guardado; null = não se sabe (pergunta ao YouTube). */
+  cachedValid(s, it) {
+    if (!this.hideMode || !isWatched(it.id)) return null;
+    const d = this.info?.[s.channelId]?.[it.id];
+    if (d == null) return null;
+    if (d <= 0 || unplayable.has(it.id)) return false; // indisponível, live/estreia ou não toca fora do YouTube
+    const max = channelMaxDur(s.channelId);
+    return !max || d <= max;
   }
 
   dispose() {
@@ -845,7 +858,14 @@ class FeedStream {
         for (;;) {
           const it = s.list[s[key]];
           if (!it) { if (!s.done) fetches.push(s); break; }
-          if (!it.checked) { need.push(s); break; }
+          if (key === 'show' && isWatched(it.id)) { s[key]++; continue; } // assistido não aparece: nem pergunta
+          if (!it.checked) {
+            const ok = key === 'slot' ? this.cachedValid(s, it) : null;
+            if (ok === true) break;                // vaga válida pelo que está guardado
+            if (ok === false) { s[key]++; continue; }
+            need.push(s);
+            break;
+          }
           if (!it.video || (key === 'show' && isWatched(it.id))) { s[key]++; continue; }
           break;
         }
@@ -854,7 +874,8 @@ class FeedStream {
       if (fetches.length) await Promise.all(fetches.map(s => this.fetchPage(s)));
       if (need.length) {
         const ahead = Math.max(2, Math.ceil(50 / need.length));
-        await this.check(need.flatMap(s => s.list.slice(s[key], s[key] + ahead).filter(it => !it.checked)).slice(0, 50));
+        await this.check(need.flatMap(s => s.list.slice(s[key], s[key] + ahead)
+          .filter(it => !it.checked && (key === 'show' ? !isWatched(it.id) : this.cachedValid(s, it) === null))).slice(0, 50));
       }
       if (this.dead) return;
     }
@@ -1376,14 +1397,82 @@ function updateSidebarActive() {
 /* =========================================================
    Lives ativas (metade de baixo do menu lateral)
    =========================================================
-   A busca oficial de lives custa 100 de cota por canal, então
-   lemos a playlist automática de lives de cada canal (UULV…,
-   1 de cota) e confirmamos quais estão ao vivo agora pelo status
-   do vídeo. Atualiza a cada 5 minutos, mas SÓ com o menu lateral
-   expandido e o app visível (menu recolhido = nenhuma verificação).
+   Só com o menu lateral expandido e o app visível, a cada 5 minutos.
+   Para gastar quase nada de cota:
+     • RSS: o servidor de login (Worker) lê o RSS público dos canais
+       (os 15 vídeos mais recentes de cada; sem cota) e o app só
+       pergunta ao YouTube sobre o que ainda não conhece, mais as lives
+       e estreias em andamento (para saber quando começam e acabam);
+     • vídeos já conhecidos (vídeos comuns, lives que acabaram) não são
+       perguntados de novo;
+     • parado há 20 min (sem mouse, teclado ou toque, e nada tocando),
+       não verifica; ao voltar, verifica na hora.
+   Método completo (a playlist de lives de cada canal, UULV…, 1 de cota
+   por canal): na 1ª verificação de cada abertura (acha lives longas que
+   já estavam no ar e não aparecem mais no RSS), a cada 30 min como rede
+   de segurança, e como contorno quando o RSS falha (só no canal que
+   falhou) ou o Worker não responde/é antigo (todos). Canais que nunca
+   fizeram live são lembrados e só conferidos de novo a cada 12 h.
    ========================================================= */
 const LIVE_REFRESH_MS = 5 * 60 * 1000;
-const Lives = { items: [], loading: false, checked: false, lastFetch: 0, error: null, gen: 0 };
+const LIVE_FULL_MS = 30 * 60 * 1000;      // rede de segurança: método completo
+const NO_LIVES_RECHECK_MS = 12 * 60 * 60 * 1000;
+const LIVE_KNOWN_MAX = 6000;
+const IDLE_MS = 20 * 60 * 1000;
+const Lives = { items: [], loading: false, checked: false, lastFetch: 0, lastFull: 0, error: null, gen: 0, watch: new Set() };
+const liveKnown = new Set(store.get(KEYS.liveKnown, []));
+const noLives = store.get(KEYS.noLives, {});
+
+/* Parado: sem mouse, teclado, toque ou rolagem há 20 min e nada tocando. */
+let lastActivity = Date.now();
+function isIdle() {
+  return Date.now() - lastActivity > IDLE_MS && !((state.view === 'watch' || mini.on) && isPlaying());
+}
+function noteActivity() {
+  const wasIdle = Date.now() - lastActivity > IDLE_MS;
+  lastActivity = Date.now();
+  if (wasIdle) refreshLives(); // voltou: verifica na hora (se a última tiver mais de 5 min)
+}
+
+/** RSS dos canais pelo Worker (até 50 por pedido). Retorna { canal: { ok, videos } } ou lança erro. */
+async function fetchChannelFeeds(ids) {
+  const server = Auth.server();
+  if (!server) throw new Error('sem servidor de login');
+  const feeds = {};
+  for (let i = 0; i < ids.length; i += 50) {
+    const res = await fetch(`${server}/rss`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channels: ids.slice(i, i + 50) }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.feeds) throw new Error(`RSS: erro ${res.status}`); // Worker antigo responde 404
+    Object.assign(feeds, data.feeds);
+  }
+  return feeds;
+}
+
+/** Método completo: a playlist de lives de cada canal (1 de cota por canal). */
+async function livePlaylistIds(channels) {
+  const now = Date.now();
+  let changed = false;
+  const lists = await Promise.all(channels.map(c => {
+    if (noLives[c.id] && now - noLives[c.id] < NO_LIVES_RECHECK_MS) return []; // nunca fez live: confere a cada 12 h
+    return api('playlistItems', { part: 'contentDetails', playlistId: `UULV${c.id.slice(2)}`, maxResults: 10 })
+      .then(d => {
+        if (noLives[c.id]) { delete noLives[c.id]; changed = true; }
+        return (d.items || []).map(it => it.contentDetails?.videoId).filter(Boolean);
+      })
+      .catch(e => {
+        if (e.status !== 404) throw e;
+        noLives[c.id] = now; // 404: o canal nunca fez live
+        changed = true;
+        return [];
+      });
+  }));
+  if (changed) store.set(KEYS.noLives, noLives);
+  return lists.flat();
+}
 
 async function refreshLives(force = false) {
   if (!state.channels.length || !hasCredentials()) {
@@ -1391,9 +1480,9 @@ async function refreshLives(force = false) {
     renderLives();
     return;
   }
-  // Economia de cota: só verifica com o menu lateral expandido e o app visível. Com o menu
-  // recolhido, nunca verifica; um pedido "forçado" (ex.: canais mudaram) fica para quando expandir.
-  if (!isSidebarExpanded() || document.visibilityState !== 'visible') {
+  // Economia de cota: só verifica com o menu lateral expandido, o app visível e você por perto.
+  // Com o menu recolhido, nunca verifica; um pedido "forçado" (ex.: canais mudaram) fica para depois.
+  if (!isSidebarExpanded() || document.visibilityState !== 'visible' || isIdle()) {
     if (force) Lives.lastFetch = 0;
     return;
   }
@@ -1403,18 +1492,46 @@ async function refreshLives(force = false) {
   Lives.loading = true;
   const gen = ++Lives.gen;
   try {
-    const perChannel = await Promise.all(state.channels.map(c =>
-      api('playlistItems', { part: 'contentDetails', playlistId: `UULV${c.id.slice(2)}`, maxResults: 10 })
-        .then(d => (d.items || []).map(it => it.contentDetails?.videoId).filter(Boolean))
-        .catch(e => { if (e.status === 404) return []; throw e; }))); // 404: canal nunca fez live
-    const ids = [...new Set(perChannel.flat())];
-    const details = ids.length ? await fetchVideos(ids) : new Map();
+    const channels = state.channels;
+    let full = force || !Lives.lastFull || Date.now() - Lives.lastFull >= LIVE_FULL_MS - 5000;
+    let ids = [];
+    if (!full) {
+      let feeds = null;
+      try {
+        feeds = await fetchChannelFeeds(channels.map(c => c.id));
+      } catch {
+        full = true; // Worker fora do ar, com erro ou antigo: método completo para todos
+      }
+      if (feeds) {
+        const failed = channels.filter(c => !feeds[c.id]?.ok);
+        ids = channels.flatMap(c => feeds[c.id]?.ok ? feeds[c.id].videos.map(v => v.id) : []);
+        if (failed.length) ids.push(...await livePlaylistIds(failed)); // RSS falhou: só esses canais
+      }
+    }
+    if (full) ids = await livePlaylistIds(channels);
+    // Pergunta só o que não se conhece, mais as lives e estreias em andamento (para ver se começaram/acabaram).
+    const ask = [...new Set([...ids.filter(id => !liveKnown.has(id)), ...Lives.watch])];
+    const details = ask.length ? await fetchVideos(ask) : new Map();
     if (gen !== Lives.gen) return;
+    const watch = new Set();
+    for (const id of ask) {
+      const v = details.get(id);
+      if (v && (v.live === 'live' || v.live === 'upcoming')) watch.add(id);
+      else liveKnown.add(id); // vídeo comum, live que acabou, removido ou de fora: não pergunta de novo
+    }
+    if (liveKnown.size > LIVE_KNOWN_MAX) {
+      const keep = [...liveKnown].slice(-LIVE_KNOWN_MAX);
+      liveKnown.clear();
+      keep.forEach(id => liveKnown.add(id));
+    }
+    store.set(KEYS.liveKnown, [...liveKnown]);
+    Lives.watch = watch;
     Lives.items = [...details.values()]
       .filter(v => v.live === 'live' && !v.blocked)
       .sort((a, b) => byName(channelById(a.channelId)?.title || a.channelTitle, channelById(b.channelId)?.title || b.channelTitle));
     Lives.error = null;
     Lives.lastFetch = Date.now();
+    if (full) Lives.lastFull = Lives.lastFetch;
   } catch (e) {
     if (gen === Lives.gen) Lives.error = e;
   } finally {
@@ -3491,56 +3608,24 @@ function renderSettings() {
   renderChannelList();
 }
 
-function parseChannelInput(raw) {
-  const s = raw.trim();
-  if (!s) return null;
+/* Adicionar canal: só pelo link do canal com @ (https://www.youtube.com/@canal), como aparece na barra
+   do navegador ao abrir o canal no YouTube. Também vale o link do "Compartilhar" do app do YouTube
+   (youtube.com/@canal, m.youtube.com/@canal, com ?si=… ou /videos no fim). Nome, ID e link de vídeo
+   não são aceitos. O canal é encontrado pelo @ (1 unidade de cota). */
+const CHANNEL_LINK_RE = /^https:\/\/(?:(?:www|m)\.)?youtube\.com\/(@[\p{L}\p{N}._-]{3,100})(?:\/(?:videos|featured|streams|shorts|live|playlists|about|community))?\/?(?:[?#].*)?$/iu;
+const CHANNEL_LINK_HELP = 'Use o link do canal no formato https://www.youtube.com/@canal (abra o canal no YouTube e copie o endereço).';
 
-  if (/^(https?:\/\/)?((www|m|music)\.)?(youtube\.com|youtu\.be)\//i.test(s)) {
-    let url;
-    try { url = new URL(/^https?:/i.test(s) ? s : `https://${s}`); } catch { return null; }
-    if (url.hostname.endsWith('youtu.be')) {
-      const id = url.pathname.slice(1, 12);
-      return VIDEO_ID_RE.test(id) ? { videoId: id } : null;
-    }
-    const parts = decodeURIComponent(url.pathname).split('/').filter(Boolean);
-    const v = url.searchParams.get('v');
-    if (parts[0] === 'watch' && v && VIDEO_ID_RE.test(v)) return { videoId: v };
-    if (['shorts', 'live', 'embed'].includes(parts[0]) && VIDEO_ID_RE.test(parts[1] || '')) return { videoId: parts[1] };
-    if (parts[0]?.startsWith('@')) return { handle: parts[0] };
-    if (parts[0] === 'channel' && CHANNEL_ID_RE.test(parts[1] || '')) return { id: parts[1] };
-    if (parts[0] === 'user' && parts[1]) return { username: parts[1] };
-    if (parts[0] === 'c' && parts[1]) return { search: parts[1] };
-    if (parts[0]) return { search: parts[0] };
-    return null;
-  }
-  if (CHANNEL_ID_RE.test(s)) return { id: s };
-  if (s.startsWith('@')) return { handle: s };
-  return { handle: `@${s.replace(/\s+/g, '')}`, search: s };
+function parseChannelInput(raw) {
+  let s = raw.trim();
+  try { s = decodeURI(s); } catch { /* endereço com % inválido: testa como está */ }
+  const m = CHANNEL_LINK_RE.exec(s);
+  return m ? { handle: m[1] } : null;
 }
 
 async function resolveChannel(raw) {
   const q = parseChannelInput(raw);
-  if (!q) throw new Error(`Não reconheci “${raw}” como um canal do YouTube.`);
-
-  let channelId = q.id;
-  if (q.videoId) {
-    const data = await api('videos', { part: 'snippet', id: q.videoId });
-    channelId = data.items?.[0]?.snippet?.channelId;
-    if (!channelId) throw new Error('Vídeo não encontrado para identificar o canal.');
-  }
-
-  const part = 'snippet,contentDetails';
-  let item = null;
-  if (channelId) item = (await api('channels', { part, id: channelId })).items?.[0];
-  else if (q.handle) item = (await api('channels', { part, forHandle: q.handle })).items?.[0];
-  else if (q.username) item = (await api('channels', { part, forUsername: q.username })).items?.[0];
-
-  if (!item && q.search) {
-    // Último recurso (URLs antigas /c/... ou nome solto): busca do canal — custa mais cota.
-    const found = await api('search', { part: 'snippet', type: 'channel', q: q.search, maxResults: 1 });
-    const id = found.items?.[0]?.snippet?.channelId || found.items?.[0]?.id?.channelId;
-    if (id) item = (await api('channels', { part, id })).items?.[0];
-  }
+  if (!q) throw new Error(`“${raw}” não é um link de canal. ${CHANNEL_LINK_HELP}`);
+  const item = (await api('channels', { part: 'snippet,contentDetails', forHandle: q.handle })).items?.[0];
   if (!item) throw new Error(`Canal não encontrado: ${raw}`);
 
   const t = item.snippet.thumbnails || {};
@@ -3573,7 +3658,7 @@ async function onChannelSubmit(e) {
   e.preventDefault();
   const input = $('#channel-input');
   const btn = $('#channel-form button[type="submit"]');
-  const entries = input.value.split(/,+|\s(?=https?:|@|www\.|youtube\.com)/).map(s => s.trim()).filter(Boolean);
+  const entries = input.value.split(/,+|\s+/).map(s => s.trim()).filter(Boolean);
   if (!entries.length) return;
   if (!hasCredentials()) {
     toast('Entre com o Google ou salve uma chave de API antes de adicionar canais.', 'error');
@@ -4329,6 +4414,10 @@ function bindEvents() {
   setInterval(() => {
     if (document.visibilityState === 'visible') refreshLives();
   }, 60_000);
+  // Você por perto (mouse, teclado, toque, rolagem): sem nada disso por 20 min, as lives não são verificadas.
+  for (const type of ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll']) {
+    addEventListener(type, noteActivity, { passive: true, capture: true });
+  }
 
   let ticking = false;
   window.addEventListener('scroll', () => {
