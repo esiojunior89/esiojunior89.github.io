@@ -1,9 +1,9 @@
 'use strict';
 
-const VERSION = '1.22.0'; // mudar este número faz o navegador atualizar o service worker
+const VERSION = '1.23.0'; // mudar este número faz o navegador atualizar o service worker
 
 /* =========================================================
-   Service worker mínimo do MeuTube
+   Service worker mínimo do MyTube
    =========================================================
    Existe só para o Chrome do Android aceitar instalar o site
    como app (que abre em tela cheia). NÃO guarda nada em cache:
@@ -16,7 +16,7 @@ const OFFLINE_HTML = `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MeuTube</title>
+  <title>MyTube</title>
   <style>
     body { margin: 0; min-height: 100vh; display: grid; place-content: center; gap: 12px; padding: 24px;
            background: #0f0f12; color: #f2f2f5; font: 16px/1.5 system-ui, sans-serif; text-align: center; }
@@ -26,7 +26,7 @@ const OFFLINE_HTML = `<!doctype html>
 </head>
 <body>
   <strong>Sem conexão</strong>
-  <span>O MeuTube precisa de internet para carregar os vídeos.</span>
+  <span>O MyTube precisa de internet para carregar os vídeos.</span>
   <button onclick="location.reload()">Tentar de novo</button>
 </body>
 </html>`;

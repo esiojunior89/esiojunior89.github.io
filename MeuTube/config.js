@@ -1,7 +1,7 @@
 'use strict';
 
 /* =========================================================
-   MeuTube — credenciais padrão
+   MyTube — credenciais padrão
    =========================================================
    Usadas pelo app (index.html) e pela página protegida de
    credenciais (credenciais.html). O que for salvo na página
