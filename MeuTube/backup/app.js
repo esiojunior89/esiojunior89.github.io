@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.25.0';
+const APP_VERSION = '1.25.1';
 
 /* =========================================================
    Canais — só os vídeos dos canais que você escolher
@@ -210,18 +210,18 @@ const ICONS = {
 /** Ícone de traço do conjunto do index.html (símbolos "#i-…", no estilo dos da Apple). */
 const SF = (name, cls = 'ic') => `<svg class="${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 
-/** Ícone do app: três telas de vidro empilhadas (os canais) sobre o degradê Very Peri → Classic Blue,
-    com brilho Peach Fuzz no canto; a tela da frente mostra um pôr do sol (é vídeo, sem botão de play). */
+/** Ícone do app: três telas de vidro empilhadas (os canais) sobre o degradê Very Peri → Ultra Violet → Classic Blue,
+    com brilho Peach Fuzz no canto; a tela da frente mostra um pôr do sol (é vídeo, sem botão de play). Só cores Pantone. */
 let appIconSeq = 0;
 function appIconSVG(size = 30) {
   const id = `ai${++appIconSeq}`;
   return `<svg width="${size}" height="${size}" viewBox="0 0 1024 1024" aria-hidden="true">
     <defs>
-      <linearGradient id="${id}bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9C9DE6"/><stop offset=".48" stop-color="#6667AB"/><stop offset="1" stop-color="#0F4C81"/></linearGradient>
+      <linearGradient id="${id}bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6667AB"/><stop offset=".55" stop-color="#5F4B8B"/><stop offset="1" stop-color="#0F4C81"/></linearGradient>
       <radialGradient id="${id}gl" cx=".82" cy=".14" r=".6"><stop offset="0" stop-color="#FFBE98" stop-opacity=".9"/><stop offset="1" stop-color="#FFBE98" stop-opacity="0"/></radialGradient>
-      <linearGradient id="${id}sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE3D1"/><stop offset="1" stop-color="#FFBE98"/></linearGradient>
-      <radialGradient id="${id}sun" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#FFF4C7"/><stop offset="1" stop-color="#FF6F61"/></radialGradient>
-      <linearGradient id="${id}h1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8C8DD6"/><stop offset="1" stop-color="#6667AB"/></linearGradient>
+      <linearGradient id="${id}sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F0EEE9"/><stop offset="1" stop-color="#FFBE98"/></linearGradient>
+      <radialGradient id="${id}sun" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#F5DF4D"/><stop offset="1" stop-color="#FF6F61"/></radialGradient>
+      <linearGradient id="${id}h1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6667AB"/><stop offset="1" stop-color="#5F4B8B"/></linearGradient>
       <linearGradient id="${id}h2" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#0F4C81"/><stop offset="1" stop-color="#BB2649"/></linearGradient>
       <clipPath id="${id}c"><rect width="1024" height="1024" rx="230"/></clipPath>
       <clipPath id="${id}f"><rect x="188" y="408" width="648" height="400" rx="98"/></clipPath>
@@ -229,15 +229,15 @@ function appIconSVG(size = 30) {
     <g clip-path="url(#${id}c)">
       <rect width="1024" height="1024" fill="url(#${id}bg)"/>
       <rect width="1024" height="1024" fill="url(#${id}gl)"/>
-      <rect x="292" y="232" width="440" height="262" rx="70" fill="#fff" fill-opacity=".3"/>
-      <rect x="242" y="314" width="540" height="322" rx="82" fill="#fff" fill-opacity=".48"/>
+      <rect x="292" y="232" width="440" height="262" rx="70" fill="#F4F9FF" fill-opacity=".3"/>
+      <rect x="242" y="314" width="540" height="322" rx="82" fill="#F4F9FF" fill-opacity=".48"/>
       <g clip-path="url(#${id}f)">
         <rect x="188" y="408" width="648" height="400" fill="url(#${id}sky)"/>
         <circle cx="610" cy="560" r="78" fill="url(#${id}sun)"/>
         <path d="M188 700 C300 610 400 640 480 676 C560 712 660 600 836 650 V808 H188Z" fill="url(#${id}h1)"/>
         <path d="M188 760 C320 700 470 740 560 752 C660 766 760 712 836 730 V808 H188Z" fill="url(#${id}h2)"/>
       </g>
-      <rect x="188" y="408" width="648" height="400" rx="98" fill="none" stroke="#fff" stroke-opacity=".75" stroke-width="10"/>
+      <rect x="188" y="408" width="648" height="400" rx="98" fill="none" stroke="#F4F9FF" stroke-opacity=".75" stroke-width="10"/>
     </g>
   </svg>`;
 }
@@ -1301,15 +1301,22 @@ function resetFeed() {
   $('#feed-status').innerHTML = '';
 }
 
+/** O olho é um botão só: fica no topo do Início ou na faixa do canal. Antes de redesenhar a faixa,
+    ele volta para o topo (senão seria apagado junto com ela). */
+function parkWatchedToggle(where = $('#home-actions')) {
+  const btn = $('#watched-toggle');
+  if (btn && where && btn.parentElement !== where) where.prepend(btn);
+}
+
 function renderFeedHeader() {
   const box = $('#feed-header');
   const ch = state.filter ? channelById(state.filter) : null;
+  parkWatchedToggle();
   document.body.classList.toggle('channel-page', Boolean(ch));
   $('#home-head').hidden = Boolean(ch);
   if (!ch) {
     box.hidden = true;
     box.innerHTML = '';
-    $('#home-actions').prepend($('#watched-toggle'));
     return;
   }
   const stats = channelStats[ch.id];
@@ -1337,7 +1344,7 @@ function renderFeedHeader() {
       </nav>
     </div>`;
   box.hidden = false;
-  $('#cb-actions').append($('#watched-toggle'));
+  parkWatchedToggle($('#cb-actions'));
   placeSegThumb(box.querySelector('.seg'));
   if (!subscribersText(ch.id)) {
     ensureChannelStats(ch.id).then(() => {

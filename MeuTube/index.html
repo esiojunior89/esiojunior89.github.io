@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#F0EEE9" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#101820" media="(prefers-color-scheme: dark)">
+  <script src="theme.js?v=1.26.0"></script>
   <meta name="color-scheme" content="light dark">
   <!-- Política de segurança (CSP): o navegador só carrega scripts, vídeos e dados destes endereços.
        Se algum dia algo tentar injetar código no app, ele não roda nem consegue mandar seus dados
@@ -13,12 +14,12 @@
   <title>Canais</title>
   <!-- Versão do app (SemVer). Mantida igual ao APP_VERSION do app.js e ao "?v=" dos arquivos abaixo:
        o número no endereço faz o navegador baixar a versão nova em vez de usar o cache. -->
-  <meta name="app-version" content="1.25.1">
-  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=1.25.1">
-  <link rel="icon" type="image/svg+xml" href="icons/favicon.svg?v=1.25.1">
+  <meta name="app-version" content="1.26.0">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=1.26.0">
+  <link rel="icon" type="image/svg+xml" href="icons/favicon.svg?v=1.26.0">
   <!-- App instalável (abre em tela cheia no celular) -->
-  <link rel="manifest" href="manifest.json?v=1.25.1">
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=1.25.1">
+  <link rel="manifest" href="manifest.json?v=1.26.0">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=1.26.0">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Canais">
@@ -26,7 +27,7 @@
   <link rel="preconnect" href="https://i.ytimg.com">
   <link rel="preconnect" href="https://www.googleapis.com">
   <link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=1.25.1">
+  <link rel="stylesheet" href="styles.css?v=1.26.0">
   <!-- Google Identity Services (login com Google) -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -342,6 +343,25 @@
               </div>
             </section>
 
+            <!-- Aparência: tema do app -->
+            <section class="set-sec" data-sec="aparencia" id="appearance">
+              <h2 class="grp-title">Aparência</h2>
+              <div class="group theme-group">
+                <div class="theme-picker" role="group" aria-label="Tema do app">
+                  <button type="button" class="theme-opt" data-theme-pick="dark" aria-pressed="false" aria-label="Tema Escuro" title="Escuro"><span class="theme-sw"><svg viewBox="0 0 60 60" aria-hidden="true" focusable="false"><rect width="60" height="60" fill="#101820"/><rect x="7" y="8" width="14" height="44" rx="4" fill="#1D252D"/><circle cx="14" cy="15" r="3" fill="#6667AB"/><rect x="10.5" y="23" width="7" height="2" rx="1" fill="#97999B"/><rect x="10.5" y="28" width="7" height="2" rx="1" fill="#97999B"/><rect x="25" y="8" width="28" height="17" rx="4" fill="#1D252D"/><rect x="25" y="30" width="24" height="3" rx="1.5" fill="#F4F9FF"/><rect x="25" y="36" width="15" height="3" rx="1.5" fill="#97999B"/></svg></span><span class="theme-check"><svg class="ic"><use href="#i-check"/></svg></span></button>
+                  <button type="button" class="theme-opt" data-theme-pick="light" aria-pressed="false" aria-label="Tema Claro" title="Claro"><span class="theme-sw"><svg viewBox="0 0 60 60" aria-hidden="true" focusable="false"><rect width="60" height="60" fill="#F0EEE9"/><rect x="7" y="8" width="14" height="44" rx="4" fill="#F4F9FF" stroke="#C8C9C7" stroke-width=".6"/><circle cx="14" cy="15" r="3" fill="#6667AB"/><rect x="10.5" y="23" width="7" height="2" rx="1" fill="#888B8D"/><rect x="10.5" y="28" width="7" height="2" rx="1" fill="#888B8D"/><rect x="25" y="8" width="28" height="17" rx="4" fill="#F4F9FF" stroke="#C8C9C7" stroke-width=".6"/><rect x="25" y="30" width="24" height="3" rx="1.5" fill="#101820"/><rect x="25" y="36" width="15" height="3" rx="1.5" fill="#888B8D"/></svg></span><span class="theme-check"><svg class="ic"><use href="#i-check"/></svg></span></button>
+                  <fieldset class="theme-pantone">
+                    <legend>Pantone</legend>
+                    <button type="button" class="theme-opt" data-theme-pick="green" aria-pressed="false" aria-label="Tema Verde Pantone" title="Verde Pantone"><span class="theme-sw"><svg viewBox="0 0 60 60" aria-hidden="true" focusable="false"><defs><linearGradient id="tg-green" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22372B"/><stop offset=".55" stop-color="#154734"/><stop offset="1" stop-color="#006747"/></linearGradient></defs><rect width="60" height="60" fill="url(#tg-green)"/><g fill="none" stroke="#C2E189" stroke-width=".9" stroke-linecap="round" opacity=".75"><path d="M62 40C52 44 46 50 42 62"/><path d="M52 45c-4-1-7 1-8 5 4 1 7-1 8-5Z"/><path d="M47 52c-1-4-4-5-7-4 0 4 3 6 7 4Z"/><path d="M57 42c0-4 2-6 6-7 0 4-2 6-6 7Z"/></g><rect x="7" y="8" width="14" height="44" rx="4" fill="#115740"/><circle cx="14" cy="15" r="3" fill="#C2E189"/><rect x="10.5" y="23" width="7" height="2" rx="1" fill="#D0DEBB"/><rect x="10.5" y="28" width="7" height="2" rx="1" fill="#D0DEBB"/><rect x="25" y="8" width="28" height="17" rx="4" fill="#115740"/><rect x="25" y="30" width="24" height="3" rx="1.5" fill="#F4F9FF"/><rect x="25" y="36" width="15" height="3" rx="1.5" fill="#D0DEBB"/></svg></span><span class="theme-check"><svg class="ic"><use href="#i-check"/></svg></span></button>
+                    <button type="button" class="theme-opt" data-theme-pick="blue" aria-pressed="false" aria-label="Tema Azul Pantone" title="Azul Pantone"><span class="theme-sw"><svg viewBox="0 0 60 60" aria-hidden="true" focusable="false"><defs><linearGradient id="tg-blue" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0C2340"/><stop offset=".55" stop-color="#13294B"/><stop offset="1" stop-color="#0F4C81"/></linearGradient></defs><rect width="60" height="60" fill="url(#tg-blue)"/><g fill="none" stroke="#ABCAE9" stroke-width=".9" stroke-linecap="round" opacity=".75"><path d="M28 56c6-6 12-6 17-2s10 3 16-3"/><path d="M28 61c6-6 12-6 17-2s10 3 16-3"/><path d="M50 46a5 5 0 1 1-6-6 3 3 0 1 1 3 4"/></g><rect x="7" y="8" width="14" height="44" rx="4" fill="#003C71"/><circle cx="14" cy="15" r="3" fill="#ABCAE9"/><rect x="10.5" y="23" width="7" height="2" rx="1" fill="#B9D9EB"/><rect x="10.5" y="28" width="7" height="2" rx="1" fill="#B9D9EB"/><rect x="25" y="8" width="28" height="17" rx="4" fill="#003C71"/><rect x="25" y="30" width="24" height="3" rx="1.5" fill="#F4F9FF"/><rect x="25" y="36" width="15" height="3" rx="1.5" fill="#B9D9EB"/></svg></span><span class="theme-check"><svg class="ic"><use href="#i-check"/></svg></span></button>
+                    <button type="button" class="theme-opt" data-theme-pick="red" aria-pressed="false" aria-label="Tema Vermelho Pantone" title="Vermelho Pantone"><span class="theme-sw"><svg viewBox="0 0 60 60" aria-hidden="true" focusable="false"><defs><linearGradient id="tg-red" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3F2021"/><stop offset=".55" stop-color="#651D32"/><stop offset="1" stop-color="#8A1538"/></linearGradient></defs><rect width="60" height="60" fill="url(#tg-red)"/><g fill="none" stroke="#FABBCB" stroke-width=".9" stroke-linecap="round" opacity=".75"><path d="M50 50c-4-6-2-11 3-12 3 5 1 9-3 12Z"/><path d="M50 50c6-3 11-1 11 4-5 3-9 1-11-4Z"/><path d="M50 50c-1 6-6 9-10 6 1-5 5-7 10-6Z"/><path d="M50 50c-6-1-9-5-7-9 5 0 7 4 7 9Z"/><circle cx="50" cy="50" r="1.4"/></g><rect x="7" y="8" width="14" height="44" rx="4" fill="#651D32"/><circle cx="14" cy="15" r="3" fill="#FABBCB"/><rect x="10.5" y="23" width="7" height="2" rx="1" fill="#ECC7CD"/><rect x="10.5" y="28" width="7" height="2" rx="1" fill="#ECC7CD"/><rect x="25" y="8" width="28" height="17" rx="4" fill="#651D32"/><rect x="25" y="30" width="24" height="3" rx="1.5" fill="#F4F9FF"/><rect x="25" y="36" width="15" height="3" rx="1.5" fill="#ECC7CD"/></svg></span><span class="theme-check"><svg class="ic"><use href="#i-check"/></svg></span></button>
+                  </fieldset>
+                </div>
+              </div>
+              <p class="grp-foot">O tema escolhido fica guardado neste aparelho. Os temas Pantone misturam tons da mesma cor, com degradês e desenhos suaves no fundo.
+                PANTONE® é marca registrada da Pantone LLC; as cores na tela são aproximadas.</p>
+            </section>
+
             <!-- Canais -->
             <section class="set-sec" data-sec="canais">
               <h2 class="grp-title">Canais <span id="channel-count" class="grp-count"></span></h2>
@@ -414,7 +434,7 @@
   <div id="menu-pop" class="menu-pop glass" role="menu" hidden></div>
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
-  <script src="config.js?v=1.25.1"></script>
-  <script src="app.js?v=1.25.1"></script>
+  <script src="config.js?v=1.26.0"></script>
+  <script src="app.js?v=1.26.0"></script>
 </body>
 </html>

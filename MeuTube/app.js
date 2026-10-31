@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.25.1';
+const APP_VERSION = '1.26.0';
 
 /* =========================================================
    Canais — só os vídeos dos canais que você escolher
@@ -5051,7 +5051,29 @@ function refreshHome() {
   refreshLives(true);
 }
 
+/* Ajustes › Aparência: marca o tema atual e troca de tema (o theme.js guarda a escolha). */
+function syncThemePicker() {
+  const cur = window.CanaisTheme ? window.CanaisTheme.get() : '';
+  document.querySelectorAll('[data-theme-pick]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themePick === cur)));
+}
+function setupThemePicker() {
+  const box = $('#appearance');
+  if (!box) return;
+  if (!window.CanaisTheme) { box.remove(); return; }
+  box.addEventListener('click', e => {
+    const b = e.target.closest('[data-theme-pick]');
+    if (!b) return;
+    const r = b.getBoundingClientRect();
+    const origin = (e.clientX || e.clientY) ? { x: e.clientX, y: e.clientY } : { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    window.CanaisTheme.set(b.dataset.themePick, origin);
+    syncThemePicker();
+  });
+  window.addEventListener('canais:theme', syncThemePicker);
+  syncThemePicker();
+}
+
 function bindEvents() {
+  setupThemePicker();
   window.addEventListener('hashchange', () => route(true));
 
   document.addEventListener('click', e => {
@@ -6036,6 +6058,7 @@ function selectForecast(id) {
 }
 
 let statsAnimTimer = 0;
+let statsAnimUntil = 0; // até quando os gráficos ainda estão se desenhando
 
 /** Tempo em "2 h 8 min" com os minutos menores (como no Tempo de Uso). */
 function bigTime(sec) {
@@ -6054,7 +6077,7 @@ function renderStats({ refresh = true, animate = refresh } = {}) {
   const thumbFrom = prevThumb ? { left: prevThumb.style.left, width: prevThumb.style.width } : null;
   clearTimeout(statsAnimTimer);
   box.classList.toggle('st-anim', animate && motionOK());
-  if (animate) statsAnimTimer = setTimeout(() => box.classList.remove('st-anim'), 2200);
+  if (animate) { statsAnimUntil = Date.now() + 1500; statsAnimTimer = setTimeout(() => box.classList.remove('st-anim'), 2200); }
   loadCatalogsFromCache(homeChannels());
   const data = computeStats();
   statsData = data;
@@ -6235,7 +6258,9 @@ function renderStats({ refresh = true, animate = refresh } = {}) {
       const el = $('#st-counting');
       if (el && counting) el.textContent = `Contando os vídeos dos canais… (${doneN} de ${totalN})`;
     }).then(changed => {
-      if ((changed || counting) && state.view === 'stats') renderStats({ refresh: false });
+      if (!changed && !counting) return;
+      // Espera os gráficos terminarem de se desenhar antes de redesenhar com os números novos.
+      setTimeout(() => { if (state.view === 'stats') renderStats({ refresh: false }); }, Math.max(0, statsAnimUntil - Date.now()));
     });
   }
 }

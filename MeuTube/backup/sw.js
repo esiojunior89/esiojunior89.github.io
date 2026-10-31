@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = '1.25.0'; // mudar este número faz o navegador atualizar o service worker
+const VERSION = '1.25.1'; // mudar este número faz o navegador atualizar o service worker
 
 /* =========================================================
    Service worker mínimo do Canais
@@ -20,13 +20,13 @@ const OFFLINE_HTML = `<!doctype html>
   <title>Canais</title>
   <style>
     body { margin: 0; min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 24px;
-           background: #F5F5F7; color: #1D1D1F; font: 16px/1.45 -apple-system, "Inter", system-ui, sans-serif; text-align: center; }
-    .ic { width: 64px; height: 64px; margin-bottom: 8px; border-radius: 16px; background: linear-gradient(145deg, #9C9DE6, #6667AB 48%, #0F4C81);
+           background: #F0EEE9; color: #101820; font: 16px/1.45 -apple-system, "Inter", system-ui, sans-serif; text-align: center; }
+    .ic { width: 64px; height: 64px; margin-bottom: 8px; border-radius: 16px; background: linear-gradient(145deg, #6667AB, #5F4B8B 55%, #0F4C81);
           box-shadow: 0 10px 24px rgba(15, 76, 129, .3); }
     strong { font-size: 22px; letter-spacing: -.02em; }
-    span { color: #6E6E73; max-width: 320px; }
-    button { margin-top: 10px; padding: 12px 24px; border: 0; border-radius: 999px; background: #6667AB; color: #fff; font: inherit; font-weight: 600; }
-    @media (prefers-color-scheme: dark) { body { background: #000; color: #F5F5F7; } span { color: #A1A1A6; } button { background: #9A9BE0; color: #000; } }
+    span { color: #63666A; max-width: 320px; }
+    button { margin-top: 10px; padding: 12px 24px; border: 0; border-radius: 999px; background: #6667AB; color: #F4F9FF; font: inherit; font-weight: 600; }
+    @media (prefers-color-scheme: dark) { body { background: #101820; color: #F4F9FF; } span { color: #C8C9C7; } button { background: #6667AB; color: #F4F9FF; } }
   </style>
 </head>
 <body>
