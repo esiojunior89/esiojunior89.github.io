@@ -1,17 +1,17 @@
 'use strict';
 
 // Não funciona dentro de outro site (moldura/iframe): evita "clickjacking", em que um site
-// esconde o MeuTube por baixo de um botão falso para capturar os seus cliques.
+// esconde o MyTube por baixo de um botão falso para capturar os seus cliques.
 if (window.top !== window.self) {
   document.documentElement.style.display = 'none';
-  throw new Error('O MeuTube não pode ser aberto dentro de outro site.');
+  throw new Error('O MyTube não pode ser aberto dentro de outro site.');
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.22.0';
+const APP_VERSION = '1.23.0';
 
 /* =========================================================
-   MeuTube — só os vídeos dos canais que você escolher
+   MyTube — só os vídeos dos canais que você escolher
    =========================================================
    As credenciais padrão (DEFAULT_CONFIG) ficam em config.js,
    carregado antes deste arquivo.
@@ -251,7 +251,7 @@ function withinDurationLimit(v) {
 }
 
 /* Vídeos que não tocam fora do YouTube (o dono não permite, restrição de idade ou de país) não
-   existem no MeuTube. A API avisa a maioria; os poucos que ela não avisa são descobertos quando o
+   existem no MyTube. A API avisa a maioria; os poucos que ela não avisa são descobertos quando o
    player recusa e ficam guardados aqui, para nunca mais aparecer. */
 const unplayableSaved = new Set(store.get(KEYS.unplayable, [])); // os que saíram de vez
 const unplayable = new Set(unplayableSaved);                      // + os que saíram só até recarregar a página
@@ -266,7 +266,7 @@ function embedBlocked(v) {
 }
 
 /** Vídeo que aparece no Início, na página do canal e em "A seguir": da aba "Vídeos" (não ao vivo
-    nem agendado), dentro do limite de duração e que toca no MeuTube. */
+    nem agendado), dentro do limite de duração e que toca no MyTube. */
 function shownInApp(v) {
   return Boolean(v) && v.live === 'none' && withinDurationLimit(v) && !v.blocked;
 }
@@ -1345,7 +1345,7 @@ function checkSentinel() {
 
 function showHome() {
   const ch = state.filter ? channelById(state.filter) : null;
-  document.title = ch ? `${ch.title} · MeuTube` : 'MeuTube';
+  document.title = ch ? `${ch.title} · MyTube` : 'MyTube';
   renderFeedHeader();
   if (!checkHomePrereqs()) {
     $('#feed').innerHTML = '';
@@ -1961,7 +1961,7 @@ async function skipUnplayable(id, { persist = true } = {}) {
   }
   if (state.view !== 'watch' || state.currentVideoId !== id) return;
   if (!next) {
-    skipNonMeuTube(id);
+    skipNonMyTube(id);
     return;
   }
   watchHistory.stack = watchHistory.stack.filter(x => x !== id);
@@ -3189,7 +3189,7 @@ function renderWatchInfo(v) {
   $('#comments-title').textContent = v.comments != null
     ? `Comentários · ${compact.format(Number(v.comments))}`
     : 'Comentários';
-  document.title = `${v.title} · MeuTube`;
+  document.title = `${v.title} · MyTube`;
 }
 
 function showWatchBlocked(message) {
@@ -3242,10 +3242,10 @@ function enterWatch(id, { resume = false } = {}) {
       }
       if (state.currentVideoId !== id) return;
     }
-    // O que não é do MeuTube (outro canal, Short, live gravada, acima do limite de duração)
+    // O que não é do MyTube (outro canal, Short, live gravada, acima do limite de duração)
     // simplesmente não existe no app: sem aviso, segue para outro lugar.
-    if (!video || !(await isMeuTubeVideo(video))) {
-      if (state.currentVideoId === id) skipNonMeuTube(id);
+    if (!video || !(await isMyTubeVideo(video))) {
+      if (state.currentVideoId === id) skipNonMyTube(id);
       return;
     }
     if (state.currentVideoId !== id) return;
@@ -3265,9 +3265,9 @@ function enterWatch(id, { resume = false } = {}) {
   })();
 }
 
-/** Vídeo que o MeuTube mostra: live no ar (menu "Ao vivo") ou vídeo da aba "Vídeos" do canal,
+/** Vídeo que o MyTube mostra: live no ar (menu "Ao vivo") ou vídeo da aba "Vídeos" do canal,
     dentro do limite de duração. Shorts e lives gravadas ficam de fora. */
-async function isMeuTubeVideo(v) {
+async function isMyTubeVideo(v) {
   if (v.blocked) return false; // não toca fora do YouTube
   if (v.live === 'live') return true;
   if (!shownInApp(v)) return false;
@@ -3294,8 +3294,8 @@ async function inVideosTab(v) {
   return found;
 }
 
-/** Vídeo que não é do MeuTube: vai para o anterior válido (se veio do "Anterior") ou para o Início. */
-function skipNonMeuTube(id) {
+/** Vídeo que não é do MyTube: vai para o anterior válido (se veio do "Anterior") ou para o Início. */
+function skipNonMyTube(id) {
   watchHistory.stack = watchHistory.stack.filter(x => x !== id);
   if (watchHistory.last === id) watchHistory.last = null;
   saveWatchHistory();
@@ -3601,7 +3601,7 @@ function renderChannelList() {
 }
 
 function renderSettings() {
-  document.title = 'Configurações · MeuTube';
+  document.title = 'Configurações · MyTube';
   renderInstallPanel();
   renderVersionInfo();
   renderAccount();
@@ -4435,7 +4435,7 @@ function bindEvents() {
 /* =========================================================
    Celular: app instalável e tela cheia
    =========================================================
-   • Instalado ("Instalar app" no Chrome), o MeuTube abre sempre
+   • Instalado ("Instalar app" no Chrome), o MyTube abre sempre
      em tela cheia, sem a barra do navegador (manifest.json).
    • Aberto pelo navegador, entra em tela cheia no primeiro toque
      (o navegador não permite fazer isso sem um toque).
@@ -4456,14 +4456,14 @@ function renderInstallPanel() {
   const box = $('#install-panel');
   if (!box) return;
   if (isInstalledApp()) {
-    box.innerHTML = '<span class="tier">Você está usando o MeuTube instalado como app.</span>';
+    box.innerHTML = '<span class="tier">Você está usando o MyTube instalado como app.</span>';
   } else if (installPrompt) {
     box.innerHTML = `
-      <p class="muted">Instale o MeuTube para ele abrir pelo ícone, sempre em tela cheia, sem a barra do navegador.</p>
+      <p class="muted">Instale o MyTube para ele abrir pelo ícone, sempre em tela cheia, sem a barra do navegador.</p>
       <div><button class="btn btn-primary" type="button" data-action="install-app">Instalar app</button></div>`;
   } else {
     box.innerHTML = `
-      <p class="muted" style="margin:0">Para abrir sempre em tela cheia, sem a barra do navegador, instale o MeuTube:
+      <p class="muted" style="margin:0">Para abrir sempre em tela cheia, sem a barra do navegador, instale o MyTube:
         no Chrome do celular, toque em <strong>⋮</strong> › <strong>Instalar app</strong> (ou
         <strong>Adicionar à tela inicial</strong>) e abra pelo ícone criado. No Samsung Internet: <strong>☰</strong> ›
         <strong>Adicionar página a › Tela inicial</strong>.</p>`;
@@ -4482,7 +4482,7 @@ function setupMobileApp() {
   window.addEventListener('appinstalled', () => {
     installPrompt = null;
     renderInstallPanel();
-    toast('MeuTube instalado. Abra pelo ícone para usar em tela cheia.', 'success');
+    toast('MyTube instalado. Abra pelo ícone para usar em tela cheia.', 'success');
   });
 
   if (!isMobile()) return;
@@ -4521,7 +4521,7 @@ function renderVersionInfo() {
   const sw = navigator.serviceWorker?.controller ? 'ativo' : 'inativo';
   const mode = isInstalledApp() ? 'app instalado' : 'navegador';
   footer.innerHTML = `
-    <span>MeuTube <strong>v${APP_VERSION}</strong></span>
+    <span>MyTube <strong>v${APP_VERSION}</strong></span>
     <span>Celular: ${isMobile() ? 'sim' : 'não'} · Aberto como: ${mode} · Service worker: ${sw} · Rotação: ${esc(lastRotation)}</span>
     ${htmlVersion && htmlVersion !== APP_VERSION
       ? `<span class="error">Arquivos de versões diferentes (página v${esc(htmlVersion)}). Recarregue a página.</span>` : ''}`;
@@ -4661,7 +4661,7 @@ function mergeWatchLog(remoteLog, remoteChannels) {
 }
 
 /* =========================================================
-   Vídeos de cada canal no MeuTube (base das Estatísticas)
+   Vídeos de cada canal no MyTube (base das Estatísticas)
    =========================================================
    O total de cada canal e o que conta como assistido seguem a
    mesma regra do que aparece no app: vídeos da aba "Vídeos" do
@@ -4693,7 +4693,7 @@ function loadCatalogsFromCache(channels) {
   }
 }
 
-/** Total de vídeos do canal no MeuTube (respeitando o limite de duração), ou undefined se ainda não foi contado. */
+/** Total de vídeos do canal no MyTube (respeitando o limite de duração), ou undefined se ainda não foi contado. */
 function channelVideoTotal(c) {
   const catalog = channelCatalogs.get(c.id);
   if (!catalog) return undefined;
@@ -5098,7 +5098,7 @@ function channelAvatar(ch, cls = 'st-avatar') {
 }
 
 /* ---------- Previsão: quanto falta para assistir tudo, no seu ritmo ---------- */
-// Base: só o que o MeuTube mostra (aba "Vídeos", dentro do limite de duração, sem os canais
+// Base: só o que o MyTube mostra (aba "Vídeos", dentro do limite de duração, sem os canais
 // "Apenas lives"). Ritmo: média por dia dos últimos 30 dias (ou desde o início do registro, se
 // for mais recente), contando também os dias sem vídeo — o mesmo tempo assistido do resto da página.
 const FORECAST_DAYS = 30;
@@ -5142,7 +5142,7 @@ function forecastFor(data, chId) {
 function forecastBodyHTML(data) {
   const ch = statsForecast ? channelById(statsForecast) : null;
   const f = forecastFor(data, statsForecast);
-  const what = ch ? `o que falta de ${esc(ch.title)}` : 'tudo o que está no MeuTube';
+  const what = ch ? `o que falta de ${esc(ch.title)}` : 'tudo o que está no MyTube';
   let big;
   let line;
   if (!f.known && !f.total) {
@@ -5150,7 +5150,7 @@ function forecastBodyHTML(data) {
     line = 'contando os vídeos dos canais';
   } else if (f.total && f.done >= f.total) {
     big = 'Tudo assistido ✓';
-    line = ch ? `você viu todos os vídeos de ${esc(ch.title)}` : 'você viu todos os vídeos do MeuTube';
+    line = ch ? `você viu todos os vídeos de ${esc(ch.title)}` : 'você viu todos os vídeos do MyTube';
   } else if (f.days == null) {
     big = '—';
     line = ch ? 'assista algo deste canal para estimar' : 'assista algo para estimar';
@@ -5324,13 +5324,13 @@ function renderStats({ refresh = true, animate = refresh } = {}) {
       <details class="st-info">
         <summary aria-label="Como os números são calculados" title="Como os números são calculados">i</summary>
         <p>
-          Contam só os vídeos que aparecem no MeuTube: os da aba “Vídeos” de cada canal, dentro do limite de duração
-          (“Até hh:mm:ss”, nas Configurações). Horas são o tempo em que o vídeo esteve tocando no MeuTube, incluindo as
+          Contam só os vídeos que aparecem no MyTube: os da aba “Vídeos” de cada canal, dentro do limite de duração
+          (“Até hh:mm:ss”, nas Configurações). Horas são o tempo em que o vídeo esteve tocando no MyTube, incluindo as
           lives assistidas ao vivo (neste e nos seus outros aparelhos, pela sincronização). Um vídeo conta como
           assistido quando é visto até o fim.
           ${data.estimated ? `Antes de ${sinceText}, horas e vídeos são <strong>estimados</strong> pelo progresso salvo
             (o vídeo inteiro, se assistido, ou até onde parou, no dia do último acesso).` : ''}
-          O total de cada canal é o número de vídeos que o MeuTube mostra para ele; mudar o limite de duração
+          O total de cada canal é o número de vídeos que o MyTube mostra para ele; mudar o limite de duração
           recalcula tudo na hora. As horas registradas antes da versão 1.13.0 não podem ser separadas por limite.
         </p>
       </details>
@@ -5515,7 +5515,7 @@ function init() {
   renderLives();
   applyHideWatched();
   renderVersionInfo();
-  console.info(`MeuTube v${APP_VERSION}`);
+  console.info(`MyTube v${APP_VERSION}`);
   setupMobileApp();
   setupFooterLinks();
   setupPlayerControls();

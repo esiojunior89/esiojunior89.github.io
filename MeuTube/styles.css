@@ -2135,6 +2135,9 @@ body.mini-player .to-top { bottom: calc(clamp(320px, 24vw, 440px) * 9 / 16 + 110
   body.mini-player .mini-info-title { font-size: 13px; -webkit-line-clamp: 1; }
   body.mini-player main { padding-bottom: 76px; }
   body.mini-player .to-top { bottom: 92px; }
+  /* Arrastando o vídeo para baixo: ele segue o dedo, diminuindo, e o resto da página some aos poucos. */
+  #view-watch.drag-mini .watch-player { position: relative; z-index: 6; transform-origin: 50% 0; will-change: transform; }
+  #view-watch.drag-mini :is(.watch-info, .watch-side, .watch-comments) { opacity: calc(1 - var(--drag-p, 0)); }
 }
 
 /* =========================================================

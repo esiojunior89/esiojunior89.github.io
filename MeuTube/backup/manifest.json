@@ -1,6 +1,6 @@
 {
-  "name": "MeuTube",
-  "short_name": "MeuTube",
+  "name": "MyTube",
+  "short_name": "MyTube",
   "description": "Só os vídeos dos canais que você escolher.",
   "id": "./",
   "start_url": "./",
