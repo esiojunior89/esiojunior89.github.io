@@ -1,6 +1,6 @@
 'use strict';
 /* =========================================================
-   Credenciais do MyTube (página protegida) — o código da página
+   Credenciais do Canais (página protegida) — o código da página
    =========================================================
    Fica num arquivo separado (e não dentro do credenciais.html)
    por causa da política de segurança da página, que não deixa
@@ -78,7 +78,7 @@ $('#login-form').addEventListener('submit', async e => {
   card.classList.remove('shake');
   void card.offsetWidth;
   card.classList.add('shake');
-  btn.textContent = 'Entrar';
+  btn.textContent = 'Continuar';
   setTimeout(() => { btn.disabled = false; $('#login-pass').focus(); }, wait * 1000);
 });
 
@@ -122,7 +122,7 @@ $('#config-form').addEventListener('submit', e => {
     try { localStorage.removeItem(KEYS.authSession); } catch { /* ignora */ }
   }
   store.set(KEYS.config, { ...store.get(KEYS.config, {}), apiKey, clientId, loginServer });
-  msg.textContent = 'Credenciais salvas. O MyTube já está usando os novos valores.';
+  msg.textContent = 'Credenciais salvas. O Canais já está usando os novos valores.';
   msg.className = 'muted';
 });
 

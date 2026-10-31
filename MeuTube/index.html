@@ -3,150 +3,270 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0f0f12">
+  <meta name="theme-color" content="#F5F5F7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
   <!-- Política de segurança (CSP): o navegador só carrega scripts, vídeos e dados destes endereços.
        Se algum dia algo tentar injetar código no app, ele não roda nem consegue mandar seus dados
        (como o login do Google) para outro servidor. O servidor de login precisa ser um *.workers.dev. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline' https://accounts.google.com; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://www.googleapis.com https://accounts.google.com https://*.workers.dev; frame-src https://www.youtube.com https://accounts.google.com; media-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
-  <title>MyTube</title>
+  <title>Canais</title>
   <!-- Versão do app (SemVer). Mantida igual ao APP_VERSION do app.js e ao "?v=" dos arquivos abaixo:
        o número no endereço faz o navegador baixar a versão nova em vez de usar o cache. -->
-  <meta name="app-version" content="1.24.0">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -4 28 28'%3E%3Crect width='28' height='20' rx='6' fill='%23ff3d3d'/%3E%3Cpath d='M11.5 5.8v8.4L18.6 10z' fill='%23fff'/%3E%3C/svg%3E">
+  <meta name="app-version" content="1.25.0">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=1.25.0">
+  <link rel="icon" type="image/svg+xml" href="icons/favicon.svg?v=1.25.0">
   <!-- App instalável (abre em tela cheia no celular) -->
-  <link rel="manifest" href="manifest.json?v=1.24.0">
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=1.14.1">
+  <link rel="manifest" href="manifest.json?v=1.25.0">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=1.25.0">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Canais">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="preconnect" href="https://i.ytimg.com">
   <link rel="preconnect" href="https://www.googleapis.com">
   <link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=1.24.0">
+  <link rel="stylesheet" href="styles.css?v=1.25.0">
   <!-- Google Identity Services (login com Google) -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
-  <header class="topbar">
-    <button id="menu-btn" class="menu-btn" type="button" aria-label="Mostrar ou ocultar a lista de canais" aria-controls="sidebar" aria-expanded="true">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
-    </button>
-    <a class="brand" href="#/" data-nav="home" aria-label="Início">
-      <svg class="brand-logo" viewBox="0 0 28 20" aria-hidden="true">
-        <rect width="28" height="20" rx="6" fill="currentColor"/>
-        <path d="M11.5 5.8v8.4L18.6 10z" fill="#fff"/>
-      </svg>
-      <span>My<strong>Tube</strong></span>
-    </a>
+  <!-- Ícones (traço no estilo dos símbolos da Apple), usados em todo o app com <use href="#i-…"> -->
+  <svg class="sprite" aria-hidden="true" focusable="false">
+    <defs>
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="M3.5 10.6 12 3.8l8.5 6.8V19a1.6 1.6 0 0 1-1.6 1.6H15v-5.4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v5.4H5.1A1.6 1.6 0 0 1 3.5 19z"/></symbol>
+      <symbol id="i-home-f" viewBox="0 0 24 24"><path class="f" d="M12.6 3.3a1 1 0 0 0-1.2 0l-8.2 6.6a1.6 1.6 0 0 0-.6 1.2V19A2.2 2.2 0 0 0 4.8 21.2H9V15.6c0-.6.4-1 1-1h4c.6 0 1 .4 1 1v5.6h4.2A2.2 2.2 0 0 0 21.4 19v-7.9a1.6 1.6 0 0 0-.6-1.2z"/></symbol>
+      <symbol id="i-live" viewBox="0 0 24 24"><circle class="f" cx="12" cy="12" r="2.2"/><path d="M8.3 8.3a5.2 5.2 0 0 0 0 7.4M15.7 8.3a5.2 5.2 0 0 1 0 7.4M5.4 5.4a9.3 9.3 0 0 0 0 13.2M18.6 5.4a9.3 9.3 0 0 1 0 13.2"/></symbol>
+      <symbol id="i-stack" viewBox="0 0 24 24"><rect x="3.5" y="9" width="17" height="11.5" rx="2.8"/><path d="M6 6h12M8.5 3.2h7"/></symbol>
+      <symbol id="i-stack-f" viewBox="0 0 24 24"><rect class="f" x="3.5" y="9" width="17" height="11.5" rx="2.8"/><path d="M6 6h12M8.5 3.2h7"/></symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 20v-8M10 20V6M15 20v-9M20 20V4"/></symbol>
+      <symbol id="i-gear" viewBox="0 0 24 24"><path d="M10.3 3.2h3.4l.5 2.4c.6.2 1.2.6 1.7.9l2.3-.8 1.7 3-1.8 1.6a6.8 6.8 0 0 1 0 1.9l1.8 1.6-1.7 3-2.3-.8c-.5.4-1.1.7-1.7.9l-.5 2.4h-3.4l-.5-2.4a6.6 6.6 0 0 1-1.7-.9l-2.3.8-1.7-3 1.8-1.6a6.8 6.8 0 0 1 0-1.9L4.1 8.7l1.7-3 2.3.8c.5-.4 1.1-.7 1.7-.9z"/><circle cx="12" cy="12" r="2.9"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path class="f" d="M7.5 4.9v14.2c0 .9 1 1.5 1.8 1l11.4-7.1a1.2 1.2 0 0 0 0-2L9.3 3.9c-.8-.5-1.8.1-1.8 1z"/></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><rect class="f" x="6" y="4.5" width="4" height="15" rx="1.4"/><rect class="f" x="14" y="4.5" width="4" height="15" rx="1.4"/></symbol>
+      <symbol id="i-replay" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3L4.5 9"/><path d="M4.5 4.5V9H9"/></symbol>
+      <symbol id="i-prev" viewBox="0 0 24 24"><path class="f" d="M19 6.2v11.6c0 .8-.9 1.3-1.6.8L9.6 13a1.2 1.2 0 0 1 0-2l7.8-5.6c.7-.5 1.6 0 1.6.8z"/><rect class="f" x="5" y="5.5" width="2.6" height="13" rx="1.2"/></symbol>
+      <symbol id="i-next" viewBox="0 0 24 24"><path class="f" d="M5 6.2v11.6c0 .8.9 1.3 1.6.8l7.8-5.6a1.2 1.2 0 0 0 0-2L6.6 5.4C5.9 4.9 5 5.4 5 6.2z"/><rect class="f" x="16.4" y="5.5" width="2.6" height="13" rx="1.2"/></symbol>
+      <symbol id="i-back10" viewBox="0 0 24 24"><path d="M12 4.5a8 8 0 1 1-7.6 5.5"/><path d="M4 4.8v5.4h5.4"/><text x="12.4" y="15.7" font-size="7.4" font-weight="700" text-anchor="middle" class="f t">10</text></symbol>
+      <symbol id="i-fwd10" viewBox="0 0 24 24"><path d="M12 4.5a8 8 0 1 0 7.6 5.5"/><path d="M20 4.8v5.4h-5.4"/><text x="11.6" y="15.7" font-size="7.4" font-weight="700" text-anchor="middle" class="f t">10</text></symbol>
+      <symbol id="i-vol" viewBox="0 0 24 24"><path class="f" d="M4 9.3h3l4.2-3.7c.6-.5 1.5-.1 1.5.7v11.4c0 .8-.9 1.2-1.5.7L7 14.7H4a1 1 0 0 1-1-1V10.3a1 1 0 0 1 1-1z"/><path d="M15.6 9a4.2 4.2 0 0 1 0 6M18.4 6.4a8 8 0 0 1 0 11.2"/></symbol>
+      <symbol id="i-vol-low" viewBox="0 0 24 24"><path class="f" d="M4 9.3h3l4.2-3.7c.6-.5 1.5-.1 1.5.7v11.4c0 .8-.9 1.2-1.5.7L7 14.7H4a1 1 0 0 1-1-1V10.3a1 1 0 0 1 1-1z"/><path d="M15.6 9a4.2 4.2 0 0 1 0 6"/></symbol>
+      <symbol id="i-vol-off" viewBox="0 0 24 24"><path class="f" d="M4 9.3h3l4.2-3.7c.6-.5 1.5-.1 1.5.7v11.4c0 .8-.9 1.2-1.5.7L7 14.7H4a1 1 0 0 1-1-1V10.3a1 1 0 0 1 1-1z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/></symbol>
+      <symbol id="i-cc" viewBox="0 0 24 24"><rect x="3" y="5.5" width="18" height="13" rx="3.2"/><path d="M10.4 10.3a2.2 2.2 0 1 0 0 3.4M17 10.3a2.2 2.2 0 1 0 0 3.4"/></symbol>
+      <symbol id="i-pip" viewBox="0 0 24 24"><rect x="2.8" y="5" width="18.4" height="14" rx="3"/><rect class="f" x="11.5" y="11.5" width="7" height="5" rx="1.4"/></symbol>
+      <symbol id="i-expand" viewBox="0 0 24 24"><path d="M14.5 4H20v5.5M20 4l-6.2 6.2M9.5 20H4v-5.5M4 20l6.2-6.2"/></symbol>
+      <symbol id="i-collapse" viewBox="0 0 24 24"><path d="M14 4.5V10h5.5M20 4l-6 6M10 19.5V14H4.5M4 20l6-6"/></symbol>
+      <symbol id="i-theater" viewBox="0 0 24 24"><rect x="2.5" y="6.5" width="19" height="11" rx="2.6"/></symbol>
+      <symbol id="i-theater-off" viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="8" rx="2"/></symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.1"/><circle cx="9" cy="17" r="2.1"/></symbol>
+      <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20.2s-7.6-4.6-7.6-10.4A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.6 2.6c0 5.8-7.6 10.4-7.6 10.4z"/></symbol>
+      <symbol id="i-more" viewBox="0 0 24 24"><circle class="f" cx="6" cy="12" r="1.7"/><circle class="f" cx="12" cy="12" r="1.7"/><circle class="f" cx="18" cy="12" r="1.7"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+      <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9.5 5.5 6.5 6.5-6.5 6.5"/></symbol>
+      <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="M14.5 5.5 8 12l6.5 6.5"/></symbol>
+      <symbol id="i-chev-d" viewBox="0 0 24 24"><path d="m5.5 9.5 6.5 6.5 6.5-6.5"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-minus-c" viewBox="0 0 24 24"><circle class="f" cx="12" cy="12" r="9.2"/><path d="M8 12h8" class="w"/></symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+      <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M4 4l16 16M9.9 6A9.6 9.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-2.7 3.4M6.4 7.6A16.6 16.6 0 0 0 2.5 12S6 18.5 12 18.5a9 9 0 0 0 4.3-1.1M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+      <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.2c1.2-3.6 4.2-5.4 7.5-5.4s6.3 1.8 7.5 5.4"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.6"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol>
+      <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+      <symbol id="i-sync" viewBox="0 0 24 24"><path d="M19.5 10A7.6 7.6 0 0 0 6 6.6L4.5 8M4.5 14A7.6 7.6 0 0 0 18 17.4l1.5-1.4"/><path d="M4.5 4v4h4M19.5 20v-4h-4"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></symbol>
+      <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4.2"/><path d="m11 12 8.5-8.5M16 7l2.5 2.5M13.8 9.2l2 2"/></symbol>
+      <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M10 3.5 11.6 8 16 9.6l-4.4 1.6L10 15.7 8.4 11.2 4 9.6 8.4 8zM17.5 13.5l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9z"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.6v.2"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5.2l3.4 2"/></symbol>
+      <symbol id="i-sidebar" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="3"/><path d="M9.5 4.5v15M5.5 8.5h2M5.5 11.5h2"/></symbol>
+      <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 1.5M10 2.8h4"/></symbol>
+      <symbol id="i-infinity" viewBox="0 0 24 24"><path d="M12 12c-1.8-2.4-3.3-3.6-5-3.6a3.6 3.6 0 0 0 0 7.2c1.7 0 3.2-1.2 5-3.6zm0 0c1.8 2.4 3.3 3.6 5 3.6a3.6 3.6 0 0 0 0-7.2c-1.7 0-3.2 1.2-5 3.6z"/></symbol>
+      <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6.5" y="2.8" width="11" height="18.4" rx="2.8"/><path d="M10.5 5.6h3"/></symbol>
+      <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+      <symbol id="i-film" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M8 4.5v15M16 4.5v15M3.5 9.5H8M3.5 14.5H8M16 9.5h4.5M16 14.5h4.5"/></symbol>
+      <symbol id="i-medal" viewBox="0 0 24 24"><circle cx="12" cy="14.5" r="5.5"/><path d="M8.5 9.6 6 3.5h4l2 4M15.5 9.6 18 3.5h-4l-1.3 2.6"/></symbol>
+      <symbol id="i-check-c" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12.3 2.8 2.8 5.2-5.6"/></symbol>
+      <symbol id="i-bubble" viewBox="0 0 24 24"><path d="M4 11.5c0-4 3.6-7 8-7s8 3 8 7-3.6 7-8 7a9 9 0 0 1-2.6-.4L5 19.8l1.2-3.6A6.6 6.6 0 0 1 4 11.5z"/></symbol>
+      <symbol id="i-thumb" viewBox="0 0 24 24"><path d="M7.5 10.5v9.5H4.8a1.3 1.3 0 0 1-1.3-1.3v-6.9c0-.7.6-1.3 1.3-1.3zM7.5 10.5 11 3.6a2 2 0 0 1 2.9 1.9L13.4 9h5a2 2 0 0 1 2 2.4l-1.3 6.8a2.2 2.2 0 0 1-2.2 1.8H7.5"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.6"/><path d="M16 8V6.6A2.6 2.6 0 0 0 13.4 4H6.6A2.6 2.6 0 0 0 4 6.6v6.8A2.6 2.6 0 0 0 6.6 16H8"/></symbol>
+      <symbol id="i-google" viewBox="0 0 48 48"><path fill="#FFC107" stroke="none" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" stroke="none" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" stroke="none" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" stroke="none" d="M43.6 20.5H42V20H24v8h11.3a12 12 0 0 1-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></symbol>
+    </defs>
+  </svg>
 
-    <div id="account" class="account"></div>
-  </header>
+  <!-- ============ MENU LATERAL (computador): vidro flutuante ============ -->
+  <aside id="sidebar" class="sidebar glass" aria-label="Navegação e canais">
+    <div class="side-head">
+      <a class="brand" href="#/" data-nav="home" aria-label="Canais — Início">
+        <span class="brand-icon" id="brand-icon"></span>
+        <b class="brand-name">Canais</b>
+      </a>
+      <button id="menu-btn" class="side-toggle" type="button" aria-label="Recolher ou expandir o menu" title="Recolher ou expandir o menu" aria-controls="sidebar" aria-expanded="true">
+        <svg class="ic"><use href="#i-sidebar"/></svg>
+      </button>
+    </div>
+    <label class="side-search">
+      <svg class="ic"><use href="#i-search"/></svg>
+      <input id="side-search" type="search" placeholder="Buscar" autocomplete="off" spellcheck="false" aria-label="Buscar vídeos e canais">
+    </label>
 
-  <!-- ============ MENU LATERAL (canais) ============ -->
-  <aside id="sidebar" class="sidebar" aria-label="Seus canais">
-    <nav class="side-nav">
-      <a class="side-item" href="#/" data-channel="" title="Todos os canais">
-        <span class="side-icon">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z"/></svg>
-        </span>
-        <span class="side-label">Todos os canais</span>
+    <nav class="side-nav" aria-label="Biblioteca">
+      <a class="side-item" href="#/" data-channel="" data-nav="home" title="Início">
+        <span class="side-icon"><svg class="ic"><use href="#i-home"/></svg></span>
+        <span class="side-label">Início</span>
+      </a>
+      <a class="side-item" href="#/live" data-nav="live" title="Ao Vivo">
+        <span class="side-icon"><svg class="ic"><use href="#i-live"/></svg></span>
+        <span class="side-label">Ao Vivo</span>
+        <span id="lives-count" class="side-count"></span>
       </a>
     </nav>
-    <div class="side-sep"></div>
 
-    <!-- Metade de cima: canais (rola sozinha se a lista for grande) -->
-    <section class="side-section side-section-channels" aria-labelledby="side-channels-title">
-      <h3 class="side-title" id="side-channels-title">Canais</h3>
-      <div id="side-channels" class="side-scroll"></div>
-    </section>
-
-    <div class="side-sep side-sep-lives"></div>
-
-    <!-- Metade de baixo: só os canais que estão ao vivo agora (verificado só com o menu expandido) -->
-    <section class="side-section side-section-lives" aria-labelledby="side-lives-title">
-      <h3 class="side-title" id="side-lives-title">
-        <span class="live-dot" aria-hidden="true"></span>Ao vivo <span id="lives-count" class="pill"></span>
-      </h3>
+    <!-- Lives que estão no ar agora (verificadas só com o menu expandido ou na página Ao Vivo) -->
+    <section class="side-section side-section-lives" aria-label="Ao vivo agora">
       <div id="side-lives" class="side-scroll"></div>
     </section>
 
-    <!-- Rodapé do menu: ocultar assistidos, estatísticas, configurações e versão (só ícones, discretos) -->
+    <!-- Canais (rolam sozinhos se a lista for grande) -->
+    <section class="side-section side-section-channels" aria-labelledby="side-channels-title">
+      <h3 class="side-title" id="side-channels-title"><span>Canais</span>
+        <a class="side-add" href="#/settings/canais" title="Adicionar canal" aria-label="Adicionar canal"><svg class="ic"><use href="#i-plus"/></svg></a>
+      </h3>
+      <div id="side-channels" class="side-scroll"></div>
+    </section>
+
     <div class="side-footer">
-      <button id="watched-toggle" class="side-icon-btn" type="button" aria-pressed="false"></button>
-      <a class="side-icon-btn" href="#/stats" data-nav="stats" title="Estatísticas" aria-label="Estatísticas">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16v2H4zM5 10h3v7H5zm5.5-6h3v13h-3zM16 13h3v4h-3z"/></svg>
+      <a class="side-item" href="#/stats" data-nav="stats" title="Estatísticas">
+        <span class="side-icon"><svg class="ic"><use href="#i-chart"/></svg></span>
+        <span class="side-label">Estatísticas</span>
       </a>
-      <a class="side-icon-btn" href="#/settings" data-nav="settings" title="Configurações" aria-label="Configurações">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.3 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>
+      <a class="side-item" href="#/settings" data-nav="settings" title="Ajustes">
+        <span class="side-icon"><svg class="ic"><use href="#i-gear"/></svg></span>
+        <span class="side-label">Ajustes</span>
       </a>
-      <span id="app-version" class="app-version" title="Versão do MyTube"></span>
+      <div id="account" class="account"></div>
     </div>
   </aside>
   <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
 
   <main>
-    <!-- ============ INÍCIO ============ -->
+    <!-- ============ INÍCIO (e página de cada canal) ============ -->
     <section id="view-home" class="view" aria-label="Vídeos dos seus canais">
       <div class="home-wrap">
-        <div id="feed-header" class="feed-header" hidden></div>
+        <header id="home-head" class="page-head home-head">
+          <div class="page-title">
+            <span id="home-date" class="eyebrow"></span>
+            <h1 class="t-large">Início</h1>
+          </div>
+          <div id="home-actions" class="head-actions">
+            <button id="watched-toggle" class="pill-glass glass" type="button" aria-pressed="false"></button>
+            <button id="refresh-btn" class="round-glass glass" type="button" title="Atualizar" aria-label="Atualizar os vídeos">
+              <svg class="ic"><use href="#i-sync"/></svg>
+            </button>
+            <a id="account-mini" class="account-mini" href="#/settings/conta" aria-label="Conta"></a>
+          </div>
+        </header>
+        <nav id="home-chips" class="chips-row" aria-label="Filtrar por canal"></nav>
+        <div id="feed-header" class="channel-banner" hidden></div>
+        <div id="search-note" class="search-note" hidden></div>
         <div id="feed" class="feed-grid"></div>
         <div id="feed-skeletons" class="feed-grid skeleton-grid" hidden></div>
         <div id="feed-status" class="feed-status"></div>
         <div id="feed-sentinel" class="sentinel" aria-hidden="true"></div>
       </div>
-      <button id="to-top" class="to-top" type="button" aria-label="Voltar ao topo">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5 5 12l1.4 1.4L11 8.8V20h2V8.8l4.6 4.6L19 12z"/></svg>
+      <button id="to-top" class="to-top glass" type="button" aria-label="Voltar ao topo">
+        <svg class="ic"><use href="#i-chev-d"/></svg>
       </button>
+    </section>
+
+    <!-- ============ AO VIVO ============ -->
+    <section id="view-live" class="view" hidden>
+      <header class="page-head"><div class="page-title"><span class="eyebrow">Agora</span><h1 class="t-large">Ao Vivo</h1></div></header>
+      <div id="live-list" class="feed-grid live-grid"></div>
+    </section>
+
+    <!-- ============ CANAIS (lista; a aba "Canais" do celular) ============ -->
+    <section id="view-channels" class="view" hidden>
+      <header class="page-head">
+        <div class="page-title"><h1 class="t-large">Canais</h1></div>
+        <a class="round-glass glass tint-ic" href="#/settings/canais" title="Adicionar canal" aria-label="Adicionar canal"><svg class="ic"><use href="#i-plus"/></svg></a>
+      </header>
+      <label class="field big-field">
+        <svg class="ic"><use href="#i-search"/></svg>
+        <input id="channels-search" type="search" placeholder="Buscar nos seus canais" autocomplete="off" spellcheck="false" aria-label="Buscar nos seus canais">
+      </label>
+      <div id="channels-page"></div>
     </section>
 
     <!-- ============ PLAYER ============ -->
     <section id="view-watch" class="view" hidden>
+      <!-- Modo Cinema: barra própria (o menu lateral some) -->
+      <div id="cinema-bar" class="cinema-bar">
+        <button class="round-glass glass" type="button" data-action="cinema-sidebar" title="Menu" aria-label="Mostrar o menu"><svg class="ic"><use href="#i-sidebar"/></svg></button>
+        <button class="round-glass glass" type="button" data-action="cinema-back" title="Voltar" aria-label="Voltar"><svg class="ic"><use href="#i-chev-l"/></svg></button>
+        <strong>Modo Cinema</strong>
+      </div>
       <div class="watch-layout">
         <div class="watch-player">
           <div class="player-wrap">
             <div id="player"></div>
             <!-- Camada sobre o vídeo: clique/toque pausa ou continua, clique duplo alterna a tela cheia. -->
             <div id="player-overlay" class="player-overlay" aria-hidden="true"></div>
-            <!-- Faixa de título (logo do canal, título e canal): aparece junto com a barra de baixo. -->
-            <div id="pc-top" class="pc-top" aria-hidden="true"></div>
+            <div class="pc-shade" aria-hidden="true"></div>
+            <!-- Topo: título do vídeo (esquerda) e botões (direita) -->
+            <div class="pc-topbar">
+              <button id="pc-down" class="pc-btn pc-glass pc-circle" type="button" title="Minimizar" aria-label="Minimizar o vídeo"><svg class="ic"><use href="#i-chev-d"/></svg></button>
+              <div id="pc-top" class="pc-top" aria-hidden="true"></div>
+              <div id="pc-topright" class="pc-topright">
+                <button id="pc-pip" class="pc-btn pc-glass pc-circle" type="button" title="Mini player" aria-label="Mini player"><svg class="ic"><use href="#i-pip"/></svg></button>
+                <button id="pc-more" class="pc-btn pc-glass pc-circle" type="button" title="Mais opções" aria-label="Mais opções" aria-haspopup="menu"><svg class="ic"><use href="#i-more"/></svg></button>
+              </div>
+            </div>
+            <!-- Centro: voltar 10 s, play/pausa, avançar 10 s -->
+            <div id="pc-center" class="pc-center">
+              <button id="pc-back10" class="pc-btn pc-glass pc-circle pc-mid" type="button" title="Voltar 10 s (j)" aria-label="Voltar 10 segundos"><svg class="ic"><use href="#i-back10"/></svg></button>
+              <button id="pc-play" class="pc-btn pc-glass pc-circle pc-big" type="button"></button>
+              <button id="pc-fwd10" class="pc-btn pc-glass pc-circle pc-mid" type="button" title="Avançar 10 s (l)" aria-label="Avançar 10 segundos"><svg class="ic"><use href="#i-fwd10"/></svg></button>
+            </div>
             <!-- Controles do app (os do YouTube ficam desligados): nenhum menu fica atrás da camada. -->
             <div id="player-ui" class="player-ui">
               <div id="pc-menu" class="pc-menu" role="menu" hidden></div>
-              <div id="pc-progress" class="pc-progress" role="slider" aria-label="Barra de progresso">
-                <div class="pc-progress-track">
-                  <div class="pc-progress-loaded"></div>
-                  <div class="pc-progress-played"></div>
-                </div>
-                <div class="pc-progress-thumb"></div>
-                <div id="pc-tip" class="pc-tip" hidden></div>
-              </div>
               <div class="pc-bar">
-                <button id="pc-play" class="pc-btn pc-round" type="button"></button>
-                <div class="pc-pill pc-skip">
+                <div class="pc-pill pc-skip pc-glass">
                   <button id="pc-prev" class="pc-btn" type="button"></button>
                   <button id="pc-next" class="pc-btn" type="button"></button>
                 </div>
-                <div class="pc-pill pc-volume">
-                  <button id="pc-mute" class="pc-btn" type="button"></button>
-                  <input id="pc-volume" class="pc-slider" type="range" min="0" max="100" step="1" value="100" aria-label="Volume">
+                <div class="pc-pill pc-track pc-glass">
+                  <div id="pc-time" class="pc-time"></div>
+                  <div id="pc-progress" class="pc-progress" role="slider" aria-label="Barra de progresso">
+                    <div class="pc-progress-track">
+                      <div class="pc-progress-loaded"></div>
+                      <div class="pc-progress-played"></div>
+                    </div>
+                    <div class="pc-progress-thumb"></div>
+                    <div id="pc-tip" class="pc-tip" hidden></div>
+                  </div>
+                  <div id="pc-remain" class="pc-time pc-remain"></div>
                 </div>
-                <div id="pc-time" class="pc-pill pc-time"></div>
-                <div class="pc-spacer"></div>
-                <div class="pc-pill pc-right">
-                  <button id="pc-autoplay" class="pc-btn pc-switch" type="button" role="switch" aria-checked="true">
-                    <span class="pc-switch-track"><span class="pc-switch-knob"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="pc-sw-play" d="M8 5v14l11-7z"/><path class="pc-sw-pause" d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg></span></span>
-                  </button>
+                <div class="pc-pill pc-right pc-glass">
+                  <div class="pc-volume">
+                    <button id="pc-mute" class="pc-btn" type="button"></button>
+                    <input id="pc-volume" class="pc-slider" type="range" min="0" max="100" step="1" value="100" aria-label="Volume">
+                  </div>
                   <button id="pc-cc" class="pc-btn" type="button" aria-pressed="false"></button>
-                  <button id="pc-settings" class="pc-btn pc-gear" type="button" aria-haspopup="menu" aria-expanded="false" title="Configurações" aria-label="Configurações">
+                  <button id="pc-autoplay" class="pc-btn pc-switch" type="button" role="switch" aria-checked="true">
+                    <span class="pc-switch-track"><span class="pc-switch-knob"></span></span>
+                  </button>
+                  <button id="pc-settings" class="pc-btn pc-gear" type="button" aria-haspopup="menu" aria-expanded="false" title="Qualidade e velocidade" aria-label="Qualidade e velocidade">
                     <span id="pc-quality" class="pc-quality" hidden></span>
                   </button>
-                  <button id="pc-theater" class="pc-btn" type="button" aria-pressed="false" title="Modo teatro (t)" aria-label="Modo teatro (t)"></button>
+                  <button id="pc-theater" class="pc-btn" type="button" aria-pressed="false" title="Modo Cinema (t)" aria-label="Modo Cinema (t)"></button>
                   <button id="player-fs" class="pc-btn" type="button" aria-label="Tela cheia (f)" title="Tela cheia (f)"></button>
                 </div>
               </div>
             </div>
             <div id="player-error" class="player-error" hidden></div>
-            <!-- Mini player (o vídeo continua tocando no canto enquanto você navega): controles por cima do vídeo. -->
+            <!-- Mini player (o vídeo continua tocando enquanto você navega): controles por cima do vídeo. -->
             <div id="mini-ui" class="mini-ui">
               <button class="mini-btn mini-expand" type="button" data-mini="expand" title="Expandir" aria-label="Expandir"></button>
               <button class="mini-btn mini-close" type="button" data-mini="close" title="Fechar" aria-label="Fechar"></button>
@@ -154,15 +274,18 @@
               <div class="mini-progress" aria-hidden="true"><span></span></div>
             </div>
           </div>
-          <!-- Mini player: título e canal embaixo do vídeo (no celular, numa faixa no rodapé, com play e fechar). -->
+          <!-- Mini player: título e canal embaixo do vídeo (no celular, numa cápsula de vidro acima das abas). -->
           <div id="mini-info" class="mini-info" data-mini="expand">
             <div class="mini-info-text">
               <div class="mini-info-title"></div>
               <div class="mini-info-channel"></div>
             </div>
+            <button class="mini-btn mini-prev" type="button" data-mini="prev" title="Anterior" aria-label="Anterior"></button>
             <button class="mini-btn mini-play" type="button" data-mini="play" aria-label="Pausar"></button>
+            <button class="mini-btn mini-next" type="button" data-mini="next" title="Próximo" aria-label="Próximo"></button>
             <button class="mini-btn mini-close" type="button" data-mini="close" title="Fechar" aria-label="Fechar"></button>
           </div>
+          <div id="drag-hint" class="drag-hint glass-dark" aria-hidden="true"><svg class="ic"><use href="#i-chev-d"/></svg>Solte para minimizar</div>
         </div>
 
         <div id="watch-info" class="watch-info"></div>
@@ -170,15 +293,16 @@
         <aside class="watch-side" aria-label="Próximos vídeos">
           <div class="side-head">
             <h2>A seguir</h2>
+            <div id="upnext-seg" class="seg seg-cap" role="group" aria-label="Vídeos seguintes" hidden></div>
           </div>
           <div id="upnext" class="upnext"></div>
-          <button id="upnext-more" class="btn btn-ghost btn-block" type="button" hidden>Mostrar mais</button>
+          <button id="upnext-more" class="btn btn-fill btn-block" type="button" hidden>Mostrar mais</button>
         </aside>
 
         <section class="watch-comments" aria-label="Comentários">
           <h2 id="comments-title">Comentários</h2>
           <div id="comments-list" class="comments-list"></div>
-          <button id="comments-more" class="btn btn-ghost" type="button" hidden>Carregar mais comentários</button>
+          <button id="comments-more" class="btn btn-fill" type="button" hidden>Carregar mais comentários</button>
         </section>
       </div>
     </section>
@@ -188,57 +312,109 @@
       <div id="stats" class="stats"></div>
     </section>
 
-    <!-- ============ CONFIGURAÇÕES ============ -->
+    <!-- ============ AJUSTES ============ -->
     <section id="view-settings" class="view" hidden>
       <div class="settings">
-        <h1>Configurações</h1>
+        <header class="page-head settings-head">
+          <div class="page-title">
+            <a class="back-link" href="#/settings" data-sub-back><svg class="ic"><use href="#i-chev-l"/></svg>Ajustes</a>
+            <h1 class="t-large" id="settings-title">Ajustes</h1>
+          </div>
+          <span id="app-version" class="app-version"></span>
+        </header>
 
-        <article class="card">
-          <h2>Conta Google</h2>
-          <div id="account-panel"></div>
-        </article>
+        <div class="settings-cols">
+          <div class="settings-col">
+            <!-- Conta -->
+            <section class="set-sec" data-sec="conta">
+              <div class="group" id="account-card"></div>
+              <div class="set-detail" data-detail="conta">
+                <div id="account-panel"></div>
+              </div>
+            </section>
 
-        <article class="card">
-          <h2>Canais <span id="channel-count" class="pill"></span></h2>
-          <p class="muted">
-            Cole o link do canal no formato <code>https://www.youtube.com/@canal</code> (abra o canal no YouTube e copie
-            o endereço). Você pode adicionar vários de uma vez, separados por vírgula.
-            Somente vídeos destes canais aparecem no app. Ative <strong>“Apenas lives”</strong> num canal para que ele
-            não apareça no Início nem na lista de canais — só em “Ao vivo”, quando estiver transmitindo.
-          </p>
-          <form id="channel-form" class="inline-form" autocomplete="off">
-            <input id="channel-input" type="text" placeholder="https://www.youtube.com/@canal" aria-label="Canal do YouTube" required>
-            <button class="btn btn-primary" type="submit">Adicionar</button>
-          </form>
-          <ul id="channel-list" class="channel-list"></ul>
-        </article>
+            <!-- Celular: atalho para a lista de canais -->
+            <section class="set-sec set-compact-only" data-sec="atalhos">
+              <div class="group">
+                <a class="row row-link" href="#/settings/canais"><span class="sq-ic" style="--c:var(--peri)"><svg class="ic"><use href="#i-stack"/></svg></span><span class="grow">Canais</span><span class="row-value" id="channel-count-row"></span><svg class="ic chev"><use href="#i-chev-r"/></svg></a>
+                <label class="row"><span class="sq-ic" style="--c:var(--coral)"><svg class="ic"><use href="#i-infinity"/></svg></span><span class="grow">Reprodução automática</span><input class="switch" type="checkbox" data-setting="autoplay"></label>
+                <label class="row"><span class="sq-ic" style="--c:var(--mocha)"><svg class="ic"><use href="#i-eye-off"/></svg></span><span class="grow">Ocultar assistidos</span><input class="switch" type="checkbox" data-setting="hide-watched"></label>
+              </div>
+            </section>
 
-        <article class="card" id="install-card">
-          <h2>App no celular</h2>
-          <div id="install-panel"></div>
-        </article>
+            <!-- Canais -->
+            <section class="set-sec" data-sec="canais">
+              <h2 class="grp-title">Canais <span id="channel-count" class="grp-count"></span></h2>
+              <div class="group">
+                <form id="channel-form" class="row add-row" autocomplete="off">
+                  <label class="field"><svg class="ic"><use href="#i-link"/></svg>
+                    <input id="channel-input" type="text" placeholder="https://www.youtube.com/@canal" aria-label="Link do canal do YouTube" required>
+                  </label>
+                  <button class="btn btn-tint" type="submit">Adicionar</button>
+                </form>
+                <ul id="channel-list" class="channel-list"></ul>
+              </div>
+              <p class="grp-foot">Cole o link do canal no formato <code>https://www.youtube.com/@canal</code> (abra o canal no
+                YouTube e copie o endereço); vários de uma vez, separados por vírgula. Só os vídeos destes canais aparecem no app.
+                O limite de duração esconde vídeos mais longos; com <strong>“Só lives”</strong> o canal some do Início e da lista
+                de canais e aparece só em “Ao Vivo”, quando estiver transmitindo.</p>
+            </section>
+          </div>
 
-        <article class="card">
-          <h2>Credenciais da API</h2>
-          <p class="muted">Chave da YouTube Data API, Client ID do Google e servidor de login ficam numa página
-            separada, protegida por usuário e senha.</p>
-          <a id="cred-link" class="btn btn-ghost" href="credenciais.html">Abrir credenciais</a>
-        </article>
+          <div class="settings-col">
+            <section class="set-sec set-regular-only" data-sec="reproducao">
+              <h2 class="grp-title">Reprodução</h2>
+              <div class="group">
+                <label class="row"><span class="sq-ic" style="--c:var(--peri)"><svg class="ic"><use href="#i-infinity"/></svg></span><span class="grow">Reprodução automática</span><input class="switch" type="checkbox" data-setting="autoplay"></label>
+                <label class="row"><span class="sq-ic" style="--c:var(--coral)"><svg class="ic"><use href="#i-eye-off"/></svg></span><span class="grow">Ocultar assistidos no Início</span><input class="switch" type="checkbox" data-setting="hide-watched"></label>
+              </div>
+            </section>
 
-        <article class="card">
-          <h2>Novidades</h2>
-          <p class="muted">Veja o que mudou em cada versão do MyTube.</p>
-          <a class="btn btn-ghost" href="https://esiojunior89.github.io/MeuTube/changelog.html" target="_blank" rel="noopener">Ver o changelog</a>
-        </article>
+            <section class="set-sec" data-sec="sync">
+              <h2 class="grp-title">Sincronização</h2>
+              <div class="group" id="sync-group"></div>
+              <div id="sync-status" class="grp-foot"></div>
+            </section>
 
-        <footer id="settings-footer" class="settings-footer"></footer>
+            <section class="set-sec" data-sec="mais">
+              <div class="group">
+                <a class="row row-link" href="#/settings/app" id="install-card"><span class="sq-ic" style="--c:var(--green)"><svg class="ic"><use href="#i-download"/></svg></span><span class="grow"><span class="set-regular-only">App no celular</span><span class="set-compact-only">Instalar o app</span></span><svg class="ic chev"><use href="#i-chev-r"/></svg></a>
+                <a class="row row-link" id="cred-link" href="credenciais.html"><span class="sq-ic" style="--c:#636366"><svg class="ic"><use href="#i-key"/></svg></span><span class="grow">Credenciais da API</span><svg class="ic chev"><use href="#i-chev-r"/></svg></a>
+                <a class="row row-link" href="https://esiojunior89.github.io/MeuTube/changelog.html" target="_blank" rel="noopener"><span class="sq-ic" style="--c:var(--magenta)"><svg class="ic"><use href="#i-sparkles"/></svg></span><span class="grow">Novidades</span><span class="row-value" data-version></span><svg class="ic chev"><use href="#i-chev-r"/></svg></a>
+                <a class="row row-link" href="#/settings/sobre"><span class="sq-ic" style="--c:var(--gray)"><svg class="ic"><use href="#i-info"/></svg></span><span class="grow">Sobre o Canais</span><svg class="ic chev"><use href="#i-chev-r"/></svg></a>
+              </div>
+            </section>
+
+            <!-- Subpáginas -->
+            <section class="set-sec set-detail" data-detail="app">
+              <div class="group group-pad" id="install-panel"></div>
+            </section>
+            <section class="set-sec set-detail" data-detail="sobre">
+              <div class="group group-pad">
+                <div class="about-brand"><span id="about-icon"></span><div><strong>Canais</strong><span>Só o que você segue.</span></div></div>
+                <footer id="settings-footer" class="settings-footer"></footer>
+              </div>
+            </section>
+          </div>
+        </div>
       </div>
     </section>
   </main>
 
+  <!-- ============ ABAS (celular e janelas estreitas): vidro flutuante ============ -->
+  <nav id="tabbar" class="tabbar glass" aria-label="Seções">
+    <span class="tab-pill" aria-hidden="true"></span>
+    <a class="tab" href="#/" data-tab="home"><svg class="ic ic-off"><use href="#i-home"/></svg><svg class="ic ic-on"><use href="#i-home-f"/></svg><span>Início</span></a>
+    <a class="tab" href="#/live" data-tab="live"><svg class="ic"><use href="#i-live"/></svg><span>Ao Vivo</span><i class="tab-dot" hidden></i></a>
+    <a class="tab" href="#/channels" data-tab="channels"><svg class="ic ic-off"><use href="#i-stack"/></svg><svg class="ic ic-on"><use href="#i-stack-f"/></svg><span>Canais</span></a>
+    <a class="tab" href="#/stats" data-tab="stats"><svg class="ic"><use href="#i-chart"/></svg><span>Estatísticas</span></a>
+    <a class="tab" href="#/settings" data-tab="settings"><svg class="ic"><use href="#i-gear"/></svg><span>Ajustes</span></a>
+  </nav>
+
+  <div id="menu-pop" class="menu-pop glass" role="menu" hidden></div>
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
-  <script src="config.js?v=1.24.0"></script>
-  <script src="app.js?v=1.24.0"></script>
+  <script src="config.js?v=1.25.0"></script>
+  <script src="app.js?v=1.25.0"></script>
 </body>
 </html>

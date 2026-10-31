@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.23.0';
+const APP_VERSION = '1.24.0';
 
 /* =========================================================
    MyTube — só os vídeos dos canais que você escolher
@@ -1967,7 +1967,7 @@ async function skipUnplayable(id, { persist = true } = {}) {
   watchHistory.stack = watchHistory.stack.filter(x => x !== id);
   if (watchHistory.last === id) watchHistory.last = null;
   saveWatchHistory();
-  location.replace(watchHref(next.id));
+  replaceRoute(watchHref(next.id));
 }
 
 /* ---------- Vídeo que trava ou dá erro no meio ----------
@@ -2822,6 +2822,7 @@ function canMini() {
 
 function startMini() {
   mini.on = true;
+  clearDragMini(); // veio do gesto de arrastar: a barra assume daqui
   mini.context = watchContext(); // filtro em que o vídeo estava (para expandir no mesmo "A seguir")
   $('#pc-menu').hidden = true;
   $('#pc-settings').setAttribute('aria-expanded', 'false');
@@ -2921,6 +2922,121 @@ function setupMini() {
   };
   $('#mini-ui').addEventListener('click', act);
   $('#mini-info').addEventListener('click', act);
+}
+
+/* =========================================================
+   Celular: arrastar o vídeo para baixo
+   =========================================================
+   Na página do vídeo, arrastar o vídeo para baixo o leva para a barra
+   inferior; ao fundo abre a última página que não é de vídeo (a mesma
+   em que você estava antes de abrir vídeos, na mesma posição), como o
+   botão voltar. Soltando antes de ~1/4 da tela, ele volta ao lugar.
+   Em tela cheia, o mesmo gesto só sai da tela cheia. No PC, nada muda. */
+const DRAG_MINI_SLOP = 10;          // px até decidir se o gesto é para baixo
+const DRAG_MINI_DISTANCE = 0.25;    // fração da altura da tela para soltar e virar barra
+const DRAG_MINI_FLICK = 0.6;        // ou um puxão rápido (px/ms)...
+const DRAG_MINI_FLICK_MIN = 40;     // ...de pelo menos 40 px
+const drag = { on: false, active: false, x: 0, y: 0, dy: 0, fs: false, samples: [], leaving: 0 };
+const dragMiniQuery = matchMedia('(max-width: 760px)');
+
+const dragMiniAllowed = () => isMobile() && dragMiniQuery.matches && state.view === 'watch' && !mini.on;
+
+/** Tira o vídeo da posição do arrasto (a barra inferior ou a página do vídeo assumem). */
+function clearDragMini() {
+  clearTimeout(drag.leaving);
+  drag.leaving = 0;
+  const view = $('#view-watch');
+  view.classList.remove('drag-mini');
+  view.style.removeProperty('--drag-p');
+  $('.watch-player').style.transform = '';
+}
+
+/** Leva à página de fundo: volta no histórico até ela (ou troca o endereço, se ela não estiver lá). */
+function dragToMini() {
+  const page = lastPage?.hash ? lastPage : null;
+  const target = page?.hash || '#/';
+  navRestore = { hash: target, scroll: page?.scroll ?? 0 };
+  if (page && page.idx < nav.idx && nav.hashes[page.idx] === page.hash) history.go(page.idx - nav.idx);
+  else replaceRoute(target);
+  // Se a navegação não acontecer (não deveria), o vídeo volta ao lugar.
+  drag.leaving = setTimeout(() => { if (state.view === 'watch') snapBackDragMini(); }, 1200);
+}
+
+function snapBackDragMini() {
+  const box = $('.watch-player');
+  const from = box.style.transform;
+  const view = $('#view-watch');
+  if (!from || !motionOK()) { clearDragMini(); return; }
+  const p = parseFloat(view.style.getPropertyValue('--drag-p')) || 0;
+  box.animate([{ transform: from }, { transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.2, .9, .3, 1)' });
+  view.querySelectorAll(':is(.watch-info, .watch-side, .watch-comments)').forEach(el => {
+    el.animate([{ opacity: 1 - p }, { opacity: 1 }], { duration: 320, easing: 'ease-out' });
+  });
+  clearDragMini();
+}
+
+function setupDragToMini() {
+  const wrap = $('.player-wrap');
+  const ignore = t => t.closest('button, input, .pc-progress, .pc-menu, .pc-pill');
+  wrap.addEventListener('touchstart', e => {
+    drag.on = false;
+    if (e.touches.length !== 1 || ignore(e.target)) return;
+    const fs = document.fullscreenElement;
+    drag.fs = Boolean(fs && (fs === wrap || wrap.contains(fs)));
+    if (!drag.fs && !dragMiniAllowed()) return;
+    if (drag.fs && !isMobile()) return;
+    const t = e.touches[0];
+    Object.assign(drag, { on: true, active: false, x: t.clientX, y: t.clientY, dy: 0, samples: [{ y: t.clientY, at: performance.now() }] });
+  }, { passive: true });
+
+  wrap.addEventListener('touchmove', e => {
+    if (!drag.on) return;
+    const t = e.touches[0];
+    const dx = t.clientX - drag.x;
+    const dy = t.clientY - drag.y;
+    if (!drag.active) {
+      if (Math.abs(dx) < DRAG_MINI_SLOP && Math.abs(dy) < DRAG_MINI_SLOP) {
+        if (dy > 0 && e.cancelable) e.preventDefault(); // ainda decidindo: a página não rola para baixo
+        return;
+      }
+      if (dy <= 0 || dy < Math.abs(dx) * 1.2) { drag.on = false; return; } // para cima ou para o lado: não é o gesto
+      drag.active = true;
+      setControlsVisible(false);
+      if (!drag.fs) $('#view-watch').classList.add('drag-mini');
+    }
+    if (e.cancelable) e.preventDefault();
+    drag.dy = Math.max(0, dy);
+    drag.samples.push({ y: t.clientY, at: performance.now() });
+    if (drag.samples.length > 6) drag.samples.shift();
+    if (drag.fs) return;
+    const p = Math.min(1, drag.dy / (innerHeight * 0.6));
+    $('.watch-player').style.transform = `translateY(${drag.dy}px) scale(${1 - p * 0.3})`;
+    $('#view-watch').style.setProperty('--drag-p', p.toFixed(3));
+  }, { passive: false });
+
+  const end = e => {
+    if (!drag.on) return;
+    drag.on = false;
+    if (!drag.active) return;
+    drag.active = false;
+    // Depois de arrastar, o toque não conta como clique (pausar/continuar).
+    const block = ev => { ev.stopPropagation(); ev.preventDefault(); };
+    addEventListener('click', block, { capture: true, once: true });
+    setTimeout(() => removeEventListener('click', block, { capture: true }), 400);
+    const first = drag.samples[0];
+    const last = drag.samples.at(-1);
+    const speed = last && first && last.at > first.at ? (last.y - first.y) / (last.at - first.at) : 0;
+    const go = e.type === 'touchend'
+      && (drag.dy > innerHeight * DRAG_MINI_DISTANCE || (speed > DRAG_MINI_FLICK && drag.dy > DRAG_MINI_FLICK_MIN));
+    if (drag.fs) {
+      if (go) document.exitFullscreen?.();
+      return;
+    }
+    if (go && dragMiniAllowed()) dragToMini();
+    else snapBackDragMini();
+  };
+  wrap.addEventListener('touchend', end);
+  wrap.addEventListener('touchcancel', end);
 }
 
 /* =========================================================
@@ -3304,7 +3420,7 @@ function skipNonMyTube(id) {
     return;
   }
   goingBack = false;
-  location.replace('#/');
+  replaceRoute('#/');
 }
 
 /** Vídeos seguintes = os próximos do feed (mais antigos) depois do vídeo atual. */
@@ -4106,6 +4222,36 @@ function renderSyncStatus() {
    ========================================================= */
 let pendingHero = null;
 
+/* Histórico do navegador: cada entrada ganha um número (history.state.mtIdx). Assim o gesto de
+   arrastar o vídeo para baixo (celular) volta exatamente à entrada da última página que não é de
+   vídeo, como o botão voltar faria, e o voltar do Android depois dele não reabre o vídeo. */
+const nav = { idx: -1, hashes: [], replacing: false };
+/** Última página que não é de vídeo: endereço, entrada do histórico e posição da rolagem. */
+let lastPage = null;
+/** Rolagem a restaurar quando o gesto chega à página de fundo. */
+let navRestore = null;
+
+const currentHash = () => location.hash || '#/';
+
+function trackNav() {
+  const s = history.state;
+  if (nav.replacing) nav.replacing = false;           // location.replace: mesma posição no histórico
+  else if (Number.isInteger(s?.mtIdx)) nav.idx = s.mtIdx; // voltar/avançar (ou F5)
+  else {
+    nav.idx += 1;                                      // entrada nova: as da frente deixam de existir
+    nav.hashes.length = nav.idx;
+  }
+  if (s?.mtIdx !== nav.idx) history.replaceState({ ...(s && typeof s === 'object' ? s : {}), mtIdx: nav.idx }, '');
+  nav.hashes[nav.idx] = currentHash();
+}
+
+/** Troca o endereço sem criar entrada no histórico. */
+function replaceRoute(hash) {
+  if (hash === currentHash()) return;
+  nav.replacing = true;
+  location.replace(hash);
+}
+
 function parseRoute() {
   const hash = location.hash || '#/';
   // O filtro de canal vai junto no endereço do vídeo (#/watch/ID/c/UC…[/antigos]): recarregar
@@ -4146,6 +4292,7 @@ function applyView(view, id, channel, sort = 'new') {
     if (canMini()) {
       startMini();
     } else {
+      clearDragMini();
       pausePlayer();
       state.currentVideoId = null;
     }
@@ -4190,6 +4337,17 @@ function applyView(view, id, channel, sort = 'new') {
   }
   updateSidebarActive();
   updateToTop();
+  // Gesto de arrastar o vídeo para baixo: a página de fundo volta na mesma posição.
+  if (navRestore && view !== 'watch') {
+    if (navRestore.hash === currentHash()) {
+      const top = navRestore.scroll;
+      const restore = () => window.scrollTo({ top, behavior: 'instant' });
+      restore();
+      pending?.then(restore);
+      requestAnimationFrame(restore);
+    }
+    navRestore = null;
+  }
   return pending;
 }
 
@@ -4198,6 +4356,9 @@ function route(animate = true) {
   stopFrames();
   const { view, id, channel, sort } = parseRoute();
   const prevView = state.view;
+  // Saindo de uma página que não é de vídeo: ela vira a página de fundo do gesto de arrastar.
+  if (prevView && prevView !== 'watch' && nav.idx >= 0) lastPage = { hash: nav.hashes[nav.idx], idx: nav.idx, scroll: scrollY };
+  trackNav();
   closeSidebarOverlay();
   const prevVideo = state.currentVideoId;
   const canAnimate = animate && !reducedMotion.matches;
@@ -4367,7 +4528,7 @@ function bindEvents() {
   setInterval(checkPlayerHealth, 2000);
 
   // Tela cheia: a entrada é animada só com CSS (iframe:fullscreen); a saída, por esta classe.
-  // No celular, o vídeo em tela cheia gira sozinho para a horizontal.
+  // No celular, o vídeo em tela cheia gira sozinho para a horizontal; fora dele, a tela fica em pé.
   let playerWasFullscreen = false;
   const onFullscreenChange = () => {
     const el = document.fullscreenElement || document.webkitFullscreenElement;
@@ -4384,12 +4545,11 @@ function bindEvents() {
       }
       return;
     }
+    // Fora do vídeo em tela cheia, o celular fica sempre em pé (a rotação automática não vale para o app).
+    lockPortrait();
     // Saiu do vídeo em tela cheia (a página pode continuar em tela cheia no celular).
     if (playerWasFullscreen) {
       playerWasFullscreen = false;
-      if (isMobile()) {
-        try { screen.orientation?.unlock?.(); } catch { /* ignora */ }
-      }
       if (reducedMotion.matches) return;
       const wrap = $('.player-wrap');
       wrap.classList.remove('fs-exit');
@@ -4443,6 +4603,13 @@ function bindEvents() {
 let installPrompt = null;
 let lastRotation = 'ainda não testada'; // resultado da última tentativa de girar a tela (diagnóstico)
 
+/** Celular: deixa a tela em pé (só o vídeo em tela cheia gira). O navegador só permite isso no app
+    instalado ou com a página em tela cheia; fora disso, quem manda é a rotação automática do Android. */
+function lockPortrait() {
+  if (!isMobile() || !screen.orientation?.lock) return;
+  screen.orientation.lock('portrait').catch(() => { /* não permitido agora (página fora da tela cheia) */ });
+}
+
 function isMobile() {
   const mobile = navigator.userAgentData?.mobile ?? /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
   return Boolean(mobile) && matchMedia('(pointer: coarse)').matches;
@@ -4486,6 +4653,7 @@ function setupMobileApp() {
   });
 
   if (!isMobile()) return;
+  lockPortrait();
   // Pelo navegador: entra (ou volta) em tela cheia a cada toque, se não estiver.
   document.addEventListener('click', () => {
     if (document.fullscreenElement || matchMedia('(display-mode: fullscreen)').matches) return;
@@ -5520,6 +5688,7 @@ function init() {
   setupFooterLinks();
   setupPlayerControls();
   setupMini();
+  setupDragToMini();
   setupPreviews();
   setupStats();
   bindEvents();
