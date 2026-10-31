@@ -1,17 +1,17 @@
 'use strict';
 
 // Não funciona dentro de outro site (moldura/iframe): evita "clickjacking", em que um site
-// esconde o MyTube por baixo de um botão falso para capturar os seus cliques.
+// esconde o Canais por baixo de um botão falso para capturar os seus cliques.
 if (window.top !== window.self) {
   document.documentElement.style.display = 'none';
-  throw new Error('O MyTube não pode ser aberto dentro de outro site.');
+  throw new Error('O Canais não pode ser aberto dentro de outro site.');
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.24.0';
+const APP_VERSION = '1.25.0';
 
 /* =========================================================
-   MyTube — só os vídeos dos canais que você escolher
+   Canais — só os vídeos dos canais que você escolher
    =========================================================
    As credenciais padrão (DEFAULT_CONFIG) ficam em config.js,
    carregado antes deste arquivo.
@@ -46,6 +46,7 @@ const KEYS = {
   watchLog: 'meutube.watchLog',
   videoChannels: 'meutube.videoChannels',
   statsPeriod: 'meutube.statsPeriod',
+  syncOff: 'meutube.syncOff', // sincronização desligada neste aparelho (interruptor dos Ajustes)
 };
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -122,7 +123,11 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ESC_MAP[c]);
 // Foto que não carrega (ex.: canal sem foto) some. Feito aqui, e não com onerror="…" no HTML,
 // porque a política de segurança da página bloqueia código escrito dentro do HTML.
 document.addEventListener('error', e => {
-  if (e.target instanceof HTMLImageElement && e.target.hasAttribute('data-hide-broken')) e.target.style.visibility = 'hidden';
+  if (!(e.target instanceof HTMLImageElement)) return;
+  // Capa em alta resolução que o vídeo não tem: volta para a normal.
+  const fallback = e.target.dataset.fallback;
+  if (fallback && e.target.src !== fallback) { e.target.src = fallback; return; }
+  if (e.target.hasAttribute('data-hide-broken')) e.target.style.visibility = 'hidden';
 }, true);
 
 const store = {
@@ -202,6 +207,41 @@ const ICONS = {
   add: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg>',
 };
 
+/** Ícone de traço do conjunto do index.html (símbolos "#i-…", no estilo dos da Apple). */
+const SF = (name, cls = 'ic') => `<svg class="${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+
+/** Ícone do app: três telas de vidro empilhadas (os canais) sobre o degradê Very Peri → Classic Blue,
+    com brilho Peach Fuzz no canto; a tela da frente mostra um pôr do sol (é vídeo, sem botão de play). */
+let appIconSeq = 0;
+function appIconSVG(size = 30) {
+  const id = `ai${++appIconSeq}`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 1024 1024" aria-hidden="true">
+    <defs>
+      <linearGradient id="${id}bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9C9DE6"/><stop offset=".48" stop-color="#6667AB"/><stop offset="1" stop-color="#0F4C81"/></linearGradient>
+      <radialGradient id="${id}gl" cx=".82" cy=".14" r=".6"><stop offset="0" stop-color="#FFBE98" stop-opacity=".9"/><stop offset="1" stop-color="#FFBE98" stop-opacity="0"/></radialGradient>
+      <linearGradient id="${id}sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE3D1"/><stop offset="1" stop-color="#FFBE98"/></linearGradient>
+      <radialGradient id="${id}sun" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#FFF4C7"/><stop offset="1" stop-color="#FF6F61"/></radialGradient>
+      <linearGradient id="${id}h1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8C8DD6"/><stop offset="1" stop-color="#6667AB"/></linearGradient>
+      <linearGradient id="${id}h2" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#0F4C81"/><stop offset="1" stop-color="#BB2649"/></linearGradient>
+      <clipPath id="${id}c"><rect width="1024" height="1024" rx="230"/></clipPath>
+      <clipPath id="${id}f"><rect x="188" y="408" width="648" height="400" rx="98"/></clipPath>
+    </defs>
+    <g clip-path="url(#${id}c)">
+      <rect width="1024" height="1024" fill="url(#${id}bg)"/>
+      <rect width="1024" height="1024" fill="url(#${id}gl)"/>
+      <rect x="292" y="232" width="440" height="262" rx="70" fill="#fff" fill-opacity=".3"/>
+      <rect x="242" y="314" width="540" height="322" rx="82" fill="#fff" fill-opacity=".48"/>
+      <g clip-path="url(#${id}f)">
+        <rect x="188" y="408" width="648" height="400" fill="url(#${id}sky)"/>
+        <circle cx="610" cy="560" r="78" fill="url(#${id}sun)"/>
+        <path d="M188 700 C300 610 400 640 480 676 C560 712 660 600 836 650 V808 H188Z" fill="url(#${id}h1)"/>
+        <path d="M188 760 C320 700 470 740 560 752 C660 766 760 712 836 730 V808 H188Z" fill="url(#${id}h2)"/>
+      </g>
+      <rect x="188" y="408" width="648" height="400" rx="98" fill="none" stroke="#fff" stroke-opacity=".75" stroke-width="10"/>
+    </g>
+  </svg>`;
+}
+
 /* =========================================================
    Estado
    ========================================================= */
@@ -238,10 +278,10 @@ const state = {
 
 const channelById = id => state.channels.find(c => c.id === id);
 const allowedChannels = () => new Set(state.channels.map(c => c.id));
-/** Canais que aparecem no Início e na lista de canais (os marcados "Apenas lives" ficam só em "Ao vivo"). */
+/** Canais que aparecem no Início e na lista de canais (os marcados "Só lives" ficam só em "Ao vivo"). */
 const homeChannels = () => state.channels.filter(c => !c.livesOnly);
 
-/* Limite de duração por canal (Configurações › Canais › "Até hh:mm:ss"): vídeos mais longos
+/* Limite de duração por canal (Ajustes › Canais › "Até hh:mm:ss"): vídeos mais longos
    que o limite não aparecem e não contam nas Estatísticas. O limite inclui o tempo exato. */
 const channelMaxDur = id => channelById(id)?.maxDur || 0;
 
@@ -251,7 +291,7 @@ function withinDurationLimit(v) {
 }
 
 /* Vídeos que não tocam fora do YouTube (o dono não permite, restrição de idade ou de país) não
-   existem no MyTube. A API avisa a maioria; os poucos que ela não avisa são descobertos quando o
+   existem no app. A API avisa a maioria; os poucos que ela não avisa são descobertos quando o
    player recusa e ficam guardados aqui, para nunca mais aparecer. */
 const unplayableSaved = new Set(store.get(KEYS.unplayable, [])); // os que saíram de vez
 const unplayable = new Set(unplayableSaved);                      // + os que saíram só até recarregar a página
@@ -266,7 +306,7 @@ function embedBlocked(v) {
 }
 
 /** Vídeo que aparece no Início, na página do canal e em "A seguir": da aba "Vídeos" (não ao vivo
-    nem agendado), dentro do limite de duração e que toca no MyTube. */
+    nem agendado), dentro do limite de duração e que toca no app. */
 function shownInApp(v) {
   return Boolean(v) && v.live === 'none' && withinDurationLimit(v) && !v.blocked;
 }
@@ -305,15 +345,15 @@ const ERROR_MESSAGES = {
   quotaExceeded: 'O Google recusou a requisição por cota do projeto. Confira em Google Cloud Console › YouTube Data API v3 › Cotas o limite de “Queries per day”.',
   dailyLimitExceeded: 'O Google recusou a requisição por limite diário do projeto. Confira as cotas da YouTube Data API v3 no Google Cloud Console.',
   rateLimitExceeded: 'Muitas requisições em pouco tempo. Aguarde alguns segundos e tente de novo.',
-  keyInvalid: 'A chave de API é inválida. Verifique em Configurações.',
+  keyInvalid: 'A chave de API é inválida. Verifique nos Ajustes.',
   badRequest: 'Requisição inválida para a API do YouTube.',
   accessNotConfigured: 'A YouTube Data API v3 não está ativada no seu projeto do Google Cloud.',
   commentsDisabled: 'Os comentários estão desativados neste vídeo.',
   playlistNotFound: 'Lista de uploads do canal não encontrada.',
   forbidden: 'Acesso negado pela API do YouTube.',
   ipRefererBlocked: 'A chave de API não permite requisições a partir deste endereço.',
-  insufficientPermissions: 'O login do Google não tem permissão para esta função. Salve uma chave de API em Configurações para usá-la.',
-  ACCESS_TOKEN_SCOPE_INSUFFICIENT: 'O login do Google não tem permissão para esta função. Salve uma chave de API em Configurações para usá-la.',
+  insufficientPermissions: 'O login do Google não tem permissão para esta função. Salve uma chave de API nos Ajustes para usá-la.',
+  ACCESS_TOKEN_SCOPE_INSUFFICIENT: 'O login do Google não tem permissão para esta função. Salve uma chave de API nos Ajustes para usá-la.',
 };
 
 // O Google só aceita ler comentários com login se o app pedir o escopo "youtube.force-ssl",
@@ -324,11 +364,11 @@ async function api(endpoint, params = {}, { retry = true, useToken = true } = {}
   const { apiKey } = state.config;
   const keyOnly = KEY_ONLY_ENDPOINTS.has(endpoint);
   if (keyOnly && !apiKey) {
-    throw new ApiError('Para ver os comentários, salve uma chave da YouTube Data API em Configurações › Credenciais da API. O Google não permite ler comentários só com o login de leitura.', 0, 'needsApiKey');
+    throw new ApiError('Para ver os comentários, salve uma chave da YouTube Data API nos Ajustes › Credenciais da API. O Google não permite ler comentários só com o login de leitura.', 0, 'needsApiKey');
   }
   const token = useToken && !keyOnly ? Auth.ytToken() : null;
   if (!token && !apiKey) {
-    throw new ApiError('Configure uma chave de API ou entre com sua conta Google em Configurações.', 0, 'noCredentials');
+    throw new ApiError('Configure uma chave de API ou entre com sua conta Google nos Ajustes.', 0, 'noCredentials');
   }
 
   const url = new URL(endpoint, YT_API);
@@ -622,7 +662,7 @@ const Auth = {
   async signIn() {
     const { clientId } = state.config;
     if (!clientId) {
-      toast('Informe o OAuth Client ID em Configurações › Credenciais da API para entrar com o Google.', 'error', 7000);
+      toast('Informe o OAuth Client ID nos Ajustes › Credenciais da API para entrar com o Google.', 'error', 7000);
       if (state.view !== 'settings') location.hash = '#/settings';
       return;
     }
@@ -1114,21 +1154,33 @@ function thumbBadge(v) {
 }
 
 function metaLine(v) {
-  return [fmtViews(v.views), timeAgo(v.publishedAt)].filter(Boolean).join(' • ');
+  return [fmtViews(v.views), timeAgo(v.publishedAt)].filter(Boolean).join(' · ');
 }
 
 function newTag(v) {
   return isNewVideo(v) ? ' <span class="new-tag">Novo</span>' : '';
 }
 
-function tileHTML(v, i) {
+/** Capa maior para o destaque (nem todo vídeo tem; se faltar, volta para a normal). */
+const heroThumb = v => `https://i.ytimg.com/vi/${v.id}/maxresdefault.jpg`;
+/** Foto do canal em tamanho maior (as do YouTube aceitam outro tamanho no endereço). */
+const bigAvatar = (url, size = 240) => (url || '').replace(/=s\d+(-)/, `=s${size}$1`);
+
+function tileHTML(v, i, { hero = false } = {}) {
   const ch = channelById(v.channelId);
   return `
-    <a class="tile${isWatched(v.id) ? ' is-watched' : ''}" href="${watchHref(v.id)}" data-vid="${v.id}" style="--i:${i}">
+    <a class="tile${hero ? ' tile-hero' : ''}${isWatched(v.id) ? ' is-watched' : ''}" href="${watchHref(v.id)}" data-vid="${v.id}" style="--i:${i}">
       <div class="thumb">
-        <img src="${esc(v.thumb)}" alt="" loading="lazy" decoding="async">
+        <img src="${esc(hero ? heroThumb(v) : v.thumb)}" ${hero ? `data-fallback="${esc(v.thumb)}" ` : ''}alt="" loading="${hero ? 'eager' : 'lazy'}" decoding="async">
         ${thumbBadge(v)}
         ${progressBarHTML(v.id)}
+        ${hero ? `
+        <div class="hero-txt">
+          <div class="hero-eyebrow"><img src="${esc(ch?.thumb || '')}" alt="" referrerpolicy="no-referrer" data-hide-broken>${esc(v.channelTitle)} · ${isNewVideo(v) ? 'Novo' : esc(timeAgo(v.publishedAt))}</div>
+          <h2 class="hero-title">${esc(v.title)}</h2>
+          <p class="hero-meta">${esc([v.live === 'live' ? 'Ao vivo' : v.duration, fmtViews(v.views), timeAgo(v.publishedAt)].filter(Boolean).join(' · '))}</p>
+          <div class="hero-actions"><span class="btn btn-white">${SF('play')}Assistir</span><span class="round glass-dark" data-action="tile-more" data-vid-more="${v.id}" role="button" aria-label="Mais opções" title="Mais opções">${SF('more')}</span></div>
+        </div>` : ''}
       </div>
       <div class="tile-info">
         <img class="avatar" src="${esc(ch?.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hide-broken>
@@ -1137,6 +1189,7 @@ function tileHTML(v, i) {
           <p class="tile-channel">${esc(v.channelTitle)}</p>
           <p class="tile-meta">${esc(metaLine(v))}${newTag(v)}</p>
         </div>
+        <span class="tile-more" data-action="tile-more" data-vid-more="${v.id}" role="button" aria-label="Mais opções">${SF('more')}</span>
       </div>
     </a>`;
 }
@@ -1176,8 +1229,21 @@ function syncGrid() {
   if (gridGen !== feed.gen) return; // a lista está sendo remontada: rebuildFeed troca a grade de uma vez
   const fresh = feed.items.slice(renderedCount);
   if (!fresh.length) return;
-  grid.insertAdjacentHTML('beforeend', fresh.map((v, i) => tileHTML(v, Math.min(i, PAGE_SIZE - 1))).join(''));
+  const start = renderedCount;
+  grid.insertAdjacentHTML('beforeend', fresh.map((v, i) => tileHTML(v, Math.min(i, PAGE_SIZE - 1), { hero: heroAllowed() && start + i === 0 })).join(''));
   renderedCount = feed.items.length;
+  updateGridDecor();
+}
+
+/** Destaque: o vídeo mais novo de "Todos os canais" ocupa a linha inteira (no celular, cartão normal). */
+const heroAllowed = () => !state.filter;
+
+function updateGridDecor() {
+  const grid = $('#feed');
+  grid.classList.toggle('with-hero', Boolean(grid.querySelector('.tile-hero')));
+  const n = homeChannels().length;
+  grid.dataset.sub = `Dos seus ${n} ${n === 1 ? 'canal' : 'canais'}`;
+  applySearch();
 }
 
 /** A lista do Início depende do olho (com ele escondendo, cada vaga mostra o próximo não assistido
@@ -1203,9 +1269,10 @@ async function rebuildFeed(feed, { animate = false } = {}) {
   const grid = $('#feed');
   const swap = () => {
     stopPreview();
-    grid.innerHTML = feed.items.map((v, i) => tileHTML(v, Math.min(i, PAGE_SIZE - 1))).join('');
+    grid.innerHTML = feed.items.map((v, i) => tileHTML(v, Math.min(i, PAGE_SIZE - 1), { hero: heroAllowed() && i === 0 })).join('');
     grid.querySelectorAll('.tile').forEach(t => { t.style.animation = 'none'; }); // sem a entrada em cascata
     renderedCount = feed.items.length;
+    updateGridDecor();
     gridFeed = feed;
     gridGen = feed.gen;
     setSkeletons(false);
@@ -1229,6 +1296,7 @@ function resetFeed() {
   gridFeed = null;
   renderedCount = 0;
   $('#feed').innerHTML = '';
+  $('#feed').classList.remove('with-hero');
   setSkeletons(false);
   $('#feed-status').innerHTML = '';
 }
@@ -1236,23 +1304,123 @@ function resetFeed() {
 function renderFeedHeader() {
   const box = $('#feed-header');
   const ch = state.filter ? channelById(state.filter) : null;
+  document.body.classList.toggle('channel-page', Boolean(ch));
+  $('#home-head').hidden = Boolean(ch);
   if (!ch) {
     box.hidden = true;
     box.innerHTML = '';
+    $('#home-actions').prepend($('#watched-toggle'));
     return;
   }
+  const stats = channelStats[ch.id];
+  const total = channelVideoTotal(ch);
+  const meta = [ch.handle, subscribersText(ch.id), total != null ? `${intFmt.format(total)} vídeos` : stats?.videos ? `${intFmt.format(stats.videos)} vídeos` : '']
+    .filter(Boolean).join(' · ');
   box.innerHTML = `
-    <img class="avatar lg" src="${esc(ch.thumb || '')}" alt="" referrerpolicy="no-referrer" data-hide-broken>
-    <div>
-      <h1>${esc(ch.title)}</h1>
-      <span class="muted">${esc(ch.handle || '')}</span>
+    <div class="cb-box">
+      <img class="cb-bg" src="${esc(bigAvatar(ch.thumb, 240))}" alt="" referrerpolicy="no-referrer" data-hide-broken>
+      <a class="round-glass cb-back" href="#/channels" aria-label="Voltar aos canais" title="Canais">${SF('chev-l')}</a>
+      <div class="cb-main">
+        <img class="cb-avatar" src="${esc(bigAvatar(ch.thumb, 240))}" alt="" referrerpolicy="no-referrer" data-hide-broken>
+        <div style="min-width:0">
+          <h1 class="t-large">${esc(ch.title)}</h1>
+          <div class="cb-meta" id="cb-meta">${esc(meta)}</div>
+        </div>
+      </div>
+      <div class="cb-actions" id="cb-actions"></div>
     </div>
-    <a class="btn btn-ghost btn-sm" href="#/">Ver todos os canais</a>
-    <nav class="chips" aria-label="Ordem dos vídeos">
-      <a class="chip" href="#/c/${esc(ch.id)}"${state.sort !== 'old' ? ' aria-current="true"' : ''}>Mais recentes</a>
-      <a class="chip" href="#/c/${esc(ch.id)}/antigos"${state.sort === 'old' ? ' aria-current="true"' : ''}>Mais antigos</a>
-    </nav>`;
+    <div class="cb-bar">
+      <h2 class="t-title2">Vídeos</h2>
+      <nav class="seg seg-cap" aria-label="Ordem dos vídeos">
+        <a href="#/c/${esc(ch.id)}"${state.sort !== 'old' ? ' aria-current="true"' : ''}>Mais novos</a>
+        <a href="#/c/${esc(ch.id)}/antigos"${state.sort === 'old' ? ' aria-current="true"' : ''}>Mais antigos</a>
+      </nav>
+    </div>`;
   box.hidden = false;
+  $('#cb-actions').append($('#watched-toggle'));
+  placeSegThumb(box.querySelector('.seg'));
+  if (!subscribersText(ch.id)) {
+    ensureChannelStats(ch.id).then(() => {
+      if (state.filter === ch.id && state.view === 'home') renderFeedHeaderMeta(ch);
+    });
+  }
+}
+
+function renderFeedHeaderMeta(ch) {
+  const el = $('#cb-meta');
+  if (!el) return;
+  const total = channelVideoTotal(ch);
+  const stats = channelStats[ch.id];
+  el.textContent = [ch.handle, subscribersText(ch.id), total != null ? `${intFmt.format(total)} vídeos` : stats?.videos ? `${intFmt.format(stats.videos)} vídeos` : '']
+    .filter(Boolean).join(' · ');
+}
+
+/** Cabeçalho do Início: data (como nos apps da Apple) e, no celular, a foto da conta. */
+function renderHomeHead() {
+  $('#home-date').textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+/** Celular: atalhos para cada canal, numa faixa que rola para o lado. */
+function renderHomeChips() {
+  const box = $('#home-chips');
+  if (!box) return;
+  const list = [...homeChannels()].sort((a, b) => byName(a.title, b.title));
+  box.innerHTML = list.length
+    ? `<a class="chip${state.filter ? '' : ' on'}" href="#/">Todos</a>` + list.map(c => `
+        <a class="chip${state.filter === c.id ? ' on' : ''}" href="#/c/${esc(c.id)}">
+          <img src="${esc(c.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hide-broken>${esc(c.title)}
+        </a>`).join('')
+    : '';
+}
+
+/** Segmentados: a pílula branca desliza até a opção escolhida. */
+function placeSegThumb(seg, from = null) {
+  if (!seg) return;
+  const active = seg.querySelector('[aria-current="true"], [aria-pressed="true"]');
+  let thumb = seg.querySelector('.seg-thumb');
+  if (!active) { thumb?.remove(); return; }
+  if (!thumb) {
+    thumb = document.createElement('span');
+    thumb.className = 'seg-thumb';
+    thumb.setAttribute('aria-hidden', 'true');
+    seg.prepend(thumb);
+  }
+  const place = () => { thumb.style.left = `${active.offsetLeft}px`; thumb.style.width = `${active.offsetWidth}px`; };
+  if (from && motionOK()) {
+    thumb.style.transition = 'none';
+    thumb.style.left = from.left;
+    thumb.style.width = from.width;
+    void thumb.offsetWidth;
+    thumb.style.transition = '';
+  }
+  requestAnimationFrame(place);
+}
+
+/* ---------- Busca (menu lateral): canais e vídeos já carregados ---------- */
+const searchText = s => s.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+function applySearch() {
+  const input = $('#side-search');
+  const q = input ? searchText(input.value.trim()) : '';
+  $$('#side-channels .side-item').forEach(a => a.classList.toggle('search-miss', Boolean(q) && !searchText(a.title || '').includes(q)));
+  const note = $('#search-note');
+  if (!note) return;
+  if (!q) {
+    $$('#feed .tile.search-miss').forEach(t => t.classList.remove('search-miss'));
+    note.hidden = true;
+    return;
+  }
+  let shown = 0;
+  $$('#feed .tile').forEach(t => {
+    const v = findLoadedVideo(t.dataset.vid);
+    const hit = v && (searchText(v.title).includes(q) || searchText(v.channelTitle).includes(q));
+    t.classList.toggle('search-miss', !hit);
+    if (hit) shown++;
+  });
+  note.innerHTML = shown
+    ? `${shown} ${shown === 1 ? 'vídeo' : 'vídeos'} com <b>“${esc(input.value.trim())}”</b> entre os carregados`
+    : `Nenhum vídeo carregado com <b>“${esc(input.value.trim())}”</b>. Role para carregar mais ou tente outro nome.`;
+  note.hidden = state.view !== 'home';
 }
 
 function emptyState(icon, title, text, action = '') {
@@ -1271,19 +1439,19 @@ function checkHomePrereqs() {
   if (!state.channels.length) {
     status.innerHTML = emptyState('channels', 'Nenhum canal adicionado',
       'Adicione os canais do YouTube que você quer acompanhar. Apenas os vídeos deles aparecerão aqui.',
-      '<a class="btn btn-primary" href="#/settings">Adicionar canais</a>');
+      '<a class="btn btn-primary" href="#/settings/canais">Adicionar canais</a>');
     return false;
   }
   if (!homeChannels().length) {
-    status.innerHTML = emptyState('channels', 'Todos os canais estão como “Apenas lives”',
-      'Eles aparecem só no menu lateral, em “Ao vivo”, quando estiverem transmitindo. Para ver vídeos aqui, desative “Apenas lives” em algum canal.',
-      '<a class="btn btn-ghost" href="#/settings">Abrir Configurações</a>');
+    status.innerHTML = emptyState('channels', 'Todos os canais estão como “Só lives”',
+      'Eles aparecem só em “Ao Vivo”, quando estiverem transmitindo. Para ver vídeos aqui, desative “Só lives” em algum canal.',
+      '<a class="btn btn-ghost" href="#/settings">Abrir os Ajustes</a>');
     return false;
   }
   if (!hasCredentials()) {
     status.innerHTML = emptyState('key', 'Falta configurar o acesso',
       'Entre com sua conta Google ou informe uma chave da YouTube Data API para carregar os vídeos.',
-      '<a class="btn btn-primary" href="#/settings">Ir para Configurações</a>');
+      '<a class="btn btn-primary" href="#/settings">Ir para os Ajustes</a>');
     return false;
   }
   return true;
@@ -1345,7 +1513,9 @@ function checkSentinel() {
 
 function showHome() {
   const ch = state.filter ? channelById(state.filter) : null;
-  document.title = ch ? `${ch.title} · MyTube` : 'MyTube';
+  document.title = ch ? `${ch.title} · Canais` : 'Início · Canais';
+  renderHomeHead();
+  renderHomeChips();
   renderFeedHeader();
   if (!checkHomePrereqs()) {
     $('#feed').innerHTML = '';
@@ -1365,33 +1535,145 @@ function showHome() {
 }
 
 /* =========================================================
+   Ao Vivo e Canais (páginas; no celular, abas)
+   ========================================================= */
+function liveTileHTML(v, i) {
+  const ch = channelById(v.channelId);
+  const viewers = v.viewers != null ? `${compact.format(Number(v.viewers))} assistindo` : '';
+  return `
+    <a class="tile" href="#/watch/${v.id}" data-vid="${v.id}" style="--i:${i}">
+      <div class="thumb">
+        <img src="${esc(v.thumb)}" alt="" loading="lazy" decoding="async">
+        <span class="badge badge-live">AO VIVO</span>
+      </div>
+      <div class="tile-info">
+        <img class="avatar" src="${esc(ch?.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hide-broken>
+        <div>
+          <h3 class="tile-title" title="${esc(v.title)}">${esc(v.title)}</h3>
+          <p class="tile-channel">${esc(v.channelTitle)}</p>
+          ${viewers ? `<p class="tile-meta"><span class="viewers">${esc(viewers)}</span></p>` : ''}
+        </div>
+      </div>
+    </a>`;
+}
+
+function renderLivePage() {
+  const box = $('#live-list');
+  if (!box) return;
+  if (Lives.items.length) {
+    box.innerHTML = Lives.items.map(liveTileHTML).join('');
+    return;
+  }
+  const text = !state.channels.length
+    ? 'Adicione canais para ver quando eles estiverem transmitindo.'
+    : Lives.error ? 'Não foi possível verificar as lives agora. O app tenta de novo daqui a pouco.'
+    : Lives.checked ? 'Quando um dos seus canais entrar ao vivo, ele aparece aqui.' : 'Procurando lives nos seus canais…';
+  box.innerHTML = `<div class="live-empty">${emptyState('channels', Lives.checked || Lives.error ? 'Nenhum canal ao vivo agora' : 'Verificando as lives', text)}</div>`;
+}
+
+function renderChannelsPage() {
+  const box = $('#channels-page');
+  if (!box) return;
+  const q = searchText($('#channels-search')?.value.trim() || '');
+  const fresh = newCountsByChannel();
+  const list = [...homeChannels()].sort((a, b) => byName(a.title, b.title))
+    .filter(c => !q || searchText(c.title).includes(q) || searchText(c.handle || '').includes(q));
+  const lives = Lives.items.filter(v => !q || searchText(v.title).includes(q) || searchText(v.channelTitle).includes(q));
+  const live = lives.length ? `
+    <h2 class="grp-title live-title">Ao vivo agora</h2>
+    <div class="group">
+      ${lives.map(v => `
+        <a class="row row-link live-row" href="#/watch/${v.id}" data-vid="${v.id}">
+          <span class="thumb"><img src="${esc(v.thumbSmall || v.thumb)}" alt="" loading="lazy"></span>
+          <span class="grow"><b>${esc(v.title)}</b><span class="sub">${esc(v.channelTitle)}${v.viewers != null ? ` · ${compact.format(Number(v.viewers))} assistindo` : ''}</span></span>
+        </a>`).join('')}
+    </div>` : '';
+  const rows = list.map(c => {
+    const n = fresh.get(c.id) || 0;
+    const sub = [n ? `<b>${n} ${n === 1 ? 'novo' : 'novos'}</b>` : '', esc(subscribersText(c.id) || c.handle || '')].filter(Boolean).join(' · ');
+    return `
+      <a class="row row-link ch-row" href="#/c/${esc(c.id)}" data-channel-row="${esc(c.id)}">
+        <img src="${esc(c.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hide-broken>
+        <span class="grow"><b>${esc(c.title)}</b><span class="sub">${sub}</span></span>
+        ${SF('chev-r', 'ic chev')}
+      </a>`;
+  }).join('');
+  box.innerHTML = `${live}
+    <h2 class="grp-title"${live ? ' style="margin-top:26px"' : ''}>Seus canais · ${list.length}</h2>
+    <div class="group">${rows || `<p class="channel-empty">${q ? 'Nenhum canal com esse nome.' : 'Nenhum canal adicionado ainda.'} <a class="link-btn" href="#/settings/canais">Adicionar canais</a></p>`}</div>`;
+}
+
+/* =========================================================
    Menu lateral (lista de canais)
    ========================================================= */
-const overlayQuery = matchMedia('(max-width: 1099px)');
+const overlayQuery = matchMedia('(max-width: 1099px)'); // janelas estreitas e celular: abas em vez do menu lateral
+
+/** Vídeos "Novo" (de hoje e nunca abertos) de cada canal, entre os já carregados no Início. */
+function newCountsByChannel() {
+  const counts = new Map();
+  for (const v of feeds.get('all')?.items || []) {
+    if (isNewVideo(v)) counts.set(v.channelId, (counts.get(v.channelId) || 0) + 1);
+  }
+  return counts;
+}
 
 function renderSidebar() {
   const box = $('#side-channels');
   const list = [...homeChannels()].sort((a, b) => byName(a.title, b.title));
+  const fresh = newCountsByChannel();
   box.innerHTML = list.length
     ? list.map(c => `
         <a class="side-item" href="#/c/${esc(c.id)}" data-channel="${esc(c.id)}" title="${esc(c.title)}">
           <img class="side-avatar" src="${esc(c.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hide-broken>
           <span class="side-label">${esc(c.title)}</span>
+          ${fresh.get(c.id) ? `<span class="side-new" title="${fresh.get(c.id)} ${fresh.get(c.id) === 1 ? 'vídeo novo' : 'vídeos novos'}"></span>` : ''}
         </a>`).join('')
     : state.channels.length
-    ? '<p class="side-empty">Todos os canais estão como “Apenas lives”.</p>'
-    : `<a class="side-item" href="#/settings" title="Adicionar canais">
-         <span class="side-icon">${ICONS.add}</span>
+    ? '<p class="side-empty">Todos os canais estão como “Só lives”.</p>'
+    : `<a class="side-item" href="#/settings/canais" title="Adicionar canais">
+         <span class="side-icon">${SF('plus')}</span>
          <span class="side-label">Adicionar canais</span>
        </a>`;
   updateSidebarActive();
+  applySearch();
+  if (state.view === 'channels') renderChannelsPage();
+  if (state.view === 'home') renderHomeChips();
 }
 
 function updateSidebarActive() {
   const active = state.view === 'home' ? (state.filter || '') : null;
   $$('#sidebar [data-channel]').forEach(a => a.classList.toggle('active', a.dataset.channel === active));
+  $$('#sidebar .side-nav [data-nav]:not([data-channel]), #sidebar .side-footer [data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === state.view));
   const watching = state.view === 'watch' ? state.currentVideoId : null;
   $$('#side-lives [data-vid]').forEach(a => a.classList.toggle('active', a.dataset.vid === watching));
+  updateTabbar();
+}
+
+/** Abas (celular): marca a seção atual e desliza a pílula até ela. */
+function updateTabbar() {
+  const bar = $('#tabbar');
+  if (!bar) return;
+  const tab = state.view === 'watch' ? (mini.on ? null : 'home') : state.view === 'home' ? (state.filter ? 'channels' : 'home') : state.view;
+  let on = null;
+  bar.querySelectorAll('.tab').forEach(t => {
+    const hit = t.dataset.tab === tab;
+    t.classList.toggle('on', hit);
+    if (hit) { on = t; t.setAttribute('aria-current', 'page'); } else t.removeAttribute('aria-current');
+  });
+  const pill = bar.querySelector('.tab-pill');
+  if (!on || getComputedStyle(bar).display === 'none') { pill.style.opacity = on ? '' : '0'; return; }
+  const place = () => {
+    pill.style.opacity = '';
+    pill.style.left = `${on.offsetLeft}px`;
+    pill.style.width = `${on.offsetWidth}px`;
+  };
+  if (!bar.classList.contains('ready')) {
+    pill.style.transition = 'none';
+    place();
+    void pill.offsetWidth;
+    pill.style.transition = '';
+    bar.classList.add('ready');
+  } else place();
 }
 
 /* =========================================================
@@ -1546,6 +1828,8 @@ async function refreshLives(force = false) {
 function renderLives() {
   const box = $('#side-lives');
   $('#lives-count').textContent = Lives.items.length || '';
+  const dot = $('#tabbar .tab-dot');
+  if (dot) dot.hidden = !Lives.items.length;
   if (Lives.items.length) {
     box.innerHTML = Lives.items.map(v => {
       const ch = channelById(v.channelId);
@@ -1555,55 +1839,59 @@ function renderLives() {
            title="${esc(`${v.channelTitle} — ${v.title}${viewers ? ` (${viewers} assistindo)` : ''}`)}">
           <span class="live-avatar">
             <img class="side-avatar" src="${esc(ch?.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hide-broken>
-            <span class="live-dot"></span>
           </span>
           <span class="side-label">
-            <span class="side-live-name">${esc(v.channelTitle)}</span>
             <span class="side-live-title">${esc(v.title)}</span>
+            <span class="side-live-name">${esc(v.channelTitle)}</span>
           </span>
           ${viewers ? `<span class="side-live-viewers">${viewers}</span>` : ''}
+          <span class="live-dot"></span>
         </a>`;
     }).join('');
   } else if (!state.channels.length) {
-    box.innerHTML = '<p class="side-empty">Adicione canais para ver as lives.</p>';
+    box.innerHTML = '';
   } else if (Lives.error) {
-    box.innerHTML = `<p class="side-empty">Não foi possível verificar as lives.</p>`;
+    box.innerHTML = '<p class="side-empty">Não foi possível verificar as lives.</p>';
   } else {
-    box.innerHTML = `<p class="side-empty">${Lives.checked ? 'Nenhum canal ao vivo agora.' : 'Verificando…'}</p>`;
+    box.innerHTML = Lives.checked ? '' : '<p class="side-empty">Verificando as lives…</p>';
   }
   updateSidebarActive();
+  if (state.view === 'live') renderLivePage();
+  if (state.view === 'channels') renderChannelsPage();
 }
 
-/** Páginas em que, no PC, o menu recolhido fica escondido e a página usa a largura toda. */
-const SIDEBAR_HIDDEN_VIEWS = new Set(['watch', 'stats', 'settings']);
+/** Modo Cinema na tela agora (página do vídeo no computador, com o modo ligado). */
+function cinemaActive() {
+  return state.view === 'watch' && !mini.on && !overlayQuery.matches && theaterActive();
+}
 
-/** No PC o menu nunca cobre o conteúdo: ao abrir, empurra tudo para o lado (igual ao YouTube).
- *  No vídeo, nas estatísticas e nas configurações, recolhido = escondido. Só em telas
- *  estreitas (celular) ele é uma gaveta sobreposta. */
+/** Computador: o menu de vidro fica sempre ao lado do conteúdo, expandido ou recolhido (só ícones);
+ *  no Modo Cinema ele some e o botão do menu o traz por cima. Janelas estreitas e celular: abas. */
 function updateSidebarMode() {
-  const overlay = overlayQuery.matches;
-  const pagePush = !overlay && SIDEBAR_HIDDEN_VIEWS.has(state.view);
+  const compactLayout = overlayQuery.matches;
+  const cinema = cinemaActive();
   const body = document.body;
-  body.classList.toggle('sidebar-overlay', overlay);
-  body.classList.toggle('sidebar-mini', !overlay && !pagePush && state.sidebarMini);
-  body.classList.toggle('sidebar-hidden', pagePush && !state.pageSidebar);
-  if (!overlay) body.classList.remove('sidebar-open');
+  body.classList.toggle('sidebar-overlay', compactLayout);
+  body.classList.toggle('sidebar-mini', !compactLayout && !cinema && state.sidebarMini);
+  body.classList.toggle('sidebar-hidden', cinema);
+  body.classList.toggle('cinema-side', cinema && state.pageSidebar);
+  body.classList.toggle('cinema', cinema);
+  body.classList.toggle('watching', state.view === 'watch');
   $('#menu-btn').setAttribute('aria-expanded', String(isSidebarExpanded()));
-  // Ao expandir o menu, verifica as lives na hora se a última verificação tiver mais de 5 min.
+  // Lives visíveis (menu expandido ou páginas Ao Vivo/Canais): verifica na hora se a última tiver mais de 5 min.
   if (isSidebarExpanded()) refreshLives();
 }
 
-/** Menu lateral expandido: no PC, aberto com os nomes; no celular, gaveta aberta. */
+/** As lives estão à vista: menu lateral expandido (computador) ou as páginas Ao Vivo e Canais. */
 function isSidebarExpanded() {
-  const body = document.body;
-  if (body.classList.contains('sidebar-overlay')) return body.classList.contains('sidebar-open');
-  return SIDEBAR_HIDDEN_VIEWS.has(state.view) ? state.pageSidebar : !state.sidebarMini;
+  if (state.view === 'live' || state.view === 'channels') return true;
+  if (overlayQuery.matches) return false;
+  return cinemaActive() ? state.pageSidebar : !state.sidebarMini;
 }
 
 function toggleSidebar() {
-  if (document.body.classList.contains('sidebar-overlay')) {
-    document.body.classList.toggle('sidebar-open');
-  } else if (SIDEBAR_HIDDEN_VIEWS.has(state.view)) {
+  if (overlayQuery.matches) return;
+  if (cinemaActive()) {
     state.pageSidebar = !state.pageSidebar;
   } else {
     state.sidebarMini = !state.sidebarMini;
@@ -1613,9 +1901,10 @@ function toggleSidebar() {
   requestAnimationFrame(checkSentinel);
 }
 
+/** Modo Cinema com o menu aberto por cima: fecha ao navegar ou tocar fora. */
 function closeSidebarOverlay() {
-  if (!document.body.classList.contains('sidebar-open')) return;
-  document.body.classList.remove('sidebar-open');
+  if (!state.pageSidebar) return;
+  state.pageSidebar = false;
   updateSidebarMode();
 }
 
@@ -1717,8 +2006,8 @@ function updateProgressBars(id) {
    "A seguir" e na reprodução automática eles são pulados.
    ========================================================= */
 const EYE_ICONS = {
-  on: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.8 4.2 4.2 2.8l17 17-1.4 1.4-3.3-3.3A10.8 10.8 0 0 1 12 19C6.5 19 2.7 15 1 12a14.7 14.7 0 0 1 4-4.9zM12 5c5.5 0 9.3 4 11 7a14.4 14.4 0 0 1-2.9 3.7l-3.2-3.2A5 5 0 0 0 11.5 7.1L9.3 4.9A11 11 0 0 1 12 5zM7 12a5 5 0 0 0 6.5 4.8l-1.6-1.6A3 3 0 0 1 8.8 12l-1.6-1.6A5 5 0 0 0 7 12z"/></svg>',
-  off: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c5.5 0 9.3 4 11 7-1.7 3-5.5 7-11 7S2.7 15 1 12c1.7-3 5.5-7 11-7zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/></svg>',
+  on: SF('eye-off'),
+  off: SF('eye'),
 };
 
 function applyHideWatched() {
@@ -1730,7 +2019,8 @@ function applyHideWatched() {
     ? 'Assistidos ocultos (mostrando só os não assistidos e em progresso). Clique para mostrar todos.'
     : 'Ocultar os vídeos que você já assistiu até o fim';
   btn.setAttribute('aria-label', btn.title);
-  btn.innerHTML = on ? EYE_ICONS.on : EYE_ICONS.off;
+  btn.innerHTML = `${on ? EYE_ICONS.on : EYE_ICONS.off}<span class="label">${on ? 'Assistidos ocultos' : 'Ocultar assistidos'}</span>`;
+  $$('input[data-setting="hide-watched"]').forEach(i => { i.checked = on; });
 }
 
 function toggleHideWatched() {
@@ -1961,7 +2251,7 @@ async function skipUnplayable(id, { persist = true } = {}) {
   }
   if (state.view !== 'watch' || state.currentVideoId !== id) return;
   if (!next) {
-    skipNonMyTube(id);
+    skipNonApp(id);
     return;
   }
   watchHistory.stack = watchHistory.stack.filter(x => x !== id);
@@ -2084,33 +2374,37 @@ function seekTo(seconds) {
    ========================================================= */
 const ICON = (d, extra = '') => `<svg viewBox="0 0 24 24" aria-hidden="true"${extra}><path d="${d}"/></svg>`;
 // "Gostei" dos comentários: polegar só com o contorno, como no YouTube.
-const LIKE_ICON = ICON('M9 21h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.58 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2zM9 9l4.34-4.34L12 10h9v2l-3 7H9V9zM1 9h4v12H1z');
+const LIKE_ICON = SF('thumb');
 const PLAY_ICONS = {
-  play: ICON('M8 5v14l11-7z'),
-  pause: ICON('M6 5h4v14H6zm8 0h4v14h-4z'),
-  replay: ICON('M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z'),
+  play: SF('play'),
+  pause: SF('pause'),
+  replay: SF('replay'),
 };
 const SKIP_ICONS = {
-  prev: ICON('M6 6h2v12H6zm3.5 6 8.5 6V6z'),
-  next: ICON('M6 18l8.5-6L6 6zM16 6v12h2V6z'),
+  prev: SF('prev'),
+  next: SF('next'),
 };
 const VOL_ICONS = {
-  high: ICON('M3 9v6h4l5 5V4L7 9zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z'),
-  low: ICON('M5 9v6h4l5 5V4L9 9zm13.5 3A4.5 4.5 0 0 0 16 8v8a4.5 4.5 0 0 0 2.5-4z'),
-  muted: ICON('M3 9v6h4l5 5V4L7 9zm18.3 1.7-1.4-1.4L17.6 11.6 15.3 9.3l-1.4 1.4 2.3 2.3-2.3 2.3 1.4 1.4 2.3-2.3 2.3 2.3 1.4-1.4-2.3-2.3z'),
+  high: SF('vol'),
+  low: SF('vol-low'),
+  muted: SF('vol-off'),
 };
-const CC_ICON = ICON('M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1zm7 0h-1.5v-.5h-2v3h2V13H18v1a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1z');
-const GEAR_ICON = ICON('M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.3 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z');
+const CC_ICON = SF('cc');
+const GEAR_ICON = SF('sliders');
 const MENU_ICONS = {
-  speed: ICON('M12 4a8 8 0 1 0 8 8h-2a6 6 0 1 1-6-6zm7.1-.5-6.5 6.5a2 2 0 1 0 1.4 1.4l6.5-6.5z'),
+  speed: SF('timer'),
   cc: CC_ICON,
-  quality: ICON('M3 5v14h18V5zm16 12H5V7h14zM7 9h4v2H7zm0 4h6v2H7z'),
-  back: ICON('M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z'),
-  check: ICON('M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z'),
+  quality: SF('film'),
+  back: SF('chev-l'),
+  check: SF('check'),
+  cinema: SF('theater'),
+  pip: SF('pip'),
+  link: SF('copy'),
+  channel: SF('person'),
 };
 const FS_ICONS = {
-  enter: ICON('M14 3h7v7h-2V6.4l-4.3 4.3-1.4-1.4L17.6 5H14zM3 14h2v3.6l4.3-4.3 1.4 1.4L6.4 19H10v2H3z'),
-  exit: ICON('M21 4.4 19.6 3 15 7.6V4h-2v7h7V9h-3.6zM3 19.6 4.4 21 9 16.4V20h2v-7H4v2h3.6z'),
+  enter: SF('expand'),
+  exit: SF('collapse'),
 };
 const QUALITY_LABELS = {
   highres: ['Máxima', '8K'], hd2880: ['2880p', '5K'], hd2160: ['2160p', '4K'], hd1440: ['1440p', 'HD'],
@@ -2324,11 +2618,13 @@ function updateAutoplayButton() {
   btn.setAttribute('aria-label', btn.title);
 }
 
-function toggleAutoplay() {
+function toggleAutoplay({ quiet = false } = {}) {
   state.autoplay = !state.autoplay;
   store.set(KEYS.autoplay, state.autoplay);
   Sync.touch('prefs');
   updateAutoplayButton();
+  $$('input[data-setting="autoplay"]').forEach(i => { i.checked = state.autoplay; });
+  if (quiet) return;
   pop($('#pc-autoplay'));
   flashPlayerIcon('play', state.autoplay ? 'Reprodução automática ativada' : 'Reprodução automática desativada');
 }
@@ -2414,7 +2710,11 @@ function renderMenu() {
     const ccTrack = tracks.find(t => t.languageCode === playerPrefs.ccLang);
     menu.innerHTML = row('menu:speed', MENU_ICONS.speed, 'Velocidade', `${speedLabel(playbackRate)} ›`)
       + row('menu:cc', MENU_ICONS.cc, 'Legendas', `${playerPrefs.cc ? trackName(ccTrack) || 'Ativadas' : 'Desativadas'} ›`)
-      + row('noop', MENU_ICONS.quality, 'Qualidade', `${currentQuality().label} (automática)`, ' pc-menu-static');
+      + row('noop', MENU_ICONS.quality, 'Qualidade', `${currentQuality().label} (automática)`, ' pc-menu-static')
+      + '<div class="pc-menu-sep"></div>'
+      + (desktopQuery.matches && !isMobile() && !document.fullscreenElement ? row('act:cinema', MENU_ICONS.cinema, theaterOn ? 'Sair do Modo Cinema' : 'Modo Cinema', 't') : '')
+      + (document.fullscreenElement ? '' : row('act:mini', MENU_ICONS.pip, 'Mini player'))
+      + row('act:copy', MENU_ICONS.link, 'Copiar link do vídeo');
   }
 }
 
@@ -2422,6 +2722,7 @@ function openMenu(open = $('#pc-menu').hidden) {
   const menu = $('#pc-menu');
   menu.hidden = !open;
   $('#pc-settings').setAttribute('aria-expanded', String(open));
+  $('#pc-more').setAttribute('aria-expanded', String(open));
   if (open) {
     menuPage = 'main';
     renderMenu();
@@ -2444,6 +2745,13 @@ function renderMenuAnimated(dir) {
 
 function onMenuAction(action) {
   const [kind, value] = action.split(':');
+  if (kind === 'act') {
+    openMenu(false);
+    if (value === 'cinema') toggleTheater();
+    else if (value === 'mini') minimizeVideo();
+    else if (value === 'copy') copyVideoLink(state.currentVideoId);
+    return;
+  }
   if (kind === 'menu') { menuPage = value; renderMenuAnimated(value === 'main' ? -1 : 1); return; }
   if (kind === 'speed') {
     playbackRate = Number(value);
@@ -2489,9 +2797,14 @@ function updateProgressUI(previewFraction = null) {
   setShown('time', live
     ? '<span class="pc-live-dot"></span>AO VIVO'
     : `${fmtClock(t)} <span>/ ${fmtClock(d)}</span>`, v => { $('#pc-time').innerHTML = v; });
+  setShown('remain', live || !d ? '' : `−${fmtClock(Math.max(0, d - t))}`, v => { $('#pc-remain').textContent = v; });
   const q = currentQuality().badge;
   const badge = $('#pc-quality');
-  setShown('quality', q, v => { badge.textContent = v; badge.hidden = !v; });
+  setShown('quality', q, v => {
+    badge.textContent = v;
+    badge.hidden = !v;
+    $('#pc-settings').classList.toggle('has-quality', Boolean(v));
+  });
 }
 
 function setupProgressBar() {
@@ -2561,10 +2874,10 @@ function onPlayerControlsState(stateCode) {
    embaixo, à esquerda, e "A seguir" à direita, em lista. A escolha fica guardada neste
    aparelho. No celular o botão não existe (o player já ocupa a largura toda). */
 const THEATER_ICONS = {
-  on: ICON('M19 6H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zm0 10H5V8h14z'),
-  off: ICON('M17 8H7a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2zm0 6H7v-4h10z'),
+  on: SF('theater'),
+  off: SF('theater-off'),
 };
-const desktopQuery = matchMedia('(min-width: 1001px)');
+const desktopQuery = matchMedia('(min-width: 1100px)');
 let theaterOn = store.get(KEYS.theater, false);
 
 function theaterActive() {
@@ -2573,11 +2886,12 @@ function theaterActive() {
 
 function applyTheater() {
   $('#view-watch').classList.toggle('theater', theaterActive());
+  updateSidebarMode();
   const btn = $('#pc-theater');
   if (!btn) return;
   btn.innerHTML = theaterOn ? THEATER_ICONS.off : THEATER_ICONS.on;
   btn.setAttribute('aria-pressed', String(theaterOn));
-  btn.title = theaterOn ? 'Sair do modo teatro (t)' : 'Modo teatro (t)';
+  btn.title = theaterOn ? 'Sair do Modo Cinema (t)' : 'Modo Cinema (t)';
   btn.setAttribute('aria-label', btn.title);
 }
 
@@ -2589,7 +2903,7 @@ function toggleTheater() {
   const update = () => {
     applyTheater();
     // A lista de "A seguir" muda de tamanho: 10 vídeos no modo teatro, 3 no normal.
-    upNextCount = Math.max(upNextPage(), theaterOn ? upNextCount : UPNEXT_PAGE);
+    upNextCount = Math.max(upNextPage(), theaterOn ? upNextCount : normalUpNext());
     if (state.currentVideo) renderUpNext(state.currentVideo);
   };
   if (!motionOK() || document.fullscreenElement || state.view !== 'watch') { update(); pokeControls(); return; }
@@ -2626,7 +2940,7 @@ function toggleTheater() {
     pokeControls();
   };
   // Saindo do modo teatro: os vídeos extras de "A seguir" saem antes, desfocando.
-  const extras = theaterOn ? [] : [...$$('#upnext .mini')].slice(UPNEXT_PAGE);
+  const extras = theaterOn ? [] : [...$$('#upnext .mini')].slice(normalUpNext());
   if (extras.length) Promise.all(extras.map((m, i) => focusOut(m, { delay: (extras.length - 1 - i) * 15 }))).then(go);
   else go();
 }
@@ -2638,6 +2952,40 @@ function updateFullscreenButton() {
   btn.innerHTML = inside ? FS_ICONS.exit : FS_ICONS.enter;
   btn.title = inside ? 'Sair da tela cheia (f)' : 'Tela cheia (f)';
   btn.setAttribute('aria-label', btn.title);
+}
+
+/** Player estreito (celular em pé): anterior/próximo vão para o centro, ao lado do play, e legendas e
+    qualidade sobem para o canto. Mover os botões (em vez de duplicar) mantém tudo funcionando igual. */
+let controlsCompact = null;
+function layoutPlayerControls(width) {
+  const compact = width > 0 && width < 560;
+  if (compact === controlsCompact) return;
+  controlsCompact = compact;
+  $('.player-wrap').classList.toggle('pc-compact', compact);
+  const center = $('#pc-center');
+  const play = $('#pc-play');
+  const skip = $('.pc-skip');
+  const right = $('.pc-right');
+  const topRight = $('#pc-topright');
+  if (compact) {
+    center.insertBefore($('#pc-prev'), play);
+    play.after($('#pc-next'));
+    topRight.append($('#pc-cc'), $('#pc-settings'));
+  } else {
+    skip.append($('#pc-prev'), $('#pc-next'));
+    $('.pc-volume').after($('#pc-cc'));
+    $('#pc-autoplay').after($('#pc-settings'));
+  }
+  if (!$('#pc-menu').hidden) openMenu(false);
+}
+
+/** Link do vídeo no YouTube, para compartilhar. */
+function copyVideoLink(id) {
+  if (!id) return;
+  const url = `https://www.youtube.com/watch?v=${id}`;
+  (navigator.clipboard?.writeText(url) || Promise.reject())
+    .then(() => toast('Link copiado.', 'success'))
+    .catch(() => toast(url));
 }
 
 function setupPlayerControls() {
@@ -2661,9 +3009,22 @@ function setupPlayerControls() {
     fn(e);
     if (e.detail > 0) e.currentTarget.blur();
   });
-  onClick('#pc-play', togglePlay);
+  // Play do centro (em cima do vídeo): um clique pausa/continua; clique duplo é tela cheia, como no resto do vídeo.
+  let playTapTimer = 0;
+  onClick('#pc-play', e => {
+    if (e.detail === 0) { togglePlay(); return; } // teclado
+    clearTimeout(playTapTimer);
+    if (e.detail >= 2) { togglePlayerFullscreen(); return; }
+    playTapTimer = setTimeout(togglePlay, 260);
+  });
+  $('#pc-play').addEventListener('dblclick', e => e.preventDefault());
   onClick('#pc-prev', playPrevious);
   onClick('#pc-next', playNext);
+  onClick('#pc-back10', () => { seekBy(-10); flashPlayerIcon('play', '« 10 s'); });
+  onClick('#pc-fwd10', () => { seekBy(10); flashPlayerIcon('play', '10 s »'); });
+  onClick('#pc-pip', () => minimizeVideo());
+  onClick('#pc-down', () => (document.fullscreenElement ? document.exitFullscreen?.() : minimizeVideo()));
+  onClick('#pc-more', () => openMenu());
   onClick('#pc-mute', toggleMute);
   onClick('#pc-autoplay', toggleAutoplay);
   onClick('#pc-cc', toggleCaptions);
@@ -2681,7 +3042,7 @@ function setupPlayerControls() {
   });
   // Fecha o menu ao clicar fora dele.
   document.addEventListener('click', e => {
-    if (!$('#pc-menu').hidden && !e.target.closest('#pc-menu, #pc-settings')) openMenu(false);
+    if (!$('#pc-menu').hidden && !e.target.closest('#pc-menu, #pc-settings, #pc-more')) openMenu(false);
   });
 
   // Mantém os controles visíveis enquanto o mouse está sobre a barra. Trocar um ícone que está
@@ -2690,7 +3051,7 @@ function setupPlayerControls() {
     const r = el.getBoundingClientRect();
     return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
   };
-  for (const el of [$('.pc-bar'), $('#pc-progress')]) {
+  for (const el of [$('.pc-bar'), $('#pc-progress'), $('.pc-topbar'), $('#pc-center')]) {
     el.addEventListener('pointerenter', () => { pointerOnBar = true; setControlsVisible(true); });
     el.addEventListener('pointerleave', e => {
       if (inside(el, e)) return;
@@ -2711,9 +3072,10 @@ function setupPlayerControls() {
 
   document.addEventListener('fullscreenchange', () => { updateFullscreenButton(); pokeControls(); });
 
-  // A altura do player define o tamanho dos tiles de "A seguir" (3 tiles = altura do player).
+  // A altura do player define o tamanho dos tiles de "A seguir"; a largura escolhe o arranjo dos controles.
   new ResizeObserver(([entry]) => {
     $('#view-watch').style.setProperty('--player-h', `${Math.round(entry.contentRect.height)}px`);
+    layoutPlayerControls(entry.contentRect.width);
   }).observe($('.player-wrap'));
 
   // Camada sobre o vídeo: clique (mouse) ou toque, simples ou duplo.
@@ -2810,8 +3172,8 @@ function setupPlayerControls() {
    e abre o outro normalmente; fechar salva o ponto e para o vídeo.
    O tempo assistido nele conta nas Estatísticas, como na página do vídeo. */
 const MINI_ICONS = {
-  expand: ICON('M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2zM14 3v2h3.6l-9.8 9.8 1.4 1.4L19 6.4V10h2V3z'),
-  close: ICON('M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z'),
+  expand: SF('expand'),
+  close: SF('close'),
 };
 const mini = { on: false, context: '', timer: 0 };
 
@@ -2885,7 +3247,28 @@ function renderMiniInfo() {
   const v = state.currentVideo;
   if (!v) return;
   $('#mini-info .mini-info-title').textContent = v.title;
-  $('#mini-info .mini-info-channel').textContent = v.channelTitle;
+  $('#mini-info .mini-info-channel').innerHTML = `${esc(v.channelTitle)}<span class="mini-time"></span>`;
+}
+
+/** Mini player: próximo de "A seguir" ou o anterior, tocando ali mesmo. */
+function miniNext() {
+  const next = nextVideoAfter(state.currentVideo);
+  if (next) miniPlay(next);
+}
+
+async function miniPrev() {
+  const id = previousVideoId();
+  if (!id) return;
+  let v = findLoadedVideo(id);
+  if (!v) {
+    try { v = (await fetchVideos([id])).get(id); } catch { v = null; }
+  }
+  if (!v || !mini.on) return;
+  while (watchHistory.stack.length && watchHistory.stack.at(-1) !== id) watchHistory.stack.pop();
+  watchHistory.stack.pop();
+  saveWatchHistory();
+  goingBack = true;
+  miniPlay(v);
 }
 
 function updateMiniUI() {
@@ -2900,11 +3283,18 @@ function updateMiniUI() {
   let t = 0, d = 0;
   try { t = player.getCurrentTime() || 0; d = player.getDuration() || 0; } catch { /* ignora */ }
   $('#mini-ui .mini-progress span').style.width = d ? `${Math.min(100, (t / d) * 100)}%` : '0';
+  const time = $('#mini-info .mini-time');
+  if (time) time.textContent = state.currentVideo?.live === 'live' ? 'ao vivo' : d ? `${fmtClock(t)} de ${fmtClock(d)}` : '';
+  $('#mini-info .mini-prev').disabled = !previousVideoId();
+  $('#mini-info .mini-next').disabled = !nextVideoAfter(state.currentVideo);
 }
 
 function setupMini() {
   $$('[data-mini="expand"].mini-btn').forEach(b => { b.innerHTML = MINI_ICONS.expand; });
   $$('[data-mini="close"]').forEach(b => { b.innerHTML = MINI_ICONS.close; });
+  $$('[data-mini="prev"]').forEach(b => { b.innerHTML = SKIP_ICONS.prev; });
+  $$('[data-mini="next"]').forEach(b => { b.innerHTML = SKIP_ICONS.next; });
+  setupMiniSwipe();
   const act = e => {
     if (!mini.on) return;
     const btn = e.target.closest('[data-mini]');
@@ -2914,6 +3304,10 @@ function setupMini() {
     if (action === 'play') {
       if (isPlaying()) player.pauseVideo(); else player.playVideo();
       setTimeout(updateMiniUI, 150);
+    } else if (action === 'next') {
+      miniNext();
+    } else if (action === 'prev') {
+      miniPrev();
     } else if (action === 'close') {
       closeMini();
     } else {
@@ -2922,6 +3316,53 @@ function setupMini() {
   };
   $('#mini-ui').addEventListener('click', act);
   $('#mini-info').addEventListener('click', act);
+}
+
+/** Celular: arrastar a cápsula do mini player para baixo fecha o vídeo. */
+function setupMiniSwipe() {
+  const box = $('#view-watch');
+  let y0 = 0;
+  let dy = 0;
+  let on = false;
+  box.addEventListener('touchstart', e => {
+    on = mini.on && dragMiniQuery.matches && e.touches.length === 1;
+    if (!on) return;
+    y0 = e.touches[0].clientY;
+    dy = 0;
+  }, { passive: true });
+  box.addEventListener('touchmove', e => {
+    if (!on) return;
+    dy = Math.max(0, e.touches[0].clientY - y0);
+    if (dy > 6 && e.cancelable) e.preventDefault();
+    box.style.transform = dy ? `translateY(${dy}px)` : '';
+    box.style.opacity = String(Math.max(.3, 1 - dy / 160));
+  }, { passive: false });
+  const end = () => {
+    if (!on) return;
+    on = false;
+    if (dy > 60) {
+      const block = ev => { ev.stopPropagation(); ev.preventDefault(); };
+      addEventListener('click', block, { capture: true, once: true });
+      setTimeout(() => removeEventListener('click', block, { capture: true }), 400);
+      box.style.transform = '';
+      box.style.opacity = '';
+      closeMini();
+      return;
+    }
+    if (dy && motionOK()) box.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 380, easing: easeSmooth() });
+    box.style.transform = '';
+    box.style.opacity = '';
+  };
+  box.addEventListener('touchend', end);
+  box.addEventListener('touchcancel', end);
+}
+
+/** Minimizar (botão do player, menu, "voltar" do Modo Cinema): o vídeo vai para o mini player e
+    abre a última página que não é de vídeo, como o gesto de arrastar para baixo. */
+function minimizeVideo() {
+  if (state.view !== 'watch' || mini.on) return;
+  if (document.fullscreenElement) document.exitFullscreen?.();
+  dragToMini();
 }
 
 /* =========================================================
@@ -2946,7 +3387,7 @@ function clearDragMini() {
   clearTimeout(drag.leaving);
   drag.leaving = 0;
   const view = $('#view-watch');
-  view.classList.remove('drag-mini');
+  view.classList.remove('drag-mini', 'drag-ready');
   view.style.removeProperty('--drag-p');
   $('.watch-player').style.transform = '';
 }
@@ -2977,7 +3418,8 @@ function snapBackDragMini() {
 
 function setupDragToMini() {
   const wrap = $('.player-wrap');
-  const ignore = t => t.closest('button, input, .pc-progress, .pc-menu, .pc-pill');
+  // Começa em qualquer ponto do vídeo (até em cima dos botões: só vira arrasto depois de 10 px), menos na barra de tempo e no menu.
+  const ignore = t => t.closest('input, .pc-progress, .pc-menu');
   wrap.addEventListener('touchstart', e => {
     drag.on = false;
     if (e.touches.length !== 1 || ignore(e.target)) return;
@@ -3002,7 +3444,10 @@ function setupDragToMini() {
       if (dy <= 0 || dy < Math.abs(dx) * 1.2) { drag.on = false; return; } // para cima ou para o lado: não é o gesto
       drag.active = true;
       setControlsVisible(false);
-      if (!drag.fs) $('#view-watch').classList.add('drag-mini');
+      if (!drag.fs) {
+        renderMiniInfo();
+        $('#view-watch').classList.add('drag-mini');
+      }
     }
     if (e.cancelable) e.preventDefault();
     drag.dy = Math.max(0, dy);
@@ -3012,6 +3457,7 @@ function setupDragToMini() {
     const p = Math.min(1, drag.dy / (innerHeight * 0.6));
     $('.watch-player').style.transform = `translateY(${drag.dy}px) scale(${1 - p * 0.3})`;
     $('#view-watch').style.setProperty('--drag-p', p.toFixed(3));
+    $('#view-watch').classList.toggle('drag-ready', drag.dy > innerHeight * DRAG_MINI_DISTANCE);
   }, { passive: false });
 
   const end = e => {
@@ -3194,9 +3640,11 @@ function setupPreviews() {
 /* =========================================================
    Página do vídeo
    ========================================================= */
-const UPNEXT_PAGE = 3;          // "A seguir" mostra 3 vídeos; "Mostrar mais" acrescenta outros 3
-const UPNEXT_PAGE_THEATER = 10; // no modo teatro, a coluna fica ao lado dos comentários: 10 por vez
-const upNextPage = () => (theaterActive() ? UPNEXT_PAGE_THEATER : UPNEXT_PAGE);
+const UPNEXT_PAGE = 6;          // "A seguir" mostra 6 vídeos (4 no celular); "Mostrar mais" acrescenta outros tantos
+const UPNEXT_PAGE_PHONE = 4;
+const UPNEXT_PAGE_THEATER = 10; // no Modo Cinema, os cartões ficam ao lado das informações: 10 por vez
+const normalUpNext = () => (overlayQuery.matches ? UPNEXT_PAGE_PHONE : UPNEXT_PAGE);
+const upNextPage = () => (theaterActive() ? UPNEXT_PAGE_THEATER : normalUpNext());
 let upNextCount = UPNEXT_PAGE;
 
 function watchInfoSkeleton() {
@@ -3273,6 +3721,10 @@ function renderWatchInfo(v) {
           <span class="muted" id="watch-subs">${esc(subscribersText(v.channelId) || ch?.handle || '')}</span>
         </div>
       </${isHomeChannel(v.channelId) ? 'a' : 'div'}>
+      <div class="watch-actions">
+        ${v.likes != null ? `<span class="btn btn-fill" title="Curtidas no YouTube">${SF('heart')}${esc(compact.format(Number(v.likes)))}</span>` : ''}
+        <button class="btn btn-fill btn-icon-only" type="button" data-action="watch-more" aria-label="Mais opções" title="Mais opções">${SF('more')}</button>
+      </div>
     </div>
     <div class="description collapsed" id="description" data-action="expand-desc">
       <div class="description-stats">
@@ -3305,7 +3757,41 @@ function renderWatchInfo(v) {
   $('#comments-title').textContent = v.comments != null
     ? `Comentários · ${compact.format(Number(v.comments))}`
     : 'Comentários';
-  document.title = `${v.title} · MyTube`;
+  document.title = `${v.title} · Canais`;
+  renderUpNextSeg(v);
+}
+
+/** "A seguir": Todos os canais ou só os vídeos deste canal (o mesmo filtro do endereço). */
+function renderUpNextSeg(v) {
+  const seg = $('#upnext-seg');
+  if (!seg) return;
+  if (!v || !isHomeChannel(v.channelId)) { seg.hidden = true; seg.innerHTML = ''; return; }
+  const one = state.filter === v.channelId;
+  seg.innerHTML = `
+    <button type="button" data-ctx="" aria-pressed="${!one}">Todos</button>
+    <button type="button" data-ctx="${esc(v.channelId)}" aria-pressed="${one}" title="${esc(v.channelTitle)}">${esc(v.channelTitle)}</button>`;
+  seg.hidden = false;
+  placeSegThumb(seg);
+}
+
+function setUpNextContext(channelId) {
+  const v = state.currentVideo;
+  if (!v || (state.filter || '') === channelId) return;
+  const seg = $('#upnext-seg');
+  const thumb = seg?.querySelector('.seg-thumb');
+  const from = thumb ? { left: thumb.style.left, width: thumb.style.width } : null;
+  state.filter = channelId || null;
+  state.sort = 'new';
+  state.watchFeed = currentFeed();
+  history.replaceState(history.state, '', watchHref(v.id));
+  nav.hashes[nav.idx] = currentHash();
+  watchHistory.ctx[v.id] = watchContext();
+  saveWatchHistory();
+  seg?.querySelectorAll('[data-ctx]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.ctx === channelId)));
+  placeSegThumb(seg, from);
+  upNextCount = upNextPage();
+  $('#upnext').innerHTML = miniSkeletons(upNextPage());
+  renderUpNext(v);
 }
 
 function showWatchBlocked(message) {
@@ -3341,7 +3827,7 @@ function enterWatch(id, { resume = false } = {}) {
 
   if (!state.channels.length || !hasCredentials()) {
     showWatchBlocked(!state.channels.length
-      ? 'Adicione canais em Configurações para assistir aos vídeos.'
+      ? 'Adicione canais nos Ajustes para assistir aos vídeos.'
       : 'Entre com o Google ou configure uma chave de API para assistir aos vídeos.');
     return;
   }
@@ -3358,10 +3844,10 @@ function enterWatch(id, { resume = false } = {}) {
       }
       if (state.currentVideoId !== id) return;
     }
-    // O que não é do MyTube (outro canal, Short, live gravada, acima do limite de duração)
+    // O que não é do app (outro canal, Short, live gravada, acima do limite de duração)
     // simplesmente não existe no app: sem aviso, segue para outro lugar.
-    if (!video || !(await isMyTubeVideo(video))) {
-      if (state.currentVideoId === id) skipNonMyTube(id);
+    if (!video || !(await isAppVideo(video))) {
+      if (state.currentVideoId === id) skipNonApp(id);
       return;
     }
     if (state.currentVideoId !== id) return;
@@ -3381,9 +3867,9 @@ function enterWatch(id, { resume = false } = {}) {
   })();
 }
 
-/** Vídeo que o MyTube mostra: live no ar (menu "Ao vivo") ou vídeo da aba "Vídeos" do canal,
+/** Vídeo que o app mostra: live no ar (menu "Ao vivo") ou vídeo da aba "Vídeos" do canal,
     dentro do limite de duração. Shorts e lives gravadas ficam de fora. */
-async function isMyTubeVideo(v) {
+async function isAppVideo(v) {
   if (v.blocked) return false; // não toca fora do YouTube
   if (v.live === 'live') return true;
   if (!shownInApp(v)) return false;
@@ -3410,8 +3896,8 @@ async function inVideosTab(v) {
   return found;
 }
 
-/** Vídeo que não é do MyTube: vai para o anterior válido (se veio do "Anterior") ou para o Início. */
-function skipNonMyTube(id) {
+/** Vídeo que não é do app: vai para o anterior válido (se veio do "Anterior") ou para o Início. */
+function skipNonApp(id) {
   watchHistory.stack = watchHistory.stack.filter(x => x !== id);
   if (watchHistory.last === id) watchHistory.last = null;
   saveWatchHistory();
@@ -3596,7 +4082,7 @@ async function toggleReplies(btn) {
 }
 
 /* =========================================================
-   Configurações
+   Ajustes
    ========================================================= */
 function premiumNote() {
   return `
@@ -3609,20 +4095,33 @@ function premiumNote() {
 }
 
 function renderAccount() {
-  const header = $('#account');
+  const side = $('#account');
+  const miniBox = $('#account-mini');
+  const card = $('#account-card');
   const panel = $('#account-panel');
   const connected = Boolean(Auth.validToken());
   const account = connected ? { profile: Auth.profile, ytChannel: Auth.ytChannel } : Auth.remembered;
+  const syncing = connected && Auth.hasDriveScope && !Sync.off;
+  const syncLine = !connected ? '' : syncing
+    ? (Sync.status === 'syncing' ? 'Sincronizando…' : Sync.meta.lastSync ? `Sincronizado ${timeAgo(Sync.meta.lastSync)}` : 'Sincronização ativa')
+    : 'Conectado';
 
   if (!account) {
-    header.innerHTML = `
-      <button class="btn btn-google btn-sm" type="button" data-action="signin">${ICONS.google}<span>Entrar</span></button>`;
+    side.innerHTML = `<button class="btn btn-google btn-sm" type="button" data-action="signin">${ICONS.google}<span>Entrar com o Google</span></button>`;
+    miniBox.innerHTML = SF('person');
+    miniBox.title = 'Entrar com o Google';
+    card.innerHTML = `
+      <div class="row acct-card">
+        <span class="acct-ph">${SF('person')}</span>
+        <span class="grow"><b>Conta Google</b><span class="sub">Entre para usar a sua conta do YouTube e sincronizar</span></span>
+        <button class="btn btn-google btn-sm" type="button" data-action="signin">${ICONS.google}Entrar</button>
+        ${SF('chev-r', 'ic chev')}
+      </div>`;
     panel.innerHTML = `
       <div class="account-panel">
-        <p class="muted" style="margin:0">Entre com sua conta Google para usar o app com a sua conta do YouTube.
+        <p class="muted">Entre com sua conta Google para usar o app com a sua conta do YouTube.
           ${state.config.apiKey ? 'Com a chave de API salva, o login é opcional.' : ''}</p>
         <div><button class="btn btn-google" type="button" data-action="signin">${ICONS.google}Entrar com o Google</button></div>
-        <div id="sync-status"></div>
         ${premiumNote()}
       </div>`;
     renderSyncStatus();
@@ -3634,9 +4133,21 @@ function renderAccount() {
   const pic = p?.picture || account.ytChannel?.thumb || '';
   const avatar = cls => `<img class="${cls}" src="${esc(pic)}" alt="" referrerpolicy="no-referrer" data-hide-broken>`;
 
-  header.innerHTML = connected
-    ? `<a class="account-chip" href="#/settings" title="${esc(name)}">${avatar('')}<span>${esc(p?.given_name || name)}</span></a>`
+  side.innerHTML = connected
+    ? `<a class="acct" href="#/settings/conta" title="${esc(name)}">${avatar('')}<span class="acct-text"><b>${esc(p?.given_name || name)}</b><span>${esc(syncLine)}</span></span>${SF('chev-r')}</a>`
     : `<button class="btn btn-google btn-sm" type="button" data-action="signin" title="Sessão expirada">${ICONS.google}<span>Reconectar</span></button>`;
+  miniBox.innerHTML = pic ? avatar('') : esc([...name.trim()][0] || '?');
+  miniBox.title = name;
+
+  card.innerHTML = `
+    <div class="row acct-card" data-action="open-account">
+      ${avatar('')}
+      <span class="grow"><b>${esc(name)}</b><span class="sub">${connected ? (Auth.hasYtScope ? 'Conectada · YouTube só leitura' : 'Falta autorizar o YouTube') : 'Sessão expirada'}</span></span>
+      ${connected
+        ? '<button class="btn btn-fill btn-sm" type="button" data-action="signout">Sair</button>'
+        : `<button class="btn btn-google btn-sm" type="button" data-action="signin">${ICONS.google}Reconectar</button>`}
+      ${SF('chev-r', 'ic chev')}
+    </div>`;
 
   let status;
   if (!connected) {
@@ -3647,7 +4158,7 @@ function renderAccount() {
           : 'Por segurança, o Google limita o login de apps web a 1 hora.'}
         ${state.config.apiKey
           ? 'Como você tem uma chave de API salva, o app continua funcionando normalmente — reconectar é opcional.'
-          : 'Clique em “Reconectar” para continuar carregando vídeos.'}
+          : 'Toque em “Reconectar” para continuar carregando vídeos.'}
       </p>`;
   } else if (Auth.hasYtScope) {
     const until = new Date(Auth.expiresAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -3655,10 +4166,9 @@ function renderAccount() {
       ? '<span class="tier">Conectado · acesso ao YouTube autorizado · login renovado automaticamente neste aparelho</span>'
       : `<span class="tier">Conectado · acesso ao YouTube autorizado · sessão válida até ${until}</span>`;
     if (Auth.server() && !Auth.session) {
-      // Servidor de login configurado, mas este login ainda é o de 1 hora: entra de novo para receber a chave.
       status += `
         <p class="note">Servidor de login configurado. Entre de novo uma vez para o login se renovar sozinho por até 7 dias.</p>
-        <div><button class="btn btn-primary btn-sm" type="button" data-action="signin">Ativar renovação automática</button></div>`;
+        <div><button class="btn btn-tint btn-sm" type="button" data-action="signin">Ativar renovação automática</button></div>`;
     }
   } else {
     status = `
@@ -3666,62 +4176,89 @@ function renderAccount() {
         <strong>Falta autorizar o acesso ao YouTube.</strong> Na tela do Google, marque a caixa
         “Ver sua conta do YouTube”, senão o app não consegue listar vídeos e canais com a sua conta.
       </p>
-      <div><button class="btn btn-primary btn-sm" type="button" data-action="signin">Autorizar acesso ao YouTube</button></div>`;
+      <div><button class="btn btn-tint btn-sm" type="button" data-action="signin">Autorizar acesso ao YouTube</button></div>`;
   }
 
   panel.innerHTML = `
-    <div class="account-panel">
-      <div class="account-card">
-        ${avatar('avatar lg')}
-        <div>
-          <strong>${esc(name)}</strong>
-          ${p?.email ? `<span>${esc(p.email)}</span>` : ''}
-          ${account.ytChannel ? `<span>Canal no YouTube: ${esc(account.ytChannel.title)}</span>` : ''}
-        </div>
-        ${connected ? '' : `<button class="btn btn-google btn-sm" type="button" data-action="signin">${ICONS.google}Reconectar</button>`}
-        <button class="btn btn-ghost btn-sm" type="button" data-action="signout">Sair</button>
+    <div class="account-panel group group-pad">
+      <div>
+        <strong>${esc(name)}</strong>
+        ${p?.email ? `<div class="muted">${esc(p.email)}</div>` : ''}
+        ${account.ytChannel ? `<div class="muted">Canal no YouTube: ${esc(account.ytChannel.title)}</div>` : ''}
       </div>
       ${status}
-      <div id="sync-status"></div>
       ${premiumNote()}
+      <div><button class="btn btn-fill btn-sm" type="button" data-action="signout">Sair da conta</button></div>
     </div>`;
   renderSyncStatus();
 }
 
 function renderChannelList() {
   const ul = $('#channel-list');
-  $('#channel-count').textContent = state.channels.length || '';
-  if (!state.channels.length) {
+  const n = state.channels.length;
+  $('#channel-count').textContent = n ? `· ${n}` : '';
+  const row = $('#channel-count-row');
+  if (row) row.textContent = n || '';
+  if (!n) {
     ul.innerHTML = '<li class="channel-empty">Nenhum canal adicionado ainda.</li>';
     return;
   }
   ul.innerHTML = state.channels.map(c => `
     <li class="channel-item" data-id="${esc(c.id)}">
-      <img class="avatar" src="${esc(c.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hide-broken>
-      <div>
+      <img src="${esc(c.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hide-broken>
+      <div class="ci-text">
         <strong>${esc(c.title)}</strong>
         <span>${esc(c.handle || c.id)}</span>
       </div>
       <label class="channel-dur" title="Duração máxima dos vídeos deste canal (hh:mm:ss). Vídeos mais longos não aparecem e não contam nas Estatísticas. Vazio = sem limite.">
-        <span>Até</span>
-        <input type="text" inputmode="numeric" placeholder="hh:mm:ss" maxlength="8" spellcheck="false" autocomplete="off"
+        ${SF('timer')}
+        <input type="text" inputmode="numeric" placeholder="Sem limite" maxlength="8" spellcheck="false" autocomplete="off"
           value="${c.maxDur ? fmtHms(c.maxDur) : ''}" data-max-dur="${esc(c.id)}" aria-label="Duração máxima dos vídeos de ${esc(c.title)} (hh:mm:ss)">
       </label>
-      <label class="switch channel-switch" title="Quando ativado, o canal só aparece em “Ao vivo” (no menu lateral) enquanto estiver transmitindo">
-        <input type="checkbox" data-lives-only="${esc(c.id)}" ${c.livesOnly ? 'checked' : ''}>
-        <span class="switch-track" aria-hidden="true"></span>
-        <span class="switch-label">Apenas lives</span>
+      <label class="channel-switch" title="Quando ativado, o canal só aparece em “Ao Vivo” enquanto estiver transmitindo">
+        <span class="switch-label">Só lives</span>
+        <input class="switch sm" type="checkbox" data-lives-only="${esc(c.id)}" ${c.livesOnly ? 'checked' : ''}>
       </label>
-      <button class="btn-icon" type="button" data-action="remove-channel" data-id="${esc(c.id)}" aria-label="Remover ${esc(c.title)}" title="Remover">${ICONS.remove}</button>
+      <button class="ci-remove" type="button" data-action="remove-channel" data-id="${esc(c.id)}" aria-label="Remover ${esc(c.title)}" title="Remover">${SF('minus-c')}</button>
     </li>`).join('');
 }
 
-function renderSettings() {
-  document.title = 'Configurações · MyTube';
+const SETTINGS_SUBS = { canais: 'Canais', conta: 'Conta Google', app: 'App no celular', sobre: 'Sobre' };
+
+function renderSettings(sub = '') {
+  const view = $('#view-settings');
+  if (SETTINGS_SUBS[sub]) view.dataset.sub = sub;
+  else delete view.dataset.sub;
+  $('#settings-title').textContent = SETTINGS_SUBS[sub] || 'Ajustes';
+  document.title = `${SETTINGS_SUBS[sub] || 'Ajustes'} · Canais`;
+  $$('input[data-setting="autoplay"]').forEach(i => { i.checked = state.autoplay; });
+  $$('input[data-setting="hide-watched"]').forEach(i => { i.checked = state.hideWatched; });
+  $$('[data-version]').forEach(el => { el.textContent = APP_VERSION; });
+  const icon = $('#about-icon');
+  if (icon && !icon.firstChild) icon.innerHTML = appIconSVG(64);
   renderInstallPanel();
   renderVersionInfo();
   renderAccount();
   renderChannelList();
+  if (sub === 'canais') requestAnimationFrame(() => { if (!state.channels.length && !isMobile()) $('#channel-input').focus(); });
+}
+
+/** Interruptores dos Ajustes (reprodução automática, ocultar assistidos, sincronização). */
+function onSettingChange(input) {
+  const kind = input.dataset.setting;
+  if (kind === 'autoplay') {
+    if (input.checked !== state.autoplay) toggleAutoplay({ quiet: true });
+    $$('input[data-setting="autoplay"]').forEach(i => { i.checked = state.autoplay; });
+  } else if (kind === 'hide-watched') {
+    if (input.checked !== state.hideWatched) toggleHideWatched();
+  } else if (kind === 'sync') {
+    if (!Auth.validToken() || !Auth.hasDriveScope) {
+      input.checked = false;
+      Auth.signIn();
+      return;
+    }
+    Sync.setOff(!input.checked);
+  }
 }
 
 /* Adicionar canal: só pelo link do canal com @ (https://www.youtube.com/@canal), como aparece na barra
@@ -3858,7 +4395,7 @@ function removeChannel(id) {
   } else apply();
 }
 
-/** Canais alterados em outra aba (ex.: limite de duração nas Configurações com as Estatísticas abertas): aplica na hora. */
+/** Canais alterados em outra aba (ex.: limite de duração nos Ajustes com as Estatísticas abertas): aplica na hora. */
 function onChannelsStored() {
   state.channels = store.get(KEYS.channels, []);
   if (state.filter && !isHomeChannel(state.filter)) state.filter = null;
@@ -3957,9 +4494,19 @@ const Sync = {
   status: 'idle', // idle | syncing | ok | error
   error: null,
   lastUploaded: '',
+  off: store.get(KEYS.syncOff, false),
 
   enabled() {
-    return Boolean(Auth.validToken() && Auth.hasDriveScope);
+    return Boolean(!this.off && Auth.validToken() && Auth.hasDriveScope);
+  },
+
+  /** Interruptor dos Ajustes: liga ou desliga a sincronização neste aparelho. */
+  setOff(off) {
+    this.off = off;
+    store.set(KEYS.syncOff, off);
+    if (!off) this.run();
+    renderSyncStatus();
+    renderAccount();
   },
 
   saveMeta() {
@@ -4183,38 +4730,58 @@ const Sync = {
 };
 
 function renderSyncStatus() {
+  const group = $('#sync-group');
   const box = $('#sync-status');
-  if (!box) return;
+  if (!box || !group) return;
   const time = ts => new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  let html;
-  if (!Auth.validToken()) {
-    html = `<p class="note"><strong>Sincronização na nuvem:</strong> entre com o Google para salvar canais, opções e
-      progresso na sua conta e carregá-los em outros aparelhos.
+  const connected = Boolean(Auth.validToken());
+  const on = connected && Auth.hasDriveScope && !Sync.off;
+  let sub;
+  if (!connected) sub = 'Entre com o Google para sincronizar';
+  else if (!Auth.hasDriveScope) sub = 'Falta autorizar o Google Drive';
+  else if (Sync.off) sub = 'Desligada neste aparelho';
+  else if (Sync.status === 'syncing') sub = 'Sincronizando…';
+  else if (Sync.status === 'error') sub = 'Não foi possível sincronizar';
+  else sub = Sync.meta.lastSync ? `Última vez: hoje às ${time(Sync.meta.lastSync)}` : 'Ativa';
+  if (Sync.meta.lastSync && !isToday(Sync.meta.lastSync) && Sync.status !== 'syncing' && on) {
+    sub = `Última vez: ${new Date(Sync.meta.lastSync).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}`;
+  }
+  group.innerHTML = `
+    <label class="row" style="min-height:58px">
+      <span class="sq-ic" style="--c:var(--blue)">${SF('sync')}</span>
+      <span class="grow">Sincronizar com o Google Drive<span class="sub">${esc(sub)}</span></span>
+      <input class="switch" type="checkbox" data-setting="sync"${on ? ' checked' : ''}>
+    </label>`;
+
+  let html = '';
+  if (!connected) {
+    html = `<p>Com a sincronização, canais, opções e progresso ficam salvos na sua conta e aparecem nos seus outros aparelhos.
       ${Sync.meta.lastSync ? `Última sincronização: ${new Date(Sync.meta.lastSync).toLocaleString('pt-BR')}.` : ''}</p>`;
   } else if (!Auth.hasDriveScope) {
     html = `
       <p class="note note-warn"><strong>Sincronização na nuvem desligada.</strong> Na tela do Google, marque a permissão
         do Google Drive (“ver, criar e excluir os próprios dados de configuração”). O app só usa uma pasta oculta,
         exclusiva dele — não vê nem mexe nos seus arquivos.</p>
-      <div><button class="btn btn-primary btn-sm" type="button" data-action="signin">Ativar sincronização</button></div>`;
+      <button class="btn btn-tint btn-sm" type="button" data-action="signin">Ativar sincronização</button>`;
+  } else if (Sync.off) {
+    html = '<p>Neste aparelho, nada é enviado nem recebido da nuvem até você ligar de novo.</p>';
   } else if (Sync.status === 'error') {
     html = `
       <p class="note note-warn"><strong>Não foi possível sincronizar:</strong> ${esc(Sync.error?.message || 'erro desconhecido')}
         ${Sync.meta.lastSync ? ` Última sincronização: ${time(Sync.meta.lastSync)}.` : ''}</p>
-      <div><button class="btn btn-ghost btn-sm" type="button" data-action="sync-now">Tentar de novo</button></div>`;
+      <button class="btn btn-fill btn-sm" type="button" data-action="sync-now">Tentar de novo</button>`;
   } else {
-    const text = Sync.status === 'syncing'
-      ? 'sincronizando…'
-      : Sync.meta.lastSync ? `ativa · última sincronização às ${time(Sync.meta.lastSync)}` : 'ativa';
     const c = Sync.meta.cloud;
     html = `
-      <span class="tier sync-ok">☁ Sincronização na nuvem ${text}</span>
-      ${c ? `<p class="sync-summary muted">Na nuvem: <strong>${c.channels}</strong> ${c.channels === 1 ? 'canal' : 'canais'} ·
+      ${c ? `<p class="sync-summary">Na nuvem: <strong>${c.channels}</strong> ${c.channels === 1 ? 'canal' : 'canais'} ·
         <strong>${c.progress}</strong> ${c.progress === 1 ? 'vídeo' : 'vídeos'} com progresso ·
         atualizado em ${new Date(c.updatedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</p>` : ''}
-      <div><button class="btn btn-ghost btn-sm" type="button" data-action="sync-now"${Sync.status === 'syncing' ? ' disabled' : ''}>Sincronizar agora</button></div>`;
+      <button class="btn btn-fill btn-sm" type="button" data-action="sync-now"${Sync.status === 'syncing' ? ' disabled' : ''}>Sincronizar agora</button>`;
   }
   box.innerHTML = html;
+  // O nome da conta no menu mostra quando foi a última sincronização.
+  const line = $('#account .acct-text span');
+  if (line && connected) line.textContent = on ? (Sync.status === 'syncing' ? 'Sincronizando…' : Sync.meta.lastSync ? `Sincronizado ${timeAgo(Sync.meta.lastSync)}` : 'Sincronização ativa') : 'Conectado';
 }
 
 /* =========================================================
@@ -4258,8 +4825,11 @@ function parseRoute() {
   // a página mantém os vídeos seguintes do mesmo canal.
   const watch = /^#\/watch\/([\w-]{11})(?:\/c\/(UC[\w-]{22})(\/antigos)?)?$/.exec(hash);
   if (watch) return { view: 'watch', id: watch[1], channel: watch[2] || null, sort: watch[3] ? 'old' : 'new' };
-  if (hash === '#/settings') return { view: 'settings' };
+  const settings = /^#\/settings(?:\/(canais|conta|app|sobre))?$/.exec(hash);
+  if (settings) return { view: 'settings', sub: settings[1] || '' };
   if (hash === '#/stats') return { view: 'stats' };
+  if (hash === '#/live') return { view: 'live' };
+  if (hash === '#/channels') return { view: 'channels' };
   const channel = /^#\/c\/(UC[\w-]{22})(\/antigos)?$/.exec(hash);
   return { view: 'home', channel: channel?.[1] || null, sort: channel?.[2] ? 'old' : 'new' };
 }
@@ -4283,7 +4853,7 @@ function inViewport(el) {
 }
 
 /** Retorna uma promessa quando o Início está remontando a lista (a transição espera por ela). */
-function applyView(view, id, channel, sort = 'new') {
+function applyView(view, id, channel, sort = 'new', sub = '') {
   let pending = null;
   const prev = state.view;
   if (prev === 'home') state.homeScroll = scrollY;
@@ -4310,8 +4880,10 @@ function applyView(view, id, channel, sort = 'new') {
   $('#view-watch').hidden = view !== 'watch' && !mini.on;
   $('#view-settings').hidden = view !== 'settings';
   $('#view-stats').hidden = view !== 'stats';
-  $$('.side-footer [data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === view));
+  $('#view-live').hidden = view !== 'live';
+  $('#view-channels').hidden = view !== 'channels';
   updateSidebarMode();
+  $('#search-note').hidden = view !== 'home' || !$('#side-search').value.trim();
 
   if (view === 'home') {
     const filter = channel && isHomeChannel(channel) ? channel : null;
@@ -4331,9 +4903,18 @@ function applyView(view, id, channel, sort = 'new') {
     window.scrollTo({ top: 0, behavior: 'instant' });
     statsForecast = ''; // a Previsão sempre abre em "Todos"
     renderStats();
+  } else if (view === 'live') {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    document.title = 'Ao Vivo · Canais';
+    renderLivePage();
+  } else if (view === 'channels') {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    document.title = 'Canais';
+    renderChannelsPage();
+    if (state.channels.length) ensureChannelStats(state.channels[0].id).then(() => { if (state.view === 'channels') renderChannelsPage(); });
   } else {
     window.scrollTo({ top: 0, behavior: 'instant' });
-    renderSettings();
+    renderSettings(sub);
   }
   updateSidebarActive();
   updateToTop();
@@ -4354,7 +4935,7 @@ function applyView(view, id, channel, sort = 'new') {
 function route(animate = true) {
   stopPreview();
   stopFrames();
-  const { view, id, channel, sort } = parseRoute();
+  const { view, id, channel, sort, sub } = parseRoute();
   const prevView = state.view;
   // Saindo de uma página que não é de vídeo: ela vira a página de fundo do gesto de arrastar.
   if (prevView && prevView !== 'watch' && nav.idx >= 0) lastPage = { hash: nav.hashes[nav.idx], idx: nav.idx, scroll: scrollY };
@@ -4373,7 +4954,7 @@ function route(animate = true) {
 
   const update = () => {
     clearHeroNames();
-    const pending = applyView(view, id, channel, sort);
+    const pending = applyView(view, id, channel, sort, sub);
     const heroes = () => {
       if (view === 'watch' || toMini) {
         setHero($('.player-wrap')); // o player vira o mini player (ou volta a ser o grande)
@@ -4409,10 +4990,73 @@ function updateToTop() {
   $('#to-top').classList.toggle('show', state.view === 'home' && scrollY > 1200);
 }
 
+/* ---------- Menu de vidro (botão "…") ---------- */
+function closeMenuPop() {
+  const pop = $('#menu-pop');
+  if (pop && !pop.hidden) pop.hidden = true;
+}
+
+/** Abre o menu ao lado do botão. items: [{ icon, label, href?, run? }]. */
+function openMenuPop(anchor, items) {
+  const pop = $('#menu-pop');
+  if (!pop.hidden && pop.dataset.for === anchor.dataset.popId) { closeMenuPop(); return; }
+  anchor.dataset.popId ||= String(Math.random()).slice(2);
+  pop.dataset.for = anchor.dataset.popId;
+  pop.innerHTML = items.map((it, i) => it.href
+    ? `<a class="mp-row" role="menuitem" href="${esc(it.href)}" data-mp="${i}">${SF(it.icon)}<span>${esc(it.label)}</span></a>`
+    : `<button class="mp-row" role="menuitem" type="button" data-mp="${i}">${SF(it.icon)}<span>${esc(it.label)}</span></button>`).join('');
+  pop.onclick = e => {
+    const row = e.target.closest('[data-mp]');
+    if (!row) return;
+    closeMenuPop();
+    items[Number(row.dataset.mp)].run?.();
+  };
+  pop.hidden = false;
+  const r = anchor.getBoundingClientRect();
+  const w = pop.offsetWidth;
+  const h = pop.offsetHeight;
+  const left = Math.max(10, Math.min(innerWidth - w - 10, r.right - w));
+  const below = r.bottom + 8 + h < innerHeight - 10;
+  pop.style.left = `${left}px`;
+  pop.style.top = `${below ? r.bottom + 8 : Math.max(10, r.top - h - 8)}px`;
+  pop.style.setProperty('--origin', `${r.right - left - r.width / 2}px ${below ? '0' : '100%'}`);
+}
+
+function videoMenuItems(id, { watch = false } = {}) {
+  const v = findLoadedVideo(id) || (state.currentVideo?.id === id ? state.currentVideo : null);
+  const items = [];
+  if (!watch) items.push({ icon: 'play', label: 'Assistir', href: watchHref(id) });
+  if (v && isHomeChannel(v.channelId)) items.push({ icon: 'person', label: `Ir para ${v.channelTitle}`, href: `#/c/${v.channelId}` });
+  if (watch) {
+    items.push({ icon: 'pip', label: 'Mini player', run: minimizeVideo });
+    if (desktopQuery.matches && !isMobile()) items.push({ icon: 'theater', label: theaterOn ? 'Sair do Modo Cinema' : 'Modo Cinema', run: toggleTheater });
+  }
+  items.push({ icon: 'copy', label: 'Copiar link do vídeo', run: () => copyVideoLink(id) });
+  return items;
+}
+
+/** Atualizar o Início: busca os vídeos de novo (o ícone gira enquanto isso). */
+function refreshHome() {
+  const icon = $('#refresh-btn .ic');
+  if (motionOK()) icon?.animate([{ transform: 'rotate(0)' }, { transform: 'rotate(360deg)' }], { duration: 700, easing: easeSmooth() });
+  resetFeed();
+  if (state.view === 'home') showHome();
+  refreshLives(true);
+}
+
 function bindEvents() {
   window.addEventListener('hashchange', () => route(true));
 
   document.addEventListener('click', e => {
+    // "…" dentro de um cartão (que é um link): abre o menu sem abrir o vídeo.
+    const more = e.target.closest('[data-action="tile-more"]');
+    if (more) {
+      e.preventDefault();
+      e.stopPropagation();
+      openMenuPop(more, videoMenuItems(more.dataset.vidMore));
+      return;
+    }
+    if (!e.target.closest('#menu-pop')) closeMenuPop();
     const videoLink = e.target.closest('a[data-vid]');
     if (videoLink) {
       pendingHero = videoLink.querySelector('.thumb');
@@ -4456,6 +5100,13 @@ function bindEvents() {
         updateFeedStatus();
         loadFeedPage();
         break;
+      case 'watch-more': openMenuPop(actionEl, videoMenuItems(state.currentVideoId, { watch: true })); break;
+      case 'open-account':
+        if (e.target.closest('button, a')) break;
+        if (location.hash !== '#/settings/conta') location.hash = '#/settings/conta';
+        break;
+      case 'cinema-sidebar': toggleSidebar(); break;
+      case 'cinema-back': minimizeVideo(); break;
       case 'toggle-desc':
       case 'expand-desc': {
         const box = $('#description');
@@ -4484,13 +5135,53 @@ function bindEvents() {
 
   $('#menu-btn').addEventListener('click', toggleSidebar);
   $('#watched-toggle').addEventListener('click', toggleHideWatched);
-  $('#sidebar-backdrop').addEventListener('click', closeSidebarOverlay);
+  $('#refresh-btn').addEventListener('click', refreshHome);
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeSidebarOverlay();
+    if (e.key === 'Escape') { closeSidebarOverlay(); closeMenuPop(); }
   });
   overlayQuery.addEventListener('change', () => {
     updateSidebarMode();
+    updateTabbar();
     requestAnimationFrame(checkSentinel);
+  });
+  addEventListener('resize', () => requestAnimationFrame(updateTabbar), { passive: true });
+  addEventListener('scroll', closeMenuPop, { passive: true });
+  // Cliques no menu de canais quando ele está aberto por cima (Modo Cinema): fecha ao escolher.
+  $('#sidebar').addEventListener('click', e => { if (e.target.closest('a[href^="#/"]')) closeSidebarOverlay(); });
+  // Modo Cinema com o menu por cima: um clique fora dele fecha.
+  document.addEventListener('pointerdown', e => {
+    if (!state.pageSidebar || !cinemaActive() || e.target.closest('#sidebar, [data-action="cinema-sidebar"]')) return;
+    closeSidebarOverlay();
+    // Esse toque só fecha o menu (não pausa o vídeo nem abre nada).
+    const block = ev => { ev.stopPropagation(); ev.preventDefault(); };
+    addEventListener('click', block, { capture: true, once: true });
+    setTimeout(() => removeEventListener('click', block, { capture: true }), 500);
+  });
+
+  // Busca do menu lateral: canais e vídeos já carregados no Início.
+  $('#side-search').addEventListener('input', () => {
+    if ($('#side-search').value.trim() && state.view !== 'home') location.hash = '#/';
+    applySearch();
+  });
+  $('#side-search').addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.target.value = ''; applySearch(); e.target.blur(); }
+  });
+  // Clique na lupa do menu recolhido: expande o menu e vai para a busca.
+  $('.side-search').addEventListener('click', () => {
+    if (document.body.classList.contains('sidebar-mini')) { toggleSidebar(); setTimeout(() => $('#side-search').focus(), 300); }
+  });
+  $('#channels-search').addEventListener('input', renderChannelsPage);
+
+  // Interruptores dos Ajustes.
+  $('#view-settings').addEventListener('change', e => {
+    const input = e.target.closest('input[data-setting]');
+    if (input) onSettingChange(input);
+  });
+
+  // "A seguir": Todos os canais ou só este canal.
+  $('#upnext-seg').addEventListener('click', e => {
+    const b = e.target.closest('[data-ctx]');
+    if (b) setUpNextContext(b.dataset.ctx);
   });
   addEventListener('storage', e => {
     if (e.key === KEYS.config) onConfigStored();
@@ -4595,7 +5286,7 @@ function bindEvents() {
 /* =========================================================
    Celular: app instalável e tela cheia
    =========================================================
-   • Instalado ("Instalar app" no Chrome), o MyTube abre sempre
+   • Instalado ("Instalar app" no Chrome), o Canais abre sempre
      em tela cheia, sem a barra do navegador (manifest.json).
    • Aberto pelo navegador, entra em tela cheia no primeiro toque
      (o navegador não permite fazer isso sem um toque).
@@ -4623,14 +5314,14 @@ function renderInstallPanel() {
   const box = $('#install-panel');
   if (!box) return;
   if (isInstalledApp()) {
-    box.innerHTML = '<span class="tier">Você está usando o MyTube instalado como app.</span>';
+    box.innerHTML = '<span class="tier">Você está usando o Canais instalado como app.</span>';
   } else if (installPrompt) {
     box.innerHTML = `
-      <p class="muted">Instale o MyTube para ele abrir pelo ícone, sempre em tela cheia, sem a barra do navegador.</p>
+      <p class="muted">Instale o Canais para ele abrir pelo ícone, sempre em tela cheia, sem a barra do navegador.</p>
       <div><button class="btn btn-primary" type="button" data-action="install-app">Instalar app</button></div>`;
   } else {
     box.innerHTML = `
-      <p class="muted" style="margin:0">Para abrir sempre em tela cheia, sem a barra do navegador, instale o MyTube:
+      <p class="muted" style="margin:0">Para abrir sempre em tela cheia, sem a barra do navegador, instale o Canais:
         no Chrome do celular, toque em <strong>⋮</strong> › <strong>Instalar app</strong> (ou
         <strong>Adicionar à tela inicial</strong>) e abra pelo ícone criado. No Samsung Internet: <strong>☰</strong> ›
         <strong>Adicionar página a › Tela inicial</strong>.</p>`;
@@ -4649,7 +5340,7 @@ function setupMobileApp() {
   window.addEventListener('appinstalled', () => {
     installPrompt = null;
     renderInstallPanel();
-    toast('MyTube instalado. Abra pelo ícone para usar em tela cheia.', 'success');
+    toast('Canais instalado. Abra pelo ícone para usar em tela cheia.', 'success');
   });
 
   if (!isMobile()) return;
@@ -4661,7 +5352,7 @@ function setupMobileApp() {
   }, true);
 }
 
-/** No PC, os botões de Estatísticas e Configurações do rodapé do menu (e o de Credenciais) abrem numa aba nova.
+/** No PC, os botões de Estatísticas e Ajustes do rodapé do menu (e o de Credenciais) abrem numa aba nova.
     No celular (e no app instalado) continuam abrindo na mesma tela. */
 function setupFooterLinks() {
   if (isMobile()) return;
@@ -4669,27 +5360,23 @@ function setupFooterLinks() {
     a.target = '_blank';
     a.rel = 'noopener';
   });
-  // A página abre em outra aba; nesta, o menu que estava aberto só por um momento fecha.
+  // A página abre em outra aba; nesta, o menu aberto por cima (Modo Cinema) fecha.
   $$('.side-footer a[data-nav="stats"], .side-footer a[data-nav="settings"]').forEach(a => {
-    a.addEventListener('click', () => {
-      if (SIDEBAR_HIDDEN_VIEWS.has(state.view)) state.pageSidebar = false;
-      document.body.classList.remove('sidebar-open');
-      updateSidebarMode();
-    });
+    a.addEventListener('click', () => closeSidebarOverlay());
   });
 }
 
-/** Versão discreta no menu lateral e, em Configurações, versão + diagnóstico do celular. */
+/** Versão discreta no menu lateral e, nos Ajustes, versão + diagnóstico do celular. */
 function renderVersionInfo() {
   const side = $('#app-version');
-  if (side) side.textContent = `v${APP_VERSION}`;
+  if (side) side.textContent = `Canais ${APP_VERSION}`;
   const footer = $('#settings-footer');
   if (!footer) return;
   const htmlVersion = document.querySelector('meta[name="app-version"]')?.content;
   const sw = navigator.serviceWorker?.controller ? 'ativo' : 'inativo';
   const mode = isInstalledApp() ? 'app instalado' : 'navegador';
   footer.innerHTML = `
-    <span>MyTube <strong>v${APP_VERSION}</strong></span>
+    <span>Canais <strong>v${APP_VERSION}</strong></span>
     <span>Celular: ${isMobile() ? 'sim' : 'não'} · Aberto como: ${mode} · Service worker: ${sw} · Rotação: ${esc(lastRotation)}</span>
     ${htmlVersion && htmlVersion !== APP_VERSION
       ? `<span class="error">Arquivos de versões diferentes (página v${esc(htmlVersion)}). Recarregue a página.</span>` : ''}`;
@@ -4715,12 +5402,12 @@ async function installApp() {
    Cada aparelho guarda o próprio registro e a sincronização junta
    os de todos (o total é a soma dos aparelhos). O que aconteceu
    antes de o registro existir é estimado pelo progresso salvo.
-   Canais marcados como "Apenas lives" ficam de fora: não contam e não
+   Canais marcados como "Só lives" ficam de fora: não contam e não
    aparecem. Ao desmarcar, voltam a contar e aparecem nas estatísticas.
    ========================================================= */
 const STATS_TICK_MS = 5000;
 
-/** Canais "Apenas lives" (fora das estatísticas). */
+/** Canais "Só lives" (fora das estatísticas). */
 function livesOnlyIds() {
   return new Set(state.channels.filter(c => c.livesOnly).map(c => c.id));
 }
@@ -4829,7 +5516,7 @@ function mergeWatchLog(remoteLog, remoteChannels) {
 }
 
 /* =========================================================
-   Vídeos de cada canal no MyTube (base das Estatísticas)
+   Vídeos de cada canal no app (base das Estatísticas)
    =========================================================
    O total de cada canal e o que conta como assistido seguem a
    mesma regra do que aparece no app: vídeos da aba "Vídeos" do
@@ -4861,7 +5548,7 @@ function loadCatalogsFromCache(channels) {
   }
 }
 
-/** Total de vídeos do canal no MyTube (respeitando o limite de duração), ou undefined se ainda não foi contado. */
+/** Total de vídeos do canal no app (respeitando o limite de duração), ou undefined se ainda não foi contado. */
 function channelVideoTotal(c) {
   const catalog = channelCatalogs.get(c.id);
   if (!catalog) return undefined;
@@ -4985,16 +5672,19 @@ function computeStats() {
       if (p.done) addVid(day, id);
     }
   }
-  return { since, daySec, dayChSec, dayVids, chSec, doneByCh, started, done, estimated };
+  return { since, daySec, dayChSec, dayVids, chSec, doneByCh, started, done, estimated, owner };
 }
 
-/* ---------- Períodos (dia, semana, mês) ---------- */
+/* ---------- Períodos (Semana, Mês, Ano, Tudo) ----------
+   Semana e Mês: os últimos 7 e 30 dias, dia a dia. Ano: os últimos 12 meses. Tudo: mês a mês,
+   desde o começo do registro. Os números de cima comparam com o período anterior de mesmo tamanho. */
 const STATS_PERIODS = {
-  day: { label: 'Dia', count: 14, now: 'hoje', prev: 'ontem', span: 'últimos 14 dias' },
-  week: { label: 'Semana', count: 12, now: 'esta semana', prev: 'semana passada', span: 'últimas 12 semanas' },
-  month: { label: 'Mês', count: 12, now: 'este mês', prev: 'mês passado', span: 'últimos 12 meses' },
+  week: { label: 'Semana', bucket: 'day', days: 7, now: 'esta semana', prev: 'os 7 dias anteriores', span: 'últimos 7 dias' },
+  month: { label: 'Mês', bucket: 'day', days: 30, now: 'este mês', prev: 'os 30 dias anteriores', span: 'últimos 30 dias' },
+  year: { label: 'Ano', bucket: 'month', months: 12, now: 'este ano', prev: 'os 12 meses anteriores', span: 'últimos 12 meses' },
+  all: { label: 'Tudo', bucket: 'month', now: 'no total', prev: '', span: 'desde o começo' },
 };
-let statsPeriod = STATS_PERIODS[store.get(KEYS.statsPeriod, 'day')] ? store.get(KEYS.statsPeriod, 'day') : 'day';
+let statsPeriod = STATS_PERIODS[store.get(KEYS.statsPeriod, 'week')] ? store.get(KEYS.statsPeriod, 'week') : 'week';
 
 function bucketStart(date, period) {
   const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -5025,19 +5715,37 @@ function statsSeries(dayMap, period, count, valueOf = v => v) {
   });
 }
 
-function periodLabel(start, period, long = false) {
-  if (period === 'month') {
+/** Quantos pontos o gráfico do período tem (dias ou meses). */
+function periodCount(period, since) {
+  const P = STATS_PERIODS[period];
+  if (P.days) return P.days;
+  if (P.months) return P.months;
+  const a = new Date(since);
+  const b = new Date();
+  return Math.min(60, Math.max(2, (b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth() + 1));
+}
+
+/** Intervalo do período atual e do anterior (para comparar): [início, fim) em ms. */
+function periodRange(period, since) {
+  const today = bucketStart(new Date(), 'day');
+  const end = shiftBucket(today, 'day', 1).getTime();
+  const P = STATS_PERIODS[period];
+  let start;
+  if (P.days) start = shiftBucket(today, 'day', -(P.days - 1)).getTime();
+  else if (P.months) start = shiftBucket(bucketStart(new Date(), 'month'), 'month', -(P.months - 1)).getTime();
+  else start = bucketStart(new Date(since), 'day').getTime();
+  const len = end - start;
+  return { start, end, prevStart: P.prev ? start - len : null, prevEnd: P.prev ? start : null, days: Math.max(1, Math.round(len / 864e5)) };
+}
+
+function periodLabel(start, bucket, long = false) {
+  if (bucket === 'month') {
     return long
       ? start.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
-      : start.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('. de ', '/').replace(' de ', '/').replace('.', '');
+      : start.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
   }
-  const short = start.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-  if (!long) return short;
-  if (period === 'week') {
-    const end = shiftBucket(start, 'day', 6);
-    return `Semana de ${short} a ${end.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`;
-  }
-  return start.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
+  if (long) return start.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' });
+  return start.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
 }
 
 /* ---------- Formatos ---------- */
@@ -5075,31 +5783,32 @@ function niceScale(max, ticks = 4, integer = false) {
 const STATS_DEFS = `
   <svg class="st-defs" aria-hidden="true" width="0" height="0">
     <defs>
-      <linearGradient id="st-ring" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="#39c6ff"/><stop offset="1" stop-color="#3f5bff"/>
-      </linearGradient>
-      <linearGradient id="st-bar" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#39c6ff"/><stop offset="1" stop-color="#3f5bff"/>
-      </linearGradient>
       <linearGradient id="st-area" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#4f7cff" stop-opacity=".45"/><stop offset="1" stop-color="#4f7cff" stop-opacity="0"/>
+        <stop offset="0" stop-color="#FF6F61" stop-opacity=".32"/><stop offset="1" stop-color="#FF6F61" stop-opacity="0"/>
       </linearGradient>
     </defs>
   </svg>`;
 
-function ringSVG(pct, size = 150) {
-  const r = size * 0.4;
+/** Anel de progresso (no estilo do Fitness): cor sólida com o fundo da mesma cor, mais clara. */
+function ringSVG(pct, size = 70, color = 'var(--coral)', sw = 10) {
+  const r = (size - sw) / 2;
   const c = 2 * Math.PI * r;
   const p = Math.max(0, Math.min(100, pct || 0));
-  const text = `${p < 10 && p > 0 ? p.toFixed(1).replace('.', ',') : Math.round(p)}%`;
   return `
-    <svg class="st-ring" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" aria-hidden="true">
-      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="${size * 0.1}"/>
-      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="url(#st-ring)" stroke-width="${size * 0.1}" class="st-ring-arc" style="--c:${c.toFixed(2)}"
-        stroke-linecap="round" stroke-dasharray="${(c * p) / 100} ${c}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
-      <circle cx="${size / 2}" cy="${size / 2}" r="${size * 0.32}" class="st-ring-core"/>
-      <text x="50%" y="50%" dy=".35em" text-anchor="middle" class="st-ring-text" style="font-size:${size * 0.17}px">${text}</text>
+    <svg class="st-ring" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" aria-hidden="true" style="transform:rotate(-90deg)">
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${color}" stroke-opacity=".18" stroke-width="${sw}"/>
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${color}" stroke-width="${sw}" class="st-ring-arc" style="--c:${c.toFixed(2)}"
+        stroke-linecap="round" stroke-dasharray="${((c * p) / 100).toFixed(2)} ${c.toFixed(2)}"/>
     </svg>`;
+}
+
+/** Mini gráfico de linha (canto do cartão "Média diária"). */
+function sparkSVG(values, color = 'var(--peri)', w = 110, h = 34) {
+  if (values.length < 2) return '';
+  const max = Math.max(...values) || 1;
+  const step = w / (values.length - 1);
+  const d = values.map((v, i) => `${i ? 'L' : 'M'}${(i * step).toFixed(1)} ${(h - 3 - (v / max) * (h - 6)).toFixed(1)}`).join('');
+  return `<svg class="st-spark" width="${w}" height="${h}" aria-hidden="true"><path d="${d}" pathLength="1" fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
 
 /** Dica que acompanha o ponteiro: mostra o ponto mais próximo (mouse ou toque). */
@@ -5117,7 +5826,7 @@ function attachChartTip(box, pts) {
     pts.forEach((p, i) => { if (Math.abs(p.x - mx) < Math.abs(pts[best].x - mx)) best = i; });
     const p = pts[best];
     tip.innerHTML = `<strong>${esc(p.value)}</strong><span>${esc(p.title)}</span>`;
-    tip.style.left = `${Math.max(70, Math.min(r.width - 70, p.x))}px`;
+    tip.style.left = `${Math.max(60, Math.min(r.width - 60, p.x))}px`;
     tip.style.top = `${p.y}px`;
     tip.hidden = false;
     marks.forEach(m => m.classList.toggle('active', Number(m.dataset.i) === best));
@@ -5131,132 +5840,82 @@ function attachChartTip(box, pts) {
 }
 
 function xLabelStep(n, width) {
-  return Math.max(1, Math.ceil(n / Math.max(2, Math.floor(width / 64))));
+  return Math.max(1, Math.ceil(n / Math.max(2, Math.floor(width / 54))));
 }
 
-/** Linha do tempo em linha (com área), no estilo do painel: grade, pontos laranja e dica com o valor. */
-function drawLineChart(box, series, { toValue, axis, tipValue, tipTitle, integer = false }) {
+/** Barras (como no Tempo de Uso do iPhone): a de agora mais forte e a média tracejada em verde. */
+function drawBarChart(box, series, { toValue = v => v, axis, tipValue, tipTitle, integer = false, avg = true }) {
   const W = box.clientWidth;
   const H = box.clientHeight;
   if (!W || !H) return;
-  const pad = { l: 52, r: 18, t: 22, b: 30 };
+  const pad = { l: 6, r: 44, t: 18, b: 26 };
   const values = series.map(s => toValue(s.value));
   const { step, max } = niceScale(Math.max(...values), 4, integer);
   const iw = W - pad.l - pad.r;
   const ih = H - pad.t - pad.b;
-  const x = i => pad.l + (series.length === 1 ? iw / 2 : (i * iw) / (series.length - 1));
+  const slot = iw / series.length;
+  const bw = Math.max(3, Math.min(42, slot * 0.56));
+  const cx = i => pad.l + slot * (i + 0.5);
   const y = v => pad.t + (1 - v / max) * ih;
-  const grid = [];
+  const parts = [];
   for (let v = 0; v <= max + 1e-9; v += step) {
-    grid.push(`<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" class="st-grid-line"/>`
-      + `<text x="${pad.l - 10}" y="${y(v)}" dy=".32em" text-anchor="end" class="st-axis">${esc(axis(v))}</text>`);
+    parts.push(`<line x1="${pad.l}" x2="${W - pad.r + 6}" y1="${y(v)}" y2="${y(v)}" class="st-grid-line"/>`
+      + `<text x="${W - pad.r + 12}" y="${y(v)}" dy=".32em" class="st-axis">${esc(axis(v))}</text>`);
   }
   const every = xLabelStep(series.length, iw);
   series.forEach((s, i) => {
-    grid.push(`<line x1="${x(i)}" x2="${x(i)}" y1="${pad.t}" y2="${H - pad.b}" class="st-grid-line st-grid-v"/>`);
+    const now = i === series.length - 1;
+    const h = Math.max(values[i] ? 3 : 0, y(0) - y(values[i]));
+    parts.push(`<rect data-i="${i}" x="${cx(i) - bw / 2}" y="${y(0) - h}" width="${bw}" height="${h}" rx="${Math.min(7, bw / 3)}" class="st-bar${now ? ' now' : ''}" style="--i:${i}"/>`);
     if ((series.length - 1 - i) % every === 0) {
-      grid.push(`<text x="${x(i)}" y="${H - 8}" text-anchor="middle" class="st-axis">${esc(s.label)}</text>`);
+      parts.push(`<text x="${cx(i)}" y="${H - 6}" text-anchor="middle" class="st-axis${now ? ' now' : ''}">${esc(s.label)}</text>`);
+    }
+  });
+  if (avg && values.some(Boolean)) {
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    parts.push(`<line x1="${pad.l}" x2="${W - pad.r + 6}" y1="${y(mean)}" y2="${y(mean)}" class="st-avg"/>`
+      + `<text x="${pad.l + 2}" y="${y(mean) - 6}" class="st-avg-label">média</text>`);
+  }
+  box.innerHTML = `<svg width="${W}" height="${H}" aria-hidden="true">${parts.join('')}</svg>`;
+  attachChartTip(box, series.map((s, i) => ({ x: cx(i), y: y(values[i]), value: tipValue(s.value), title: tipTitle(s) })));
+}
+
+/** Linha com área em degradê (Living Coral) e pontos. */
+function drawLineChart(box, series, { toValue = v => v, axis, tipValue, tipTitle, integer = false }) {
+  const W = box.clientWidth;
+  const H = box.clientHeight;
+  if (!W || !H) return;
+  const pad = { l: 10, r: 10, t: 14, b: 26 };
+  const values = series.map(s => toValue(s.value));
+  const { max } = niceScale(Math.max(...values), 2, integer);
+  const iw = W - pad.l - pad.r;
+  const ih = H - pad.t - pad.b;
+  const x = i => pad.l + (series.length === 1 ? iw / 2 : (i * iw) / (series.length - 1));
+  const y = v => pad.t + (1 - v / max) * ih;
+  const parts = [0, 0.5, 1].map(f => `<line x1="0" x2="${W}" y1="${pad.t + f * ih}" y2="${pad.t + f * ih}" class="st-grid-line"/>`);
+  const every = xLabelStep(series.length, iw);
+  series.forEach((s, i) => {
+    if ((series.length - 1 - i) % every === 0) {
+      parts.push(`<text x="${x(i)}" y="${H - 6}" text-anchor="middle" class="st-axis${i === series.length - 1 ? ' now' : ''}">${esc(s.label)}</text>`);
     }
   });
   const line = values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('');
   const area = `${line}L${x(values.length - 1).toFixed(1)},${y(0)}L${x(0).toFixed(1)},${y(0)}Z`;
-  const dots = values.map((v, i) => `<circle data-i="${i}" cx="${x(i)}" cy="${y(v)}" r="5" class="st-dot" style="--i:${i}"/>`).join('');
+  const r = series.length > 20 ? 2.5 : 3.5;
+  const dots = values.map((v, i) => `<circle data-i="${i}" cx="${x(i)}" cy="${y(v)}" r="${i === values.length - 1 ? r + 1.5 : r}" class="st-dot${i === values.length - 1 ? ' now' : ''}" style="--i:${Math.min(i, 20)}"/>`).join('');
   box.innerHTML = `
     <svg width="${W}" height="${H}" aria-hidden="true">
-      ${grid.join('')}
-      <path d="${area}" fill="url(#st-area)" class="st-area"/>
+      ${parts.join('')}
+      <path d="${area}" class="st-area"/>
       <path d="${line}" class="st-line" pathLength="1"/>
       ${dots}
     </svg>`;
   attachChartTip(box, series.map((s, i) => ({ x: x(i), y: y(values[i]), value: tipValue(s.value), title: tipTitle(s) })));
 }
 
-/** Linha do tempo em barras. */
-function drawBarChart(box, series, { axis, tipValue, tipTitle }) {
-  const W = box.clientWidth;
-  const H = box.clientHeight;
-  if (!W || !H) return;
-  const pad = { l: 40, r: 12, t: 22, b: 30 };
-  const { step, max } = niceScale(Math.max(...series.map(s => s.value)), 4, true);
-  const iw = W - pad.l - pad.r;
-  const ih = H - pad.t - pad.b;
-  const slot = iw / series.length;
-  const bw = Math.max(4, Math.min(34, slot * 0.56));
-  const cx = i => pad.l + slot * (i + 0.5);
-  const y = v => pad.t + (1 - v / max) * ih;
-  const parts = [];
-  for (let v = 0; v <= max + 1e-9; v += step) {
-    parts.push(`<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" class="st-grid-line"/>`
-      + `<text x="${pad.l - 10}" y="${y(v)}" dy=".32em" text-anchor="end" class="st-axis">${esc(axis(v))}</text>`);
-  }
-  const every = xLabelStep(series.length, iw);
-  series.forEach((s, i) => {
-    const h = Math.max(s.value ? 3 : 0, y(0) - y(s.value));
-    parts.push(`<rect data-i="${i}" x="${cx(i) - bw / 2}" y="${y(0) - h}" width="${bw}" height="${h}" rx="${Math.min(6, bw / 2)}" class="st-bar" style="--i:${i}"/>`);
-    if ((series.length - 1 - i) % every === 0) {
-      parts.push(`<text x="${cx(i)}" y="${H - 8}" text-anchor="middle" class="st-axis">${esc(s.label)}</text>`);
-    }
-  });
-  box.innerHTML = `<svg width="${W}" height="${H}" aria-hidden="true">${parts.join('')}</svg>`;
-  attachChartTip(box, series.map((s, i) => ({ x: cx(i), y: y(s.value), value: tipValue(s.value), title: tipTitle(s) })));
-}
-
-/** Quebra um nome em até 2 linhas de no máximo `max` letras (corta com … só se ainda não couber). */
-function wrapLabel(text, max) {
-  if (text.length <= max) return [text];
-  const words = text.split(' ');
-  let line1 = '';
-  while (words.length && (line1 ? `${line1} ${words[0]}` : words[0]).length <= max) line1 = line1 ? `${line1} ${words.shift()}` : words.shift();
-  if (!line1) line1 = words.shift();
-  let line2 = words.join(' ');
-  if (line1.length > max) line1 = `${line1.slice(0, max - 1)}…`;
-  if (line2.length > max) line2 = `${line2.slice(0, max - 1)}…`;
-  return line2 ? [line1, line2] : [line1];
-}
-
-/** Radar (teia) com as horas de cada canal. */
-function drawRadarChart(box, items) {
-  const W = box.clientWidth;
-  const H = box.clientHeight;
-  if (!W || !H) return;
-  if (items.length < 3) {
-    box.innerHTML = `<p class="st-empty">O radar aparece quando você tiver assistido a pelo menos 3 canais.</p>`;
-    return;
-  }
-  const n = items.length;
-  const cx = W / 2;
-  const cy = H / 2 + 4;
-  const LABEL_W = 84; // espaço reservado para os nomes nas laterais
-  const R = Math.max(36, Math.min(H / 2 - 34, (W / 2 - LABEL_W) / 1.14));
-  const max = Math.max(...items.map(i => i.value)) || 1;
-  const pt = (i, f) => {
-    const a = -Math.PI / 2 + (2 * Math.PI * i) / n;
-    return [cx + Math.cos(a) * R * f, cy + Math.sin(a) * R * f];
-  };
-  const parts = [];
-  for (const f of [0.25, 0.5, 0.75, 1]) parts.push(`<circle cx="${cx}" cy="${cy}" r="${R * f}" class="st-radar-ring"/>`);
-  items.forEach((it, i) => {
-    const [x2, y2] = pt(i, 1);
-    parts.push(`<line x1="${cx}" y1="${cy}" x2="${x2}" y2="${y2}" class="st-radar-axis"/>`);
-    const [lx, ly] = pt(i, 1.14);
-    const anchor = Math.abs(lx - cx) < 8 ? 'middle' : lx > cx ? 'start' : 'end';
-    // Nome em até 2 linhas, cabendo no espaço até a borda do cartão (~6,3 px por letra).
-    const room = anchor === 'middle' ? 150 : (anchor === 'start' ? W - lx : lx) - 4;
-    const lines = wrapLabel(it.label, Math.max(6, Math.floor(room / 6.3)));
-    const first = ly < cy - R * 0.3 ? -(lines.length + 0.2) : ly > cy + R * 0.3 ? 0.9 : -(lines.length * 0.6);
-    parts.push(`<text x="${lx}" y="${ly}" text-anchor="${anchor}" class="st-radar-label">`
-      + lines.map((l, j) => `<tspan x="${lx}" dy="${j ? '1.15em' : `${first.toFixed(2)}em`}">${esc(l)}</tspan>`).join('')
-      + `<tspan x="${lx}" dy="1.2em" class="st-radar-value">${esc(fmtHours(it.value))}</tspan></text>`);
-  });
-  const poly = items.map((it, i) => pt(i, Math.max(0.02, it.value / max)).map(v => v.toFixed(1)).join(',')).join(' ');
-  const origin = `transform-origin:${cx}px ${cy}px`; // a teia cresce a partir do centro
-  parts.push(`<polygon points="${poly}" class="st-radar-shape" style="${origin}"/>`);
-  items.forEach((it, i) => {
-    const [x, y] = pt(i, Math.max(0.02, it.value / max));
-    parts.push(`<circle cx="${x}" cy="${y}" r="3.5" class="st-radar-dot" style="${origin}"/>`);
-  });
-  box.innerHTML = `<svg width="${W}" height="${H}" aria-hidden="true">${parts.join('')}</svg>`;
-}
+/** Cores dos canais nos gráficos (pares de Cores do Ano da Pantone). */
+const CHANNEL_HUES = [['#6667AB', '#0F4C81'], ['#A47864', '#FFBE98'], ['#88B04B', '#0F4C81'], ['#FF6F61', '#FFBE98'], ['#5F4B8B', '#0F4C81'], ['#939597', '#F5DF4D'], ['#BB2649', '#FF6F61'], ['#F5DF4D', '#A47864']];
+const channelHue = i => CHANNEL_HUES[i % CHANNEL_HUES.length];
 
 /* ---------- Página ---------- */
 let statsData = null;
@@ -5266,8 +5925,8 @@ function channelAvatar(ch, cls = 'st-avatar') {
 }
 
 /* ---------- Previsão: quanto falta para assistir tudo, no seu ritmo ---------- */
-// Base: só o que o MyTube mostra (aba "Vídeos", dentro do limite de duração, sem os canais
-// "Apenas lives"). Ritmo: média por dia dos últimos 30 dias (ou desde o início do registro, se
+// Base: só o que o app mostra (aba "Vídeos", dentro do limite de duração, sem os canais
+// "Só lives"). Ritmo: média por dia dos últimos 30 dias (ou desde o início do registro, se
 // for mais recente), contando também os dias sem vídeo — o mesmo tempo assistido do resto da página.
 const FORECAST_DAYS = 30;
 let statsForecast = ''; // '' = Todos; ou o ID do canal escolhido
@@ -5307,92 +5966,58 @@ function forecastFor(data, chId) {
   };
 }
 
+function forecastText(data, chId) {
+  const ch = chId ? channelById(chId) : null;
+  const f = forecastFor(data, chId);
+  if (!f.known && !f.total) return { big: '…', short: '…', line: 'contando os vídeos dos canais', f };
+  if (f.total && f.done >= f.total) return { big: 'Tudo assistido ✓', short: 'tudo visto', line: ch ? `você viu todos os vídeos de ${esc(ch.title)}` : 'você viu todos os vídeos do Canais', f };
+  if (f.days == null) return { big: '—', short: '—', line: ch ? 'assista algo deste canal para estimar' : 'assista algo para estimar', f };
+  const days = `${intFmt.format(f.days)} ${f.days === 1 ? 'dia' : 'dias'}`;
+  return { big: `~ ${days}`, short: days, line: `para assistir ${ch ? `o que falta de ${esc(ch.title)}` : 'tudo o que está no Canais'}`, f };
+}
+
 function forecastBodyHTML(data) {
   const ch = statsForecast ? channelById(statsForecast) : null;
-  const f = forecastFor(data, statsForecast);
-  const what = ch ? `o que falta de ${esc(ch.title)}` : 'tudo o que está no MyTube';
-  let big;
-  let line;
-  if (!f.known && !f.total) {
-    big = '…';
-    line = 'contando os vídeos dos canais';
-  } else if (f.total && f.done >= f.total) {
-    big = 'Tudo assistido ✓';
-    line = ch ? `você viu todos os vídeos de ${esc(ch.title)}` : 'você viu todos os vídeos do MyTube';
-  } else if (f.days == null) {
-    big = '—';
-    line = ch ? 'assista algo deste canal para estimar' : 'assista algo para estimar';
-  } else {
-    big = `~ ${intFmt.format(f.days)} ${f.days === 1 ? 'dia' : 'dias'}`;
-    line = `para assistir ${what}`;
-  }
+  const { big, line, f } = forecastText(data, statsForecast);
   const year = f.finish && f.finish.getFullYear() !== new Date().getFullYear();
   const finish = f.finish ? f.finish.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', ...(year && { year: 'numeric' }) }).replace(/\./g, '') : '';
+  const pct = f.total ? Math.round((f.done / f.total) * 100) : 0;
   const support = [
     f.remaining ? `${fmtHours(f.remaining)} restantes` : '',
     f.pace ? `ritmo${ch ? ' neste canal' : ''}: ${f.pace < 30 ? 'menos de 1 min' : fmtHours(f.pace)} por dia` : '',
     finish && f.days != null && f.done < f.total ? `por volta de ${finish}` : '',
+    ch && f.total ? `${pct}% concluído (${intFmt.format(f.done)} de ${intFmt.format(f.total)})` : '',
   ].filter(Boolean);
-  const pct = f.total ? Math.round((f.done / f.total) * 100) : 0;
   return `
     <strong class="st-fc-big">${big}</strong>
     <span class="st-fc-line">${line}</span>
-    ${ch ? `
-      <div class="st-fc-facts">
-        <span><small>Horas vistas</small><b>${fmtHours(f.hours)}</b></span>
-        <span><small>Concluídos</small><b>${pct}% <em>(${intFmt.format(f.done)} de ${intFmt.format(f.total)})</em></b></span>
-      </div>` : ''}
     ${support.length ? `<span class="st-fc-support">${support.join(' · ')}</span>` : ''}`;
 }
 
 function forecastCardHTML(data) {
   const channels = [...homeChannels()].sort((a, b) => byName(a.title, b.title));
   if (statsForecast && !channels.some(c => c.id === statsForecast)) statsForecast = '';
-  const pick = (id, inner, label) => `
-    <button type="button" class="st-fc-pick" data-fc="${esc(id)}" aria-pressed="${statsForecast === id}" title="${esc(label)}">
-      ${inner}<span class="st-fc-name">${esc(label)}</span>
+  const rows = channels
+    .map(c => ({ c, t: forecastText(data, c.id) }))
+    .sort((a, b) => (b.t.f.days ?? -1) - (a.t.f.days ?? -1));
+  const row = (id, img, name, value) => `
+    <button type="button" class="st-fc-row" data-fc="${esc(id)}" aria-pressed="${statsForecast === id}">
+      ${img}<span>${esc(name)}</span><b>${esc(value)}</b>
     </button>`;
   return `
-    <div class="st-card-head"><h2>Previsão</h2><span class="st-sub">no seu ritmo dos últimos ${FORECAST_DAYS} dias</span></div>
+    <div class="st-lab">${SF('calendar')}Previsão <span class="st-lab-sub">· no seu ritmo dos últimos ${FORECAST_DAYS} dias</span></div>
     <div class="st-fc-body" aria-live="polite">${forecastBodyHTML(data)}</div>
-    <div class="st-fc-rail">
-      ${pick('', '<span class="st-fc-all"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z"/></svg></span>', 'Todos')}
-      <div class="st-fc-carousel">
-        <button type="button" class="st-fc-arrow" data-fc-scroll="-1" aria-label="Canais anteriores" hidden>‹</button>
-        <div class="st-fc-scroll">
-          ${channels.map(c => pick(c.id, `<span class="st-fc-face" data-initial="${esc([...c.title.trim()][0]?.toUpperCase() || '?')}">${channelAvatar(c, 'st-fc-photo')}</span>`, c.title)).join('')}
-        </div>
-        <button type="button" class="st-fc-arrow" data-fc-scroll="1" aria-label="Mais canais" hidden>›</button>
-      </div>
+    <div class="st-fc-list">
+      ${row('', `<span style="display:grid;width:22px">${appIconSVG(22)}</span>`, 'Todos os canais', forecastText(data, '').short)}
+      ${rows.map(({ c, t }) => row(c.id, channelAvatar(c, ''), c.title, t.short)).join('')}
     </div>`;
-}
-
-/** Setas do carrossel: aparecem só quando há canais escondidos para aquele lado. */
-function updateForecastArrows() {
-  const scroller = $('#stats .st-fc-scroll');
-  if (!scroller) return;
-  const [prev, next] = $$('#stats .st-fc-arrow');
-  const max = scroller.scrollWidth - scroller.clientWidth;
-  prev.hidden = scroller.scrollLeft <= 2;
-  next.hidden = scroller.scrollLeft >= max - 2;
-  // Borda esmaecida do lado em que há mais canais.
-  scroller.parentElement.classList.toggle('more-prev', !prev.hidden);
-  scroller.parentElement.classList.toggle('more-next', !next.hidden);
-}
-
-function setupForecastCarousel() {
-  const scroller = $('#stats .st-fc-scroll');
-  if (!scroller) return;
-  scroller.addEventListener('scroll', updateForecastArrows, { passive: true });
-  scroller.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: 'nearest', inline: 'center' });
-  updateForecastArrows();
 }
 
 /** Troca Todos/canal: só o miolo do cartão muda, com uma transição suave. */
 function selectForecast(id) {
   if (id === statsForecast) return;
   statsForecast = id;
-  $$('#stats .st-fc-pick').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.fc === id)));
+  $$('#stats .st-fc-row').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.fc === id)));
   const body = $('#stats .st-fc-body');
   if (!body) return;
   body.innerHTML = forecastBodyHTML(statsData || computeStats());
@@ -5401,38 +6026,25 @@ function selectForecast(id) {
     void body.offsetWidth;
     body.classList.add('st-fc-swap');
   }
-  $(`#stats .st-fc-pick[data-fc="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: motionOK() ? 'smooth' : 'auto' });
 }
 
 let statsAnimTimer = 0;
 
-/** Pílula azul das abas Dia/Semana/Mês: desliza da aba anterior até a escolhida. */
-function placeTabPill(prev) {
-  const tabs = $('#stats .st-tabs');
-  const active = tabs?.querySelector('[aria-pressed="true"]');
-  if (!active) return;
-  const pill = document.createElement('span');
-  pill.className = 'st-tab-pill';
-  pill.setAttribute('aria-hidden', 'true');
-  tabs.prepend(pill);
-  const place = () => { pill.style.left = `${active.offsetLeft}px`; pill.style.width = `${active.offsetWidth}px`; };
-  if (prev && motionOK()) {
-    pill.style.transition = 'none';
-    pill.style.left = prev.left;
-    pill.style.width = prev.width;
-    void pill.offsetWidth;
-    pill.style.transition = '';
-  }
-  place();
+/** Tempo em "2 h 8 min" com os minutos menores (como no Tempo de Uso). */
+function bigTime(sec) {
+  const m = Math.round(sec / 60);
+  if (m < 60) return `${m} <small>min</small>`;
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return r ? `${intFmt.format(h)} h <small>${r} min</small>` : `${intFmt.format(h)} <small>h</small>`;
 }
 
 function renderStats({ refresh = true, animate = refresh } = {}) {
   const box = $('#stats');
   if (!box) return;
-  // Gráficos se desenhando e cartões em cascata só ao abrir a página ou trocar o período
-  // (atualizações em segundo plano não repetem a animação).
-  const prevPill = box.querySelector('.st-tab-pill');
-  const pillFrom = prevPill ? { left: prevPill.style.left, width: prevPill.style.width } : null;
+  // Gráficos se desenhando e cartões em cascata só ao abrir a página ou trocar o período.
+  const prevThumb = box.querySelector('.st-head .seg-thumb');
+  const thumbFrom = prevThumb ? { left: prevThumb.style.left, width: prevThumb.style.width } : null;
   clearTimeout(statsAnimTimer);
   box.classList.toggle('st-anim', animate && motionOK());
   if (animate) statsAnimTimer = setTimeout(() => box.classList.remove('st-anim'), 2200);
@@ -5441,162 +6053,180 @@ function renderStats({ refresh = true, animate = refresh } = {}) {
   statsData = data;
   const period = statsPeriod;
   const P = STATS_PERIODS[period];
-  const channels = homeChannels(); // sem os "Apenas lives"
-  const chName = id => channels.find(c => c.id === id)?.title || 'Outros canais';
+  const range = periodRange(period, data.since);
+  const channels = homeChannels(); // sem os "Só lives"
+  const inRange = (day, a, b) => { const t = parseDay(day).getTime(); return t >= a && t < b; };
 
-  // Período atual x anterior
-  const hoursSeries = statsSeries(data.daySec, period, P.count);
-  const vidsSeries = statsSeries(data.dayVids, period, P.count, s => s.size);
-  const curH = hoursSeries.at(-1).value;
-  const prevH = hoursSeries.at(-2)?.value || 0;
-  const curV = vidsSeries.at(-1).value;
-  const prevV = vidsSeries.at(-2)?.value || 0;
-  const curStart = bucketStart(new Date(), period).getTime();
-  const curByCh = new Map();
-  for (const [day, m] of data.dayChSec) {
-    if (bucketStart(parseDay(day), period).getTime() !== curStart) continue;
-    for (const [ch, sec] of m) curByCh.set(ch, (curByCh.get(ch) || 0) + sec);
+  // Tempo: média por dia no período e no anterior
+  let total = 0;
+  let prevTotal = 0;
+  for (const [day, sec] of data.daySec) {
+    if (inRange(day, range.start, range.end)) total += sec;
+    else if (range.prevStart != null && inRange(day, range.prevStart, range.prevEnd)) prevTotal += sec;
   }
-  const topCur = [...curByCh].filter(([ch]) => ch).sort((a, b) => b[1] - a[1])[0];
+  const avg = total / range.days;
+  const prevAvg = range.prevStart != null ? prevTotal / range.days : null;
+  const count = periodCount(period, data.since);
+  const hoursSeries = statsSeries(data.daySec, P.bucket, count);
+  const sparkVals = hoursSeries.map(s => s.value);
 
-  // Últimos 30 dias
-  const last30 = Array.from({ length: 30 }, (_, i) => data.daySec.get(dayKey(Date.now() - i * 864e5)) || 0);
-  const active30 = last30.filter(Boolean).length;
-  const avg30 = last30.reduce((a, b) => a + b, 0) / 30;
+  // Concluídos: vídeos abertos no período e quantos foram até o fim
+  let started = 0;
+  let done = 0;
+  for (const [id, p] of Object.entries(progressStore)) {
+    if (!p || p.gone || !data.owner.has(id)) continue;
+    if ((p.at || 0) < range.start || (p.at || 0) >= range.end) continue;
+    started++;
+    if (p.done) done++;
+  }
+  const donePct = started ? (done / started) * 100 : 0;
 
-  // Por canal
-  const totalSec = [...data.chSec.values()].reduce((a, b) => a + b, 0);
-  const byHours = channels.map(c => ({ ch: c, value: data.chSec.get(c.id) || 0 })).sort((a, b) => b.value - a.value);
-  const top = byHours[0];
-  const byVideos = channels.map(c => ({ ch: c, value: data.doneByCh.get(c.id) || 0 })).sort((a, b) => b.value - a.value);
-  const maxVideos = Math.max(1, ...byVideos.map(i => i.value));
+  // Catálogo: vídeos que o app mostra (dentro do limite de duração) e as horas de todos eles
+  let catalogVideos = 0;
+  let catalogSec = 0;
+  for (const c of channels) {
+    const catalog = channelCatalogs.get(c.id);
+    if (!catalog) continue;
+    for (const [, d] of catalog) {
+      if (c.maxDur && d > c.maxDur) continue;
+      catalogVideos++;
+      catalogSec += d || 0;
+    }
+  }
+
+  // Por canal no período
+  const byCh = new Map();
+  for (const [day, m] of data.dayChSec) {
+    if (!inRange(day, range.start, range.end)) continue;
+    for (const [ch, sec] of m) byCh.set(ch, (byCh.get(ch) || 0) + sec);
+  }
+  const perCh = channels.map((c, i) => ({ c, i, sec: byCh.get(c.id) || 0 })).filter(x => x.sec > 0).sort((a, b) => b.sec - a.sec);
+  const top = perCh[0];
+  const maxCh = top?.sec || 1;
+  const hueOf = c => channelHue(Math.max(0, channels.findIndex(x => x.id === c.id)));
+
+  // Assistidos x total de cada canal
   const catalog = channels.map(c => {
-    const total = channelVideoTotal(c);
+    const totalN = channelVideoTotal(c);
     const doneN = data.doneByCh.get(c.id) || 0;
-    return { ch: c, done: doneN, total, pct: total ? (doneN / total) * 100 : 0 };
+    return { c, done: doneN, total: totalN, pct: totalN ? (doneN / totalN) * 100 : 0 };
   }).sort((a, b) => b.pct - a.pct || b.done - a.done);
-  const catalogTotal = catalog.reduce((a, c) => a + (c.total || 0), 0);
-  const catalogDone = catalog.reduce((a, c) => a + c.done, 0);
 
-  const deltaHTML = (cur, prev) => {
+  const delta = (cur, prev) => {
+    if (prev == null) return `${P.now === 'no total' ? 'desde' : ''}`;
     const d = fmtDelta(cur, prev);
-    return `<span class="st-delta ${d.dir}">${d.dir === 'up' ? '▲' : d.dir === 'down' ? '▼' : ''} ${esc(d.text)}</span><span class="st-vs">vs ${P.prev}</span>`;
+    return d.dir ? `<span class="st-delta ${d.dir}">${d.dir === 'up' ? '▲' : '▼'} ${esc(d.text.replace(/^[+-]/, ''))}</span> em relação a ${P.prev}` : `igual a ${P.prev}`;
   };
   const sinceText = new Date(data.since).toLocaleDateString('pt-BR');
 
   box.innerHTML = `
     ${STATS_DEFS}
-    <header class="st-head">
-      <h1>Estatísticas</h1>
-      <p>Registro desde ${sinceText}</p>
-      <details class="st-info">
-        <summary aria-label="Como os números são calculados" title="Como os números são calculados">i</summary>
-        <p>
-          Contam só os vídeos que aparecem no MyTube: os da aba “Vídeos” de cada canal, dentro do limite de duração
-          (“Até hh:mm:ss”, nas Configurações). Horas são o tempo em que o vídeo esteve tocando no MyTube, incluindo as
-          lives assistidas ao vivo (neste e nos seus outros aparelhos, pela sincronização). Um vídeo conta como
-          assistido quando é visto até o fim.
-          ${data.estimated ? `Antes de ${sinceText}, horas e vídeos são <strong>estimados</strong> pelo progresso salvo
-            (o vídeo inteiro, se assistido, ou até onde parou, no dia do último acesso).` : ''}
-          O total de cada canal é o número de vídeos que o MyTube mostra para ele; mudar o limite de duração
-          recalcula tudo na hora. As horas registradas antes da versão 1.13.0 não podem ser separadas por limite.
-        </p>
-      </details>
-      <div class="st-tabs" role="group" aria-label="Período">
+    <header class="page-head st-head">
+      <div class="page-title">
+        <h1 class="t-large">Estatísticas<details class="st-info">
+          <summary aria-label="Como os números são calculados" title="Como os números são calculados">i</summary>
+          <p>
+            Contam só os vídeos que aparecem no app: os da aba “Vídeos” de cada canal, dentro do limite de duração
+            (nos Ajustes, em Canais). Horas são o tempo em que o vídeo esteve tocando no app, incluindo as
+            lives assistidas ao vivo (neste e nos seus outros aparelhos, pela sincronização). Um vídeo conta como
+            assistido quando é visto até o fim. Concluídos: dos vídeos abertos no período, quantos foram até o fim.
+            ${data.estimated ? `Antes de ${sinceText}, horas e vídeos são <strong>estimados</strong> pelo progresso salvo
+              (o vídeo inteiro, se assistido, ou até onde parou, no dia do último acesso).` : ''}
+            O total de cada canal é o número de vídeos que o app mostra para ele; mudar o limite de duração
+            recalcula tudo na hora.
+          </p>
+        </details></h1>
+        <div class="st-since">Registro desde ${sinceText}</div>
+      </div>
+      <div class="seg st-tabs" role="group" aria-label="Período">
         ${Object.entries(STATS_PERIODS).map(([k, p]) => `<button type="button" data-period="${k}" aria-pressed="${k === period}">${p.label}</button>`).join('')}
       </div>
     </header>
 
     ${channels.some(c => !channelCatalogs.has(c.id)) ? '<p id="st-counting" class="st-counting" role="status">Contando os vídeos dos canais…</p>' : ''}
-    <div class="st-grid">
-      <article class="st-card st-kpi">
-        <span class="st-kpi-label">Vídeos assistidos ${P.now}</span>
-        <strong class="st-kpi-value">${intFmt.format(curV)}</strong>
-        <div class="st-kpi-foot">${deltaHTML(curV, prevV)}</div>
+    <div class="st-tiles">
+      <article class="st-tile st-avg-tile">
+        <div class="st-lab">${SF('clock')}Média diária</div>
+        <div class="st-big">${bigTime(avg)}</div>
+        <div class="st-note">${delta(avg, prevAvg) || `${P.span}`}</div>
+        ${sparkSVG(sparkVals)}
       </article>
-      <article class="st-card st-kpi">
-        <span class="st-kpi-label">Horas assistidas ${P.now}</span>
-        <strong class="st-kpi-value">${fmtHours(curH)}</strong>
-        <div class="st-kpi-foot">${deltaHTML(curH, prevH)}</div>
-      </article>
-      <article class="st-card st-kpi st-kpi-top">
-        <span class="st-kpi-label">Canal mais assistido ${P.now}</span>
-        <strong class="st-kpi-value st-kpi-name" title="${topCur ? esc(chName(topCur[0])) : ''}">${topCur ? esc(chName(topCur[0])) : '—'}</strong>
-        <div class="st-kpi-foot"><span class="st-delta">${topCur ? fmtHours(topCur[1]) : 'nada ainda'}</span></div>
-      </article>
-      <article class="st-card st-kpi st-kpi-ring">
-        ${ringSVG((active30 / 30) * 100, 64)}
+      <article class="st-tile st-tile-ring">
+        <div class="st-ringbox">${ringSVG(donePct, 70, 'var(--coral)', 10)}<b>${Math.round(donePct)}%</b></div>
         <div>
-          <span class="st-kpi-label">Média diária</span>
-          <strong class="st-kpi-value">${fmtHours(avg30)}</strong>
-          <span class="st-vs">${active30} de 30 dias com vídeos</span>
+          <div class="st-lab" style="margin-bottom:4px">Concluídos</div>
+          <div class="st-big">${intFmt.format(done)} <small>de ${intFmt.format(started)}</small></div>
+          <div class="st-note">vídeos abertos ${P.now}</div>
         </div>
       </article>
-      <article class="st-card st-rings">
-        <div class="st-ring-item" title="${intFmt.format(data.done)} de ${intFmt.format(data.started)} vídeos começados">
-          ${ringSVG(data.started ? (data.done / data.started) * 100 : 0, 64)}
-          <h3>Concluídos</h3>
-        </div>
-        <div class="st-ring-item" title="${catalogTotal ? `${intFmt.format(catalogDone)} de ${intFmt.format(catalogTotal)} vídeos dos seus canais` : 'carregando o total de vídeos…'}">
-          ${ringSVG(catalogTotal ? (catalogDone / catalogTotal) * 100 : 0, 64)}
-          <h3>Catálogo</h3>
-        </div>
-        <div class="st-ring-item" title="${top?.value ? `${esc(top.ch.title)} · ${fmtHours(top.value)} do total` : 'ainda sem horas assistidas'}">
-          ${ringSVG(totalSec && top ? (top.value / totalSec) * 100 : 0, 64)}
-          <h3>Canal nº 1</h3>
+      <article class="st-tile">
+        <div class="st-lab">${SF('film')}Catálogo</div>
+        <div class="st-big">${intFmt.format(catalogVideos)} <small>vídeos</small></div>
+        <div class="st-note">em ${channels.length} ${channels.length === 1 ? 'canal' : 'canais'}${catalogSec ? ` · ${intFmt.format(Math.round(catalogSec / 3600))} h no total` : ''}</div>
+      </article>
+      <article class="st-tile st-tile-top">
+        ${top ? channelAvatar(top.c, '') : `<span style="width:54px;height:54px;border-radius:50%;background:var(--fill);flex-shrink:0"></span>`}
+        <div style="min-width:0">
+          <div class="st-lab" style="margin-bottom:2px">${SF('medal')}Canal nº 1</div>
+          <div class="st-top-name">${top ? esc(top.c.title) : '—'}</div>
+          <div class="st-note" style="margin-top:0">${top ? `${fmtHours(top.sec)} ${P.now}` : 'nada assistido ainda'}</div>
         </div>
       </article>
+    </div>
 
+    <div class="st-charts">
       <article class="st-card st-hours">
-        <div class="st-card-head"><h2>Horas assistidas</h2><span class="st-sub">por ${P.label.toLowerCase()} · ${P.span}</span></div>
-        <div class="st-chart" id="st-hours" role="img" aria-label="Linha do tempo das horas assistidas"></div>
+        <div class="st-lab split"><span style="display:flex;gap:6px;align-items:center">${SF('chart')}Horas assistidas</span><span class="st-lab-sub">Total: ${fmtHours(total)}</span></div>
+        <div class="st-chart" id="st-hours" role="img" aria-label="Horas assistidas por ${P.bucket === 'day' ? 'dia' : 'mês'}"></div>
+      </article>
+      <article class="st-card st-perch-hours">
+        <div class="st-lab">${SF('stack')}Horas por canal <span class="st-lab-sub">· ${P.span}</span></div>
+        <div class="st-hbars">
+          ${perCh.slice(0, 7).map(({ c, sec }, i) => {
+            const [c1, c2] = hueOf(c);
+            return `
+            <div class="st-hbar">
+              ${channelAvatar(c, '')}
+              <div>
+                <div class="st-hbar-top"><span>${esc(c.title)}</span><span>${fmtHours(sec)}</span></div>
+                <div class="st-track"><span style="width:${((sec / maxCh) * 100).toFixed(1)}%;--c1:${c1};--c2:${c2};--i:${i}"></span></div>
+              </div>
+            </div>`;
+          }).join('') || '<p class="st-empty">Nada assistido neste período.</p>'}
+        </div>
       </article>
       <article class="st-card st-videos">
-        <div class="st-card-head"><h2>Vídeos assistidos</h2><span class="st-sub">até o fim · ${P.span}</span></div>
-        <div class="st-chart" id="st-videos" role="img" aria-label="Linha do tempo dos vídeos assistidos"></div>
+        <div class="st-lab">${SF('check-c')}Vídeos assistidos <span class="st-lab-sub">· até o fim</span></div>
+        <div class="st-chart short" id="st-videos" role="img" aria-label="Vídeos assistidos até o fim"></div>
       </article>
-      <article class="st-card st-radar">
-        <div class="st-card-head"><h2>Horas por canal</h2></div>
-        <div class="st-chart" id="st-radar" role="img" aria-label="Horas assistidas por canal"></div>
-      </article>
-
       <article class="st-card st-fc">${forecastCardHTML(data)}</article>
       <article class="st-card st-perch">
-        <div class="st-card-head"><h2>Vídeos por canal</h2><span class="st-sub">até o fim</span></div>
-        <ul class="st-bars">
-          ${byVideos.map(({ ch, value }, i) => `
-            <li>
-              ${channelAvatar(ch)}
-              <span class="st-bars-name" title="${esc(ch.title)}">${esc(ch.title)}</span>
-              <span class="st-bars-track"><span style="width:${((value / maxVideos) * 100).toFixed(1)}%;--i:${i}"></span></span>
-              <b>${intFmt.format(value)}</b>
-            </li>`).join('') || '<li class="st-empty">Adicione canais nas Configurações.</li>'}
-        </ul>
-      </article>
-      <article class="st-card st-catalog-card">
-        <div class="st-card-head"><h2>Assistidos x total do canal</h2><span class="st-sub">vistos até o fim, do total publicado</span></div>
-        <div class="st-catalog">
-          ${catalog.map(c => `
-            <div class="st-catalog-item" title="${esc(c.ch.title)}: ${intFmt.format(c.done)} de ${c.total != null ? intFmt.format(c.total) : '…'} vídeos">
-              ${ringSVG(c.pct, 64)}
-              <div class="st-catalog-name">${channelAvatar(c.ch, 'st-avatar sm')}<span>${esc(c.ch.title)}</span></div>
-              <p>${intFmt.format(c.done)} de ${c.total != null ? intFmt.format(c.total) : '…'}</p>
-            </div>`).join('') || '<p class="st-empty">Adicione canais nas Configurações.</p>'}
+        <div class="st-lab">${SF('check-c')}Por canal <span class="st-lab-sub">· vistos até o fim, do total publicado</span></div>
+        <div class="st-perch-grid">
+          ${catalog.map(({ c, done: d, total: t, pct }, i) => {
+            const [c1, c2] = hueOf(c);
+            return `
+            <div class="st-hbar" title="${esc(c.title)}: ${intFmt.format(d)} de ${t != null ? intFmt.format(t) : '…'} vídeos">
+              ${channelAvatar(c, '')}
+              <div>
+                <div class="st-hbar-top"><span>${esc(c.title)}</span><span><b>${intFmt.format(d)}</b> de ${t != null ? intFmt.format(t) : '…'}</span></div>
+                <div class="st-track"><span style="width:${pct.toFixed(1)}%;--c1:${c1};--c2:${c2};--i:${i}"></span></div>
+              </div>
+            </div>`;
+          }).join('') || '<p class="st-empty">Adicione canais nos Ajustes.</p>'}
         </div>
       </article>
     </div>`;
 
   drawStatsCharts();
-  placeTabPill(pillFrom);
-  setupForecastCarousel();
+  placeSegThumb(box.querySelector('.st-head .seg'), thumbFrom);
 
   if (refresh) {
     // Busca o que falta (canal dos vídeos antigos, total de vídeos dos canais) e redesenha uma vez.
-    // Primeira vez (nada guardado ainda): mostra o andamento da contagem.
     const counting = channels.some(c => !channelCatalogs.has(c.id));
-    refreshCatalogs(channels, (done, total) => {
+    refreshCatalogs(channels, (doneN, totalN) => {
       const el = $('#st-counting');
-      if (el && counting) el.textContent = `Contando os vídeos dos canais… (${done} de ${total})`;
+      if (el && counting) el.textContent = `Contando os vídeos dos canais… (${doneN} de ${totalN})`;
     }).then(changed => {
       if ((changed || counting) && state.view === 'stats') renderStats({ refresh: false });
     });
@@ -5609,32 +6239,26 @@ function drawStatsCharts() {
   if (!data || state.view !== 'stats') return;
   const period = statsPeriod;
   const P = STATS_PERIODS[period];
-  const label = s => ({ ...s, label: periodLabel(s.start, period) });
+  const count = periodCount(period, data.since);
+  const label = s => ({ ...s, label: P.bucket === 'month' ? periodLabel(s.start, 'month') : (P.days > 7 ? String(s.start.getDate()) : periodLabel(s.start, 'day')) });
+  const title = s => periodLabel(s.start, P.bucket, true);
   const hours = $('#st-hours');
   if (hours) {
-    drawLineChart(hours, statsSeries(data.daySec, period, P.count).map(label), {
+    drawBarChart(hours, statsSeries(data.daySec, P.bucket, count).map(label), {
       toValue: sec => sec / 3600,
       axis: fmtHoursAxis,
       tipValue: sec => fmtHours(sec),
-      tipTitle: s => periodLabel(s.start, period, true),
+      tipTitle: title,
     });
   }
   const videos = $('#st-videos');
   if (videos) {
-    drawBarChart(videos, statsSeries(data.dayVids, period, P.count, s => s.size).map(label), {
+    drawLineChart(videos, statsSeries(data.dayVids, P.bucket, count, s => s.size).map(label), {
+      integer: true,
       axis: v => intFmt.format(v),
       tipValue: n => `${intFmt.format(n)} ${n === 1 ? 'vídeo' : 'vídeos'}`,
-      tipTitle: s => periodLabel(s.start, period, true),
+      tipTitle: title,
     });
-  }
-  const radar = $('#st-radar');
-  if (radar) {
-    const items = homeChannels()
-      .map(c => ({ label: c.title, value: data.chSec.get(c.id) || 0 }))
-      .filter(i => i.value > 0)
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 10);
-    drawRadarChart(radar, items);
   }
 }
 
@@ -5650,15 +6274,7 @@ function setupStats() {
       return;
     }
     const pick = e.target.closest('[data-fc]');
-    if (pick) {
-      selectForecast(pick.dataset.fc);
-      return;
-    }
-    const arrow = e.target.closest('[data-fc-scroll]');
-    if (arrow) {
-      const scroller = box.querySelector('.st-fc-scroll');
-      scroller.scrollBy({ left: Number(arrow.dataset.fcScroll) * scroller.clientWidth * 0.8, behavior: motionOK() ? 'smooth' : 'auto' });
-    }
+    if (pick) selectForecast(pick.dataset.fc);
   });
   let lastSize = '';
   let frame = 0;
@@ -5667,7 +6283,7 @@ function setupStats() {
     if (size === lastSize) return;
     lastSize = size;
     cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(() => { drawStatsCharts(); updateForecastArrows(); });
+    frame = requestAnimationFrame(drawStatsCharts);
   }).observe(box);
   setInterval(tickWatchTime, STATS_TICK_MS);
 }
@@ -5677,13 +6293,14 @@ function setupStats() {
    ========================================================= */
 function init() {
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  $('#brand-icon').innerHTML = appIconSVG(30);
   Auth.restore();
   renderAccount();
   renderSidebar();
   renderLives();
   applyHideWatched();
   renderVersionInfo();
-  console.info(`MyTube v${APP_VERSION}`);
+  console.info(`Canais v${APP_VERSION}`);
   setupMobileApp();
   setupFooterLinks();
   setupPlayerControls();

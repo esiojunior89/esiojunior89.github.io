@@ -3,19 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0f0f12">
+  <meta name="theme-color" content="#EDEBF5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b0b10" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
   <meta name="robots" content="noindex, nofollow">
   <!-- Política de segurança (CSP): só roda o código do próprio site, não conversa com nenhum servidor
        e o formulário nunca é enviado pela rede (a senha é conferida só aqui no navegador). -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-  <title>Credenciais · MyTube</title>
-  <meta name="app-version" content="1.24.0">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -4 28 28'%3E%3Crect width='28' height='20' rx='6' fill='%23ff3d3d'/%3E%3Cpath d='M11.5 5.8v8.4L18.6 10z' fill='%23fff'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=1.24.0">
+  <title>Credenciais · Canais</title>
+  <meta name="app-version" content="1.25.0">
+  <link rel="icon" type="image/svg+xml" href="icons/favicon.svg?v=1.25.0">
+  <link rel="stylesheet" href="styles.css?v=1.25.0">
 </head>
 <body class="cred-body">
   <!-- =========================================================
-       Credenciais do MyTube (página protegida)
+       Credenciais do Canais (página protegida)
        =========================================================
        Pede usuário e senha TODA vez que é aberta (nada fica salvo:
        recarregar, voltar ou abrir de novo pede outra vez). A senha
@@ -26,32 +28,31 @@
        do servidor; esta tela faz o papel dela no próprio navegador.
        ========================================================= -->
   <main class="cred-page">
-    <a class="cred-back" href="./#/settings">← Voltar ao MyTube</a>
-
-    <section id="cred-login" class="card cred-login">
-      <h1>Credenciais da API</h1>
-      <p class="muted">Área protegida. Entre com o usuário e a senha para ver e alterar as credenciais.</p>
+    <section id="cred-login" class="cred-card cred-login glass">
+      <div class="cred-lock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2.6"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg></div>
+      <h1>Credenciais</h1>
+      <p class="cred-sub">Área protegida. Entre para ver e alterar a chave da API, o Client ID e o servidor de login.</p>
       <!-- Sem type="password" e com autocomplete desligado: o navegador não oferece salvar a senha. -->
-      <form id="login-form" class="config-form" autocomplete="off">
-        <label>
-          <span>Usuário</span>
-          <input id="login-user" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" required>
-        </label>
-        <label>
-          <span>Senha</span>
-          <input id="login-pass" class="masked" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" required>
-        </label>
-        <p id="login-error" class="error" role="alert" hidden></p>
-        <div class="form-actions">
-          <button id="login-btn" class="btn btn-primary" type="submit">Entrar</button>
+      <form id="login-form" autocomplete="off">
+        <div class="cred-fields">
+          <label>
+            <span>Usuário</span>
+            <input id="login-user" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+          </label>
+          <label>
+            <span>Senha</span>
+            <input id="login-pass" class="masked" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+          </label>
         </div>
+        <p id="login-error" class="error" role="alert" hidden></p>
+        <button id="login-btn" class="btn btn-tint btn-lg" type="submit">Continuar</button>
       </form>
     </section>
 
-    <section id="cred-panel" class="card" hidden>
+    <section id="cred-panel" class="cred-card cred-panel glass" hidden>
       <div class="cred-head">
         <h1>Credenciais da API</h1>
-        <button id="lock-btn" class="btn btn-ghost btn-sm" type="button">Bloquear</button>
+        <button id="lock-btn" class="btn btn-fill btn-sm" type="button">Bloquear</button>
       </div>
       <form id="config-form" class="config-form" autocomplete="off">
         <label>
@@ -72,7 +73,7 @@
         </label>
         <p id="save-msg" class="muted" role="status"></p>
         <div class="form-actions">
-          <button class="btn btn-primary" type="submit">Salvar</button>
+          <button class="btn btn-tint" type="submit">Salvar</button>
         </div>
       </form>
       <details class="help">
@@ -92,9 +93,11 @@
         </ol>
       </details>
     </section>
+
+    <a class="cred-back" href="./#/settings">‹ Voltar ao Canais</a>
   </main>
 
-  <script src="config.js?v=1.24.0"></script>
-  <script src="credenciais.js?v=1.24.0"></script>
+  <script src="config.js?v=1.25.0"></script>
+  <script src="credenciais.js?v=1.25.0"></script>
 </body>
 </html>
