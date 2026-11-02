@@ -2883,7 +2883,8 @@ body.channel-page .home-head { display: none; }
 
 /* Página do canal */
 .channel-banner { max-width: none; margin: 16px 0 0; }
-.cb-banner { aspect-ratio: 6.2 / 1; max-height: 220px; margin-bottom: 24px; overflow: hidden; border-radius: 16px; background: var(--side-hover); }
+/* Capa: toda a largura útil da página; altura proporcional (6,2 : 1), no máximo 320 px em telas muito largas */
+.cb-banner { width: 100%; height: min(calc(100cqw / 6.2), 320px); margin-bottom: 24px; overflow: hidden; border-radius: 16px; background: var(--side-hover); }
 .cb-banner img { width: 100%; height: 100%; object-fit: cover; }
 .cb-box { position: static; height: auto; overflow: visible; border-radius: 0; box-shadow: none; background: none; isolation: auto; }
 .cb-box::before, .cb-box::after, .cb-bg { display: none; }
@@ -2934,3 +2935,16 @@ body.channel-page .home-head { display: none; }
   .cb-sort { margin: 12px 0 16px; }
   .channel-banner:not([hidden]) ~ .feed-grid .tile-info { padding-top: 0; padding-right: 0; }
 }
+
+/* Página do vídeo (computador): o menu lateral fica escondido e só o botão de menu aparece no topo */
+@media (min-width: 1100px) {
+  #view-watch .cinema-bar { display: flex; align-items: center; gap: 10px; min-height: 40px; margin: -10px 0 12px -12px; color: var(--text); }
+  #view-watch:not(.theater) .cinema-bar [data-action="cinema-back"], #view-watch:not(.theater) .cinema-bar strong { display: none; }
+  #view-watch .cinema-bar :is([data-action="cinema-sidebar"], [data-action="cinema-back"]) { width: 40px; height: 40px; padding: 0; border-radius: 50%; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; color: var(--text); }
+  #view-watch .cinema-bar :is([data-action="cinema-sidebar"], [data-action="cinema-back"]):hover { background: var(--side-hover); }
+  #view-watch .cinema-bar :is([data-action="cinema-sidebar"], [data-action="cinema-back"]) .ic { width: 24px; height: 24px; }
+  /* Com o menu aberto, o botão dele (no topo do menu) faz o papel deste */
+  body.cinema-side #view-watch .cinema-bar [data-action="cinema-sidebar"] { visibility: hidden; }
+  #view-watch.theater .cinema-bar { margin-left: -12px; }
+}
+body.mini-player #view-watch .cinema-bar { display: none; }

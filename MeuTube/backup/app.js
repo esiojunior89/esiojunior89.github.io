@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.28.0';
+const APP_VERSION = '1.28.1';
 
 /* =========================================================
    Canais — só os vídeos dos canais que você escolher
@@ -1891,6 +1891,12 @@ function renderLives() {
 }
 
 /** Modo Cinema na tela agora (página do vídeo no computador, com o modo ligado). */
+/** Página do vídeo no computador (fora do mini player): o menu lateral fica escondido e só o botão
+    de menu aparece no topo; tocando nele, o menu abre ao lado e empurra o player (como no YouTube). */
+function watchHidesSidebar() {
+  return state.view === 'watch' && !mini.on && !overlayQuery.matches;
+}
+
 function cinemaActive() {
   return state.view === 'watch' && !mini.on && !overlayQuery.matches && theaterActive();
 }
@@ -1900,11 +1906,12 @@ function cinemaActive() {
 function updateSidebarMode() {
   const compactLayout = overlayQuery.matches;
   const cinema = cinemaActive();
+  const hidden = watchHidesSidebar();
   const body = document.body;
   body.classList.toggle('sidebar-overlay', compactLayout);
-  body.classList.toggle('sidebar-mini', !compactLayout && !cinema && state.sidebarMini);
-  body.classList.toggle('sidebar-hidden', cinema);
-  body.classList.toggle('cinema-side', cinema && state.pageSidebar);
+  body.classList.toggle('sidebar-mini', !compactLayout && !hidden && state.sidebarMini);
+  body.classList.toggle('sidebar-hidden', hidden);
+  body.classList.toggle('cinema-side', hidden && state.pageSidebar);
   body.classList.toggle('cinema', cinema);
   body.classList.toggle('watching', state.view === 'watch');
   $('#menu-btn').setAttribute('aria-expanded', String(isSidebarExpanded()));
@@ -1916,12 +1923,12 @@ function updateSidebarMode() {
 function isSidebarExpanded() {
   if (state.view === 'live' || state.view === 'channels') return true;
   if (overlayQuery.matches) return false;
-  return cinemaActive() ? state.pageSidebar : !state.sidebarMini;
+  return watchHidesSidebar() ? state.pageSidebar : !state.sidebarMini;
 }
 
 function toggleSidebar() {
   if (overlayQuery.matches) return;
-  if (cinemaActive()) {
+  if (watchHidesSidebar()) {
     state.pageSidebar = !state.pageSidebar;
   } else {
     state.sidebarMini = !state.sidebarMini;
