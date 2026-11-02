@@ -546,7 +546,7 @@ main { min-height: 100vh; margin-left: var(--side-now); padding-bottom: var(--ta
 .sidebar.glass { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; }
 
 /* Topo: botão do menu (três linhas) e a marca */
-.side-head { display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 16px 0 8px; flex-shrink: 0; }
+.sidebar .side-head { display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 16px 0 8px; flex-shrink: 0; }
 .brand { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; text-decoration: none; }
 .brand-icon { display: grid; flex-shrink: 0; }
 .brand-icon svg { width: 28px; height: 28px; transition: transform .5s var(--ease-spring); }
@@ -751,7 +751,7 @@ main { min-height: 100vh; margin-left: var(--side-now); padding-bottom: var(--ta
 /* Recolhido (72 px): ícone em cima e o nome pequeno embaixo, como o mini-guia do YouTube */
 body.sidebar-mini .sidebar { width: var(--side-mini-w); }
 body.sidebar-mini :is(.brand, .side-title, .side-count, .side-new, .acct-text, .acct .ic, .side-section-lives, .side-empty, .side-signin) { display: none; }
-body.sidebar-mini .side-head { justify-content: center; padding: 0; }
+body.sidebar-mini .sidebar .side-head { justify-content: center; padding: 0; }
 body.sidebar-mini .side-search { width: 40px; height: 40px; margin: 2px auto 10px; border: 0; border-radius: 50%; background: transparent; cursor: pointer; }
 body.sidebar-mini .side-search:hover { background: var(--side-hover); }
 body.sidebar-mini .side-search .ic { flex-basis: 40px; width: 40px; padding: 0 9px; border: 0; background: transparent; }
@@ -769,23 +769,13 @@ body.sidebar-mini .acct { justify-content: center; padding: 8px 0; }
 body.sidebar-mini .account .btn-google span { display: none; }
 body.sidebar-mini .account .btn-google { display: flex; width: 40px; height: 40px; padding: 0; margin: 0 auto 4px; border-radius: 50%; justify-content: center; }
 
-/* Modo Cinema (página do vídeo): o menu fica escondido e o botão de menu o abre por cima,
-   como a gaveta do YouTube, com a página escurecida atrás. */
+/* Modo Cinema (página do vídeo): o menu fica escondido; o botão de menu o abre ao lado,
+   empurrando o player e a página para a direita (como no YouTube), sem cobrir nada. */
 body.sidebar-hidden .sidebar { transform: translateX(-100%); }
+body.sidebar-hidden.cinema-side { --side-now: var(--side-w); }
 body.sidebar-hidden.cinema-side .sidebar { transform: none; }
 body.sidebar-hidden .sidebar.glass { background: var(--bg); }
-.sidebar-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 44;
-  display: block;
-  background: rgba(16, 24, 32, .5);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .25s var(--ease);
-}
-body.cinema-side .sidebar-backdrop { opacity: 1; pointer-events: auto; }
-@media (max-width: 1099px) { .sidebar-backdrop { display: none; } }
+.sidebar-backdrop { display: none; }
 
 ::view-transition-group(sidebar),
 ::view-transition-old(sidebar),

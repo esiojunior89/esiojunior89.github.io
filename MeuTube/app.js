@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.27.0';
+const APP_VERSION = '1.27.1';
 
 /* =========================================================
    Canais — só os vídeos dos canais que você escolher
@@ -5176,18 +5176,8 @@ function bindEvents() {
   });
   addEventListener('resize', () => requestAnimationFrame(updateTabbar), { passive: true });
   addEventListener('scroll', closeMenuPop, { passive: true });
-  // Cliques no menu de canais quando ele está aberto por cima (Modo Cinema): fecha ao escolher.
+  // Modo Cinema com o menu aberto ao lado: escolher um item fecha o menu.
   $('#sidebar').addEventListener('click', e => { if (e.target.closest('a[href^="#/"]')) closeSidebarOverlay(); });
-  // Modo Cinema com o menu por cima: um clique fora dele fecha.
-  document.addEventListener('pointerdown', e => {
-    if (!state.pageSidebar || !cinemaActive() || e.target.closest('#sidebar, [data-action="cinema-sidebar"]')) return;
-    closeSidebarOverlay();
-    // Esse toque só fecha o menu (não pausa o vídeo nem abre nada).
-    const block = ev => { ev.stopPropagation(); ev.preventDefault(); };
-    addEventListener('click', block, { capture: true, once: true });
-    setTimeout(() => removeEventListener('click', block, { capture: true }), 500);
-  });
-
   // Busca do menu lateral: canais e vídeos já carregados no Início.
   $('#side-search').addEventListener('input', () => {
     if ($('#side-search').value.trim() && state.view !== 'home') location.hash = '#/';
