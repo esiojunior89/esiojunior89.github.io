@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.28.1';
+const APP_VERSION = '1.28.2';
 
 /* =========================================================
    Canais — só os vídeos dos canais que você escolher
@@ -5113,6 +5113,8 @@ function setupThemePicker() {
 
 function bindEvents() {
   setupThemePicker();
+  const sideVersion = $('#side-version');
+  if (sideVersion) sideVersion.innerHTML = `<span class="sv-name">Canais </span>${APP_VERSION}`;
   setupChipArrows();
   window.addEventListener('hashchange', () => route(true));
 
@@ -5429,6 +5431,8 @@ function setupFooterLinks() {
 function renderVersionInfo() {
   const side = $('#app-version');
   if (side) side.textContent = `Canais ${APP_VERSION}`;
+  const menu = $('#side-version');
+  if (menu) menu.innerHTML = `<span class="sv-name">Canais </span>${APP_VERSION}`;
   const footer = $('#settings-footer');
   if (!footer) return;
   const htmlVersion = document.querySelector('meta[name="app-version"]')?.content;

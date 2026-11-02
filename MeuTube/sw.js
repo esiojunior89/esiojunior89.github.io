@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = '1.28.2'; // mudar este número faz o navegador atualizar o service worker
+const VERSION = '1.28.3'; // mudar este número faz o navegador atualizar o service worker
 
 /* =========================================================
    Service worker mínimo do Canais
