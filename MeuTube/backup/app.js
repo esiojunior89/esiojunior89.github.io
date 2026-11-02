@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.27.1';
+const APP_VERSION = '1.28.0';
 
 /* =========================================================
    Canais — só os vídeos dos canais que você escolher
@@ -1189,7 +1189,7 @@ function tileHTML(v, i, { hero = false } = {}) {
           <p class="tile-channel">${esc(v.channelTitle)}</p>
           <p class="tile-meta">${esc(metaLine(v))}${newTag(v)}</p>
         </div>
-        <span class="tile-more" data-action="tile-more" data-vid-more="${v.id}" role="button" aria-label="Mais opções">${SF('more')}</span>
+        <span class="tile-more" data-action="tile-more" data-vid-more="${v.id}" role="button" aria-label="Mais opções" title="Mais opções">${SF('more-v')}</span>
       </div>
     </a>`;
 }
@@ -1236,7 +1236,8 @@ function syncGrid() {
 }
 
 /** Destaque: o vídeo mais novo de "Todos os canais" ocupa a linha inteira (no celular, cartão normal). */
-const heroAllowed = () => !state.filter;
+// Sem destaque: o Início é uma grade uniforme de vídeos, como no YouTube.
+const heroAllowed = () => false;
 
 function updateGridDecor() {
   const grid = $('#feed');
@@ -1323,32 +1324,33 @@ function renderFeedHeader() {
   const total = channelVideoTotal(ch);
   const meta = [ch.handle, subscribersText(ch.id), total != null ? `${intFmt.format(total)} vídeos` : stats?.videos ? `${intFmt.format(stats.videos)} vídeos` : '']
     .filter(Boolean).join(' · ');
+  const banner = channelBanner(ch.id);
   box.innerHTML = `
+    ${banner ? `<div class="cb-banner"><img src="${esc(banner)}" alt="" referrerpolicy="no-referrer" data-hide-broken></div>` : ''}
     <div class="cb-box">
-      <img class="cb-bg" src="${esc(bigAvatar(ch.thumb, 240))}" alt="" referrerpolicy="no-referrer" data-hide-broken>
       <a class="round-glass cb-back" href="#/channels" aria-label="Voltar aos canais" title="Canais">${SF('chev-l')}</a>
       <div class="cb-main">
         <img class="cb-avatar" src="${esc(bigAvatar(ch.thumb, 240))}" alt="" referrerpolicy="no-referrer" data-hide-broken>
-        <div style="min-width:0">
-          <h1 class="t-large">${esc(ch.title)}</h1>
+        <div class="cb-text">
+          <h1 class="cb-name">${esc(ch.title)}</h1>
           <div class="cb-meta" id="cb-meta">${esc(meta)}</div>
+          <div class="cb-actions" id="cb-actions"></div>
         </div>
       </div>
-      <div class="cb-actions" id="cb-actions"></div>
     </div>
-    <div class="cb-bar">
-      <h2 class="t-title2">Vídeos</h2>
-      <nav class="seg seg-cap" aria-label="Ordem dos vídeos">
-        <a href="#/c/${esc(ch.id)}"${state.sort !== 'old' ? ' aria-current="true"' : ''}>Mais novos</a>
-        <a href="#/c/${esc(ch.id)}/antigos"${state.sort === 'old' ? ' aria-current="true"' : ''}>Mais antigos</a>
-      </nav>
-    </div>`;
+    <nav class="cb-tabs" aria-label="Seções do canal"><a href="#/c/${esc(ch.id)}" aria-current="page">Vídeos</a></nav>
+    <nav class="cb-sort" aria-label="Ordem dos vídeos">
+      <a class="chip${state.sort !== 'old' ? ' on' : ''}" href="#/c/${esc(ch.id)}"${state.sort !== 'old' ? ' aria-current="true"' : ''}>Mais recentes</a>
+      <a class="chip${state.sort === 'old' ? ' on' : ''}" href="#/c/${esc(ch.id)}/antigos"${state.sort === 'old' ? ' aria-current="true"' : ''}>Mais antigos</a>
+    </nav>`;
   box.hidden = false;
   parkWatchedToggle($('#cb-actions'));
-  placeSegThumb(box.querySelector('.seg'));
-  if (!subscribersText(ch.id)) {
+  const st = channelStats[ch.id];
+  if (!subscribersText(ch.id) || !st || st.banner === undefined) {
     ensureChannelStats(ch.id).then(() => {
-      if (state.filter === ch.id && state.view === 'home') renderFeedHeaderMeta(ch);
+      if (state.filter !== ch.id || state.view !== 'home') return;
+      if (channelBanner(ch.id) && !box.querySelector('.cb-banner')) renderFeedHeader();
+      else renderFeedHeaderMeta(ch);
     });
   }
 }
@@ -1367,16 +1369,37 @@ function renderHomeHead() {
   $('#home-date').textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
-/** Celular: atalhos para cada canal, numa faixa que rola para o lado. */
+/** Barra de chips no topo do Início (como no YouTube): "Tudo" e um chip por canal, numa faixa que rola para o lado. */
+/** Setas nas pontas da barra de chips: aparecem só quando há chips escondidos daquele lado. */
+function updateChipArrows() {
+  const box = $('#home-chips');
+  if (!box) return;
+  const max = box.scrollWidth - box.clientWidth;
+  const show = box.offsetParent !== null && matchMedia('(hover: hover)').matches;
+  $('.chips-arrow.prev').hidden = !show || box.scrollLeft <= 1;
+  $('.chips-arrow.next').hidden = !show || box.scrollLeft >= max - 1;
+}
+function setupChipArrows() {
+  const box = $('#home-chips');
+  if (!box) return;
+  box.addEventListener('scroll', updateChipArrows, { passive: true });
+  addEventListener('resize', updateChipArrows, { passive: true });
+  $$('.chips-arrow').forEach(b => b.addEventListener('click', () => {
+    box.scrollBy({ left: Number(b.dataset.chips) * box.clientWidth * .7, behavior: motionOK() ? 'smooth' : 'auto' });
+  }));
+}
+
 function renderHomeChips() {
   const box = $('#home-chips');
   if (!box) return;
+  requestAnimationFrame(() => {
+    box.querySelector('.chip.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    updateChipArrows();
+  });
   const list = [...homeChannels()].sort((a, b) => byName(a.title, b.title));
   box.innerHTML = list.length
-    ? `<a class="chip${state.filter ? '' : ' on'}" href="#/">Todos</a>` + list.map(c => `
-        <a class="chip${state.filter === c.id ? ' on' : ''}" href="#/c/${esc(c.id)}">
-          <img src="${esc(c.thumb || '')}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hide-broken>${esc(c.title)}
-        </a>`).join('')
+    ? `<a class="chip${state.filter ? '' : ' on'}" href="#/"${state.filter ? '' : ' aria-current="page"'}>Tudo</a>` + list.map(c => `
+        <a class="chip${state.filter === c.id ? ' on' : ''}" href="#/c/${esc(c.id)}"${state.filter === c.id ? ' aria-current="page"' : ''}>${esc(c.title)}</a>`).join('')
     : '';
 }
 
@@ -3683,6 +3706,12 @@ const CHANNEL_STATS_TTL = 24 * 60 * 60 * 1000;
 const channelStats = store.get(KEYS.chstats, {});
 let channelStatsLoading = null;
 
+/** Capa do canal no formato largo da web (como no topo da página do canal no YouTube). */
+function channelBanner(channelId) {
+  const url = channelStats[channelId]?.banner;
+  return url && /^https:\/\//.test(url) ? `${url}=w2120-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj` : '';
+}
+
 function subscribersText(channelId) {
   const subs = channelStats[channelId]?.subs;
   if (subs == null) return '';
@@ -3691,17 +3720,19 @@ function subscribersText(channelId) {
 
 async function ensureChannelStats(channelId) {
   const cached = channelStats[channelId];
-  if (cached && cached.videos != null && Date.now() - cached.at < CHANNEL_STATS_TTL) return;
+  if (cached && cached.videos != null && cached.banner !== undefined && Date.now() - cached.at < CHANNEL_STATS_TTL) return;
   if (!channelStatsLoading) {
     const ids = state.channels.map(c => c.id).slice(0, 50);
     if (!ids.includes(channelId)) ids[ids.length ? ids.length - 1 : 0] = channelId;
-    channelStatsLoading = api('channels', { part: 'statistics', id: ids.join(','), maxResults: 50 })
+    // A capa do canal (brandingSettings) vem na mesma chamada: o custo de cota é o mesmo (1 unidade).
+    channelStatsLoading = api('channels', { part: 'statistics,brandingSettings', id: ids.join(','), maxResults: 50 })
       .then(data => {
         for (const c of data.items || []) {
           const s = c.statistics || {};
           channelStats[c.id] = {
             subs: s.hiddenSubscriberCount ? null : Number(s.subscriberCount),
             videos: Number(s.videoCount) || 0, // total de vídeos públicos (para as Estatísticas)
+            banner: c.brandingSettings?.image?.bannerExternalUrl || '', // capa do canal ('' = sem capa)
             at: Date.now(),
           };
         }
@@ -5075,6 +5106,7 @@ function setupThemePicker() {
 
 function bindEvents() {
   setupThemePicker();
+  setupChipArrows();
   window.addEventListener('hashchange', () => route(true));
 
   document.addEventListener('click', e => {
