@@ -2703,3 +2703,234 @@ body.sidebar-mini .side-art { opacity: 0; }
 .theme-switching *, .theme-switching *::before { view-transition-name: none !important; }
 .theme-switching::view-transition-old(root) { z-index: 1; }
 .theme-switching::view-transition-new(root) { z-index: 2; }
+
+/* =========================================================
+   Início e página do canal no estilo do YouTube
+   Grade uniforme de vídeos (sem destaque), barra de chips no topo,
+   cartões com capa de cantos arredondados, foto do canal à esquerda
+   do título e o menu "⋮" à direita. Página do canal: capa larga,
+   foto grande, nome, @, inscritos e vídeos, aba "Vídeos" e chips
+   de ordem.
+   ========================================================= */
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* Barra de chips (fica presa no topo ao rolar) */
+#view-home { padding-top: 0; }
+.home-head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: none;
+  height: 56px;
+  margin: 0 calc(-1 * var(--gutter)) 12px;
+  padding: 0 var(--gutter);
+  background: var(--bg);
+  animation: none;
+}
+:root[data-pantone] .home-head { background: rgba(var(--th-bg-rgb), .86); -webkit-backdrop-filter: blur(18px) saturate(150%); backdrop-filter: blur(18px) saturate(150%); }
+body.channel-page .home-head { display: none; }
+.chips-wrap { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; }
+.chips-row {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+.chips-row::-webkit-scrollbar { display: none; }
+.chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--side-hover);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color .15s var(--ease), color .15s var(--ease);
+}
+.chip:hover { background: var(--side-press); }
+.chip.on, .chip.on:hover { background: var(--text); color: var(--bg); }
+:root[data-pantone] .chip.on { color: var(--th-bg); }
+.chip img { display: none; }
+.chips-arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.chips-arrow:hover { background: var(--side-hover); }
+.chips-arrow .ic { width: 24px; height: 24px; }
+.chips-arrow.prev { left: -4px; box-shadow: 30px 0 18px -4px var(--bg); }
+.chips-arrow.next { right: -4px; box-shadow: -30px 0 18px -4px var(--bg); }
+:root[data-pantone] .chips-arrow { background: var(--th-bg); }
+:root[data-pantone] .chips-arrow.prev { box-shadow: 30px 0 18px -4px var(--th-bg); }
+:root[data-pantone] .chips-arrow.next { box-shadow: -30px 0 18px -4px var(--th-bg); }
+.chips-arrow[hidden] { display: none; }
+.home-head .head-actions { gap: 8px; }
+#watched-toggle {
+  height: 32px;
+  padding: 0 12px 0 10px;
+  border-radius: 8px;
+  background: var(--side-hover);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  gap: 6px;
+}
+#watched-toggle:hover { background: var(--side-press); }
+#watched-toggle[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+#watched-toggle .ic { width: 20px; height: 20px; }
+#refresh-btn { width: 40px; height: 40px; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; color: var(--text); }
+#refresh-btn:hover { background: var(--side-hover); }
+#refresh-btn .ic { width: 22px; height: 22px; }
+
+/* Grade: colunas como no YouTube (até 6 em telas muito largas) */
+.home-wrap .feed-grid, .home-wrap .skeleton-grid { max-width: none; gap: 40px 16px; }
+@container (min-width: 500px)  { .home-wrap .feed-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (min-width: 880px)  { .home-wrap .feed-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@container (min-width: 1240px) { .home-wrap .feed-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@container (min-width: 2100px) { .home-wrap .feed-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+@container (min-width: 2700px) { .home-wrap .feed-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.skeleton-grid { margin-top: 40px; }
+.search-note { max-width: none; }
+
+/* Cartão */
+.tile { border-radius: 12px; }
+.tile .thumb { border-radius: 12px; box-shadow: none; background: var(--side-hover); }
+.tile:hover .thumb, .tile:focus-visible .thumb { transform: none; box-shadow: none; }
+.tile:hover .thumb img { transform: none; }
+.tile:active .thumb { transform: none; }
+.tile:focus-visible { outline: 2px solid var(--text); outline-offset: 4px; }
+.badge {
+  right: 8px;
+  bottom: 8px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(16, 24, 32, .8);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  letter-spacing: 0;
+}
+.badge-live, .badge-upcoming { left: auto; top: auto; right: 8px; bottom: 8px; gap: 4px; padding: 1px 5px 1px 4px; border-radius: 4px; letter-spacing: .02em; }
+.badge-live { background: var(--live); }
+.badge-upcoming { background: rgba(16, 24, 32, .8); }
+.thumb:has(.watch-progress) .badge { bottom: 12px; }
+.tile-info { position: relative; gap: 12px; padding: 12px 24px 0 0; }
+.tile-info .avatar { width: 36px; height: 36px; }
+.tile-title { font-size: 16px; line-height: 22px; font-weight: 600; letter-spacing: -0.012em; }
+.tile-channel, .tile-meta { margin: 0; font-size: 14px; line-height: 20px; color: var(--text-2); }
+.tile-channel { margin-top: 2px; }
+.tile-meta .sep::before { content: " • "; }
+.new-tag {
+  display: table;
+  margin: 4px 0 0;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--side-hover);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+}
+.tile-more {
+  position: absolute;
+  top: 6px;
+  right: -12px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin: 0;
+  border-radius: 50%;
+  color: var(--text);
+  cursor: pointer;
+}
+.tile-more:hover { background: var(--side-hover); }
+.tile-more:active { background: var(--side-press); }
+.tile-more .ic { width: 24px; height: 24px; }
+.skeleton-grid .sk-thumb { border-radius: 12px; }
+.skeleton-grid .sk-row { gap: 12px; padding-top: 12px; }
+.skeleton-grid .sk-avatar { width: 36px; height: 36px; }
+
+/* Página do canal */
+.channel-banner { max-width: none; margin: 16px 0 0; }
+.cb-banner { aspect-ratio: 6.2 / 1; max-height: 220px; margin-bottom: 24px; overflow: hidden; border-radius: 16px; background: var(--side-hover); }
+.cb-banner img { width: 100%; height: 100%; object-fit: cover; }
+.cb-box { position: static; height: auto; overflow: visible; border-radius: 0; box-shadow: none; background: none; isolation: auto; }
+.cb-box::before, .cb-box::after, .cb-bg { display: none; }
+.cb-main { position: static; display: flex; align-items: center; gap: 24px; color: var(--text); min-width: 0; }
+.cb-avatar { width: 160px; height: 160px; box-shadow: none; background: var(--side-hover); }
+.cb-text { display: grid; gap: 8px; min-width: 0; }
+.cb-name { margin: 0; overflow: hidden; font-size: 36px; line-height: 44px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; text-overflow: ellipsis; }
+.cb-meta { font-size: 14px; font-weight: 400; line-height: 20px; color: var(--text-2); opacity: 1; }
+.cb-actions { position: static; display: flex; gap: 8px; margin-top: 4px; }
+.cb-actions #watched-toggle, .cb-actions .pill-glass { height: 36px; padding: 0 16px 0 12px; border-radius: 18px; background: var(--side-hover); color: var(--text); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; }
+.cb-actions #watched-toggle:hover { background: var(--side-press); }
+.cb-actions #watched-toggle[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+.cb-back { display: none; }
+.cb-bar { display: none; }
+.cb-tabs { display: flex; gap: 24px; margin-top: 24px; border-bottom: 1px solid var(--sep); }
+.cb-tabs a { position: relative; padding: 0 0 12px; color: var(--text); font-size: 16px; font-weight: 600; line-height: 22px; text-decoration: none; }
+.cb-tabs a[aria-current]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--text); }
+.cb-sort { display: flex; gap: 12px; margin: 16px 0 24px; }
+
+/* Celular (≤ 760 px), como o app do YouTube: capas de ponta a ponta no Início */
+@media (max-width: 760px) {
+  .home-head { height: 48px; margin: 0 -16px 8px; padding: 0 16px; }
+  .chips-row { gap: 8px; }
+  #watched-toggle { width: 36px; height: 32px; padding: 0; justify-content: center; border-radius: 8px; }
+  #watched-toggle .label { display: none; }
+  .home-wrap .feed-grid { gap: 24px; }
+  body:not(.channel-page) .home-wrap .feed-grid .tile .thumb { margin: 0 -16px; border-radius: 0; }
+  body:not(.channel-page) .home-wrap .feed-grid .tile { border-radius: 0; }
+  .tile-info { padding: 12px 28px 0 0; }
+  .tile-title { font-size: 15px; line-height: 21px; }
+  .tile-channel, .tile-meta { font-size: 12px; line-height: 18px; }
+  .tile-more { top: 4px; right: -14px; }
+  .tile-more .ic { width: 20px; height: 20px; }
+
+  .channel-banner { margin: 8px 0 0; }
+  .cb-banner { margin: 0 0 16px; border-radius: 12px; }
+  .cb-box { padding: 0; text-align: left; }
+  .cb-main { flex-direction: row; gap: 16px; align-items: center; }
+  .cb-avatar { width: 72px; height: 72px; box-shadow: none; }
+  .cb-text { gap: 4px; text-align: left; }
+  .cb-main .cb-name { font-size: 22px; line-height: 28px; margin: 0; white-space: normal; }
+  .cb-meta { font-size: 12px; line-height: 18px; color: var(--text-2); }
+  .cb-actions { position: static; top: auto; right: auto; margin-top: 8px; }
+  .cb-actions #watched-toggle, .cb-actions .pill-glass { width: auto; padding: 0 14px 0 10px; border-radius: 18px; }
+  .cb-actions #watched-toggle .label { display: inline; }
+  .cb-back { display: none !important; }
+  .cb-tabs { margin-top: 16px; }
+  .cb-sort { margin: 12px 0 16px; }
+  .channel-banner:not([hidden]) ~ .feed-grid .tile-info { padding-top: 0; padding-right: 0; }
+}
