@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.26.0';
+const APP_VERSION = '1.27.0';
 
 /* =========================================================
    Canais — só os vídeos dos canais que você escolher
@@ -4114,7 +4114,8 @@ function renderAccount() {
     : 'Conectado';
 
   if (!account) {
-    side.innerHTML = `<button class="btn btn-google btn-sm" type="button" data-action="signin">${ICONS.google}<span>Entrar com o Google</span></button>`;
+    side.innerHTML = `<p class="side-signin">Entre para sincronizar seus canais e o progresso entre os aparelhos.</p>
+      <button class="btn btn-google btn-sm" type="button" data-action="signin">${ICONS.google}<span>Entrar com o Google</span></button>`;
     miniBox.innerHTML = SF('person');
     miniBox.title = 'Entrar com o Google';
     card.innerHTML = `

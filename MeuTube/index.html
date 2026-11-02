@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#F0EEE9" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#101820" media="(prefers-color-scheme: dark)">
-  <script src="theme.js?v=1.26.0"></script>
+  <script src="theme.js?v=1.27.0"></script>
   <meta name="color-scheme" content="light dark">
   <!-- Política de segurança (CSP): o navegador só carrega scripts, vídeos e dados destes endereços.
        Se algum dia algo tentar injetar código no app, ele não roda nem consegue mandar seus dados
@@ -14,12 +14,12 @@
   <title>Canais</title>
   <!-- Versão do app (SemVer). Mantida igual ao APP_VERSION do app.js e ao "?v=" dos arquivos abaixo:
        o número no endereço faz o navegador baixar a versão nova em vez de usar o cache. -->
-  <meta name="app-version" content="1.26.0">
-  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=1.26.0">
-  <link rel="icon" type="image/svg+xml" href="icons/favicon.svg?v=1.26.0">
+  <meta name="app-version" content="1.27.0">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=1.27.0">
+  <link rel="icon" type="image/svg+xml" href="icons/favicon.svg?v=1.27.0">
   <!-- App instalável (abre em tela cheia no celular) -->
-  <link rel="manifest" href="manifest.json?v=1.26.0">
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=1.26.0">
+  <link rel="manifest" href="manifest.json?v=1.27.0">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=1.27.0">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Canais">
@@ -27,7 +27,7 @@
   <link rel="preconnect" href="https://i.ytimg.com">
   <link rel="preconnect" href="https://www.googleapis.com">
   <link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=1.26.0">
+  <link rel="stylesheet" href="styles.css?v=1.27.0">
   <!-- Google Identity Services (login com Google) -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -80,6 +80,7 @@
       <symbol id="i-sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 11.6 8 16 9.6l-4.4 1.6L10 15.7 8.4 11.2 4 9.6 8.4 8zM17.5 13.5l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9z"/></symbol>
       <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.6v.2"/></symbol>
       <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5.2l3.4 2"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6.5h17M3.5 12h17M3.5 17.5h17"/></symbol>
       <symbol id="i-sidebar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="3"/><path d="M9.5 4.5v15M5.5 8.5h2M5.5 11.5h2"/></symbol>
       <symbol id="i-timer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 1.5M10 2.8h4"/></symbol>
       <symbol id="i-infinity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12c-1.8-2.4-3.3-3.6-5-3.6a3.6 3.6 0 0 0 0 7.2c1.7 0 3.2-1.2 5-3.6zm0 0c1.8 2.4 3.3 3.6 5 3.6a3.6 3.6 0 0 0 0-7.2c-1.7 0-3.2 1.2-5 3.6z"/></symbol>
@@ -98,19 +99,21 @@
   <!-- ============ MENU LATERAL (computador): vidro flutuante ============ -->
   <aside id="sidebar" class="sidebar glass" aria-label="Navegação e canais">
     <div class="side-head">
+      <button id="menu-btn" class="side-toggle" type="button" aria-label="Recolher ou expandir o menu" title="Menu" aria-controls="sidebar" aria-expanded="true">
+        <svg class="ic"><use href="#i-menu"/></svg>
+      </button>
       <a class="brand" href="#/" data-nav="home" aria-label="Canais — Início">
         <span class="brand-icon" id="brand-icon"></span>
         <b class="brand-name">Canais</b>
       </a>
-      <button id="menu-btn" class="side-toggle" type="button" aria-label="Recolher ou expandir o menu" title="Recolher ou expandir o menu" aria-controls="sidebar" aria-expanded="true">
-        <svg class="ic"><use href="#i-sidebar"/></svg>
-      </button>
     </div>
     <label class="side-search">
       <svg class="ic"><use href="#i-search"/></svg>
       <input id="side-search" type="search" placeholder="Buscar" autocomplete="off" spellcheck="false" aria-label="Buscar vídeos e canais">
     </label>
 
+    <!-- Tudo abaixo da busca rola junto, como no YouTube -->
+    <div class="side-body">
     <nav class="side-nav" aria-label="Biblioteca">
       <a class="side-item" href="#/" data-channel="" data-nav="home" title="Início">
         <span class="side-icon"><svg class="ic"><use href="#i-home"/></svg></span>
@@ -146,6 +149,7 @@
         <span class="side-label">Ajustes</span>
       </a>
       <div id="account" class="account"></div>
+    </div>
     </div>
   </aside>
   <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
@@ -203,7 +207,7 @@
     <section id="view-watch" class="view" hidden>
       <!-- Modo Cinema: barra própria (o menu lateral some) -->
       <div id="cinema-bar" class="cinema-bar">
-        <button class="round-glass glass" type="button" data-action="cinema-sidebar" title="Menu" aria-label="Mostrar o menu"><svg class="ic"><use href="#i-sidebar"/></svg></button>
+        <button class="round-glass glass" type="button" data-action="cinema-sidebar" title="Menu" aria-label="Mostrar o menu"><svg class="ic"><use href="#i-menu"/></svg></button>
         <button class="round-glass glass" type="button" data-action="cinema-back" title="Voltar" aria-label="Voltar"><svg class="ic"><use href="#i-chev-l"/></svg></button>
         <strong>Modo Cinema</strong>
       </div>
@@ -434,7 +438,7 @@
   <div id="menu-pop" class="menu-pop glass" role="menu" hidden></div>
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
-  <script src="config.js?v=1.26.0"></script>
-  <script src="app.js?v=1.26.0"></script>
+  <script src="config.js?v=1.27.0"></script>
+  <script src="app.js?v=1.27.0"></script>
 </body>
 </html>
