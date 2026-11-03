@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.29.0';
+const APP_VERSION = '1.30.0';
 
 /* =========================================================
    Canais — só os vídeos dos canais que você escolher
@@ -6053,6 +6053,42 @@ function bigTime(sec) {
   return r ? `${intFmt.format(h)} h <small>${r} min</small>` : `${intFmt.format(h)} <small>h</small>`;
 }
 
+/* ---------- Pódio dos favoritos ---------- */
+const podiumNum = n => Math.round(n).toLocaleString('pt-BR');
+const podiumDec = n => n.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+const PODIUM_TIP = 'Como o pódio é calculado\nPontuação final = pontuação × peso\nPeso = horas assistidas no período × √(horas do canal)\nPontuação = média entre a fatia do tempo e a fatia dos vídeos assistidos no período (0 a 100)\nHoras do canal = duração somada dos vídeos que o app tem do canal\nEmpate: fica na frente quem assistiu mais tempo';
+// Medalhas em cores Pantone (hex de referência): ouro 7405 C/7563 C/7407 C, prata Cool Gray 1 C/6 C/8 C, bronze 7515 C/7516 C/4645 C
+const MEDALS = { 1: ['Ouro', '#F2CD00', '#D69A2D', '#CBA052', '#101820'], 2: ['Prata', '#D9D9D6', '#A7A8AA', '#888B8D', '#101820'], 3: ['Bronze', '#C58B68', '#99552B', '#AD7C59', '#F4F9FF'] };
+function medalSVG(pos) {
+  const [name, a, z, rim, ink] = MEDALS[pos];
+  const id = `pd-md${pos}`;
+  return `<span class="pd-med" role="img" aria-label="Medalha de ${name.toLowerCase()}"><svg viewBox="0 0 60 78" aria-hidden="true"><defs><radialGradient id="${id}" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${z}"/></radialGradient></defs><path d="M17 2h11l6 22H23z" fill="var(--tint)"/><path d="M43 2H32l-6 22h11z" fill="var(--tint)" opacity=".7"/><circle cx="30" cy="50" r="25" fill="url(#${id})" stroke="${rim}" stroke-width="2.5"/><circle cx="30" cy="50" r="18.5" fill="none" stroke="${rim}" stroke-width="1.5" opacity=".9"/><path d="M19 40a14 14 0 0 1 9-6" fill="none" stroke="#F4F9FF" stroke-width="2.5" stroke-linecap="round" opacity=".55"/><text x="30" y="57.5" text-anchor="middle" font-size="21" font-weight="800" font-family="Inter, system-ui, sans-serif" fill="${ink}" fill-opacity=".85">${pos}</text></svg></span>`;
+}
+function podiumTip(r) {
+  return `${r.c.title}\npontuação ${podiumDec(r.score)} × peso ${podiumDec(r.peso)} = ${podiumNum(r.final)}\npontuação: (${r.pctT}% do tempo + ${r.pctV}% dos vídeos) ÷ 2\npeso: ${fmtHours(r.sec)} assistidas × √${podiumDec(r.catSec / 3600)} h do canal`;
+}
+function podiumHTML(podium, P) {
+  const active = podium.filter(r => r.final > 0);
+  const spot = pos => {
+    const r = active[pos - 1];
+    if (!r) return `<div class="pd-spot p${pos} empty"><div class="pd-block">${medalSVG(pos)}</div></div>`;
+    return `<div class="pd-spot p${pos}" data-tip="${esc(podiumTip(r))}" tabindex="0">
+      <div class="pd-name">${esc(r.c.title)}</div>
+      <div class="pd-av">${channelAvatar(r.c, '')}</div>
+      <div class="pd-block"><b>${podiumNum(r.final)}</b><span>pontuação final</span>${medalSVG(pos)}</div>
+    </div>`;
+  };
+  const rest = podium.slice(3);
+  return `<article class="sx-card pd-card">
+    <div class="pd-stage">
+      <div class="sx-head"><div class="pd-head-l"><h3>Pódio dos favoritos</h3><button type="button" class="pd-i" aria-label="Como o pódio é calculado" data-tip="${esc(PODIUM_TIP)}">i</button></div><span>${P.now}</span></div>
+      ${active.length ? '' : `<p class="sx-empty">Nada assistido ${P.now}.</p>`}
+      <div class="pd-podium">${spot(2)}${spot(1)}${spot(3)}</div><div class="pd-base"></div>
+    </div>
+    <div class="pd-rest">${rest.map(r => `<div class="pd-row" data-tip="${esc(podiumTip(r))}" tabindex="0"><em>${r.rank}º</em>${channelAvatar(r.c, '')}<span>${esc(r.c.title)}<small>${esc(fmtHours(r.sec))} · ${intFmt.format(r.vids)} ${r.vids === 1 ? 'vídeo' : 'vídeos'}</small></span><b>${podiumNum(r.final)}</b></div>`).join('')}</div>
+  </article>`;
+}
+
 /** Colunas de um ranking (todos os canais, do maior para o menor), com as setas quando não cabem. */
 function rankingHTML(rows, valueOf, total, unit) {
   const sorted = [...rows].sort((a, b) => valueOf(b) - valueOf(a) || byName(a.c.title, b.c.title));
@@ -6060,7 +6096,7 @@ function rankingHTML(rows, valueOf, total, unit) {
   const cols = sorted.map((r, i) => {
     const v = valueOf(r);
     const pct = total ? Math.round((v / total) * 100) : 0;
-    const tip = `${r.c.title}\n${fmtHours(r.sec)} assistidas · ${r.pctT}% do tempo\n${intFmt.format(r.vids)} ${r.vids === 1 ? 'vídeo' : 'vídeos'} até o fim · ${r.pctV}% dos vídeos\n${r.rank}º lugar · pontuação ${String(r.score).replace('.', ',')}`;
+    const tip = `${r.c.title}\n${fmtHours(r.sec)} assistidas · ${r.pctT}% do tempo\n${intFmt.format(r.vids)} ${r.vids === 1 ? 'vídeo' : 'vídeos'} até o fim · ${r.pctV}% dos vídeos\n${r.rank}º no pódio · pontuação final ${podiumNum(r.final)}`;
     return `<div class="sx-col${i === 0 && v > 0 ? ' first' : ''}" style="--i:${i}" data-tip="${esc(tip)}" tabindex="0" aria-label="${esc(`${r.c.title}: ${pct}% ${unit}`)}">
       <div class="sx-col-bar"><em>${pct}%</em><i style="--h:${v > 0 ? Math.max(.015, v / max).toFixed(3) : 0}"></i></div>
       <div class="sx-col-name">${channelAvatar(r.c, '')}<span>${esc(r.c.title)}</span></div>
@@ -6101,42 +6137,24 @@ function renderStats({ refresh = true, animate = refresh } = {}) {
   for (const id of vidIds) { const ch = data.owner.get(id); if (ch) vidBy.set(ch, (vidBy.get(ch) || 0) + 1); }
   const totalVids = vidIds.size;
 
-  // Pontuação justa: média entre a fatia do tempo e a fatia dos vídeos (0 a 100); empate: mais tempo.
+  // Pódio dos favoritos.
+  // Pontuação = média entre a fatia do tempo e a fatia dos vídeos no período (0 a 100).
+  // Peso = horas assistidas do canal no período × √(horas do canal: duração somada dos vídeos que o app tem dele).
+  // Pontuação final = pontuação × peso. Empate: mais tempo assistido.
   const rows = channels.map(c => {
     const sec = secBy.get(c.id) || 0;
     const vids = vidBy.get(c.id) || 0;
     const shareT = total ? sec / total : 0;
     const shareV = totalVids ? vids / totalVids : 0;
-    return { c, sec, vids, pctT: Math.round(shareT * 100), pctV: Math.round(shareV * 100), score: Math.round(((shareT + shareV) / 2) * 1000) / 10 };
+    const score = ((shareT + shareV) / 2) * 100;
+    let catSec = 0;
+    for (const d of channelCatalogs.get(c.id)?.values() || []) if (!c.maxDur || d <= c.maxDur) catSec += d;
+    const peso = (sec / 3600) * Math.sqrt(catSec / 3600);
+    return { c, sec, vids, catSec, pctT: Math.round(shareT * 100), pctV: Math.round(shareV * 100), score, peso, final: score * peso };
   });
-  [...rows].sort((a, b) => b.score - a.score || b.sec - a.sec || byName(a.c.title, b.c.title)).forEach((r, i) => { r.rank = i + 1; });
-  const top = rows.find(r => r.rank === 1 && (r.sec > 0 || r.vids > 0));
-
-  // Médias por dia. No período "Dia": a média diária dos últimos 30 dias, comparada com hoje.
-  let avgSec = total / range.days;
-  let avgVids = totalVids / range.days;
-  let avgNote = `por dia, ${P.now}`;
-  let avgVidNote = P.now;
-  if (period === 'day') {
-    const r30 = periodRange('month', data.since);
-    const span = Math.max(1, Math.min(30, Math.round((r30.end - Math.max(r30.start, bucketStart(new Date(data.since), 'day').getTime())) / 864e5)));
-    let s30 = 0;
-    const v30 = new Set();
-    for (const [day, sec] of data.daySec) if (inRange(day, r30.start, r30.end)) s30 += sec;
-    for (const [day, set] of data.dayVids) if (inRange(day, r30.start, r30.end)) set.forEach(id => v30.add(id));
-    avgSec = s30 / span;
-    avgVids = v30.size / span;
-    const cmp = (today, avg) => {
-      if (!avg) return 'sua média diária dos últimos 30 dias';
-      const d = Math.round(((today - avg) / avg) * 100);
-      return d === 0 ? 'hoje: igual à sua média' : `hoje: ${Math.abs(d)}% ${d > 0 ? 'acima' : 'abaixo'} da sua média`;
-    };
-    avgNote = cmp(total, avgSec);
-    avgVidNote = cmp(totalVids, avgVids);
-  }
-  const avgVidText = String(Math.round(avgVids * 10) / 10).replace('.', ',');
+  const podium = [...rows].sort((a, b) => b.final - a.final || b.sec - a.sec || byName(a.c.title, b.c.title));
+  podium.forEach((r, i) => { r.rank = i + 1; });
   const sinceText = new Date(data.since).toLocaleDateString('pt-BR');
-  const scoreTip = top ? `Como o Canal nº 1 é escolhido\nPontuação = média de duas fatias, de 0 a 100:\n${top.pctT}% do tempo assistido + ${top.pctV}% dos vídeos\n(${top.pctT} + ${top.pctV}) ÷ 2 = ${String(top.score).replace('.', ',')}\nEm caso de empate, ganha quem tem mais tempo.` : '';
 
   box.innerHTML = `
     <header class="page-head st-head">
@@ -6147,8 +6165,7 @@ function renderStats({ refresh = true, animate = refresh } = {}) {
             Contam só os vídeos que aparecem no app: os da aba “Vídeos” de cada canal, dentro do limite de duração
             (nos Ajustes, em Canais). Horas são o tempo em que o vídeo esteve tocando no app, incluindo as
             lives assistidas ao vivo (neste e nos seus outros aparelhos, pela sincronização). Um vídeo conta como
-            assistido quando é visto até o fim. O Canal nº 1 é o de maior pontuação: a média entre a fatia do
-            tempo e a fatia dos vídeos assistidos no período.
+            assistido quando é visto até o fim. O pódio usa a pontuação final de cada canal (veja o “i” do pódio).
             ${data.estimated ? `Antes de ${sinceText}, horas e vídeos são <strong>estimados</strong> pelo progresso salvo
               (o vídeo inteiro, se assistido, ou até onde parou, no dia do último acesso).` : ''}
             A Previsão usa o seu ritmo dos últimos ${FORECAST_DAYS} dias, em qualquer período.
@@ -6162,18 +6179,7 @@ function renderStats({ refresh = true, animate = refresh } = {}) {
     </header>
 
     ${channels.some(c => !channelCatalogs.has(c.id)) ? '<p id="st-counting" class="st-counting" role="status">Contando os vídeos dos canais…</p>' : ''}
-    <div class="sx-kpis">
-      <article class="sx-card sx-kpi"><div class="sx-lab">${SF('clock')}Horas assistidas</div><div class="sx-big">${bigTime(total)}</div><div class="sx-sub">${P.now}</div></article>
-      <article class="sx-card sx-kpi"><div class="sx-lab">${SF('check-c')}Vídeos assistidos</div><div class="sx-big">${intFmt.format(totalVids)} <small>${totalVids === 1 ? 'vídeo' : 'vídeos'}</small></div><div class="sx-sub">até o fim, ${P.now}</div></article>
-      <article class="sx-card sx-kpi"><div class="sx-lab">${SF('chart')}Média de horas</div><div class="sx-big">${bigTime(avgSec)}</div><div class="sx-sub">${avgNote}</div></article>
-      <article class="sx-card sx-kpi"><div class="sx-lab">${SF('film')}Média de vídeos</div><div class="sx-big">${avgVidText} <small>por dia</small></div><div class="sx-sub">${avgVidNote}</div></article>
-      <article class="sx-card sx-kpi sx-top">
-        <div class="sx-lab">${SF('medal')}Canal nº 1</div>
-        ${top ? `<div class="sx-top-row">${channelAvatar(top.c, '')}<div><b>${esc(top.c.title)}</b><span>${esc(fmtHours(top.sec))} · ${intFmt.format(top.vids)} ${top.vids === 1 ? 'vídeo' : 'vídeos'}</span></div></div>
-        <span class="sx-score" data-tip="${esc(scoreTip)}" tabindex="0">${SF('sparkles')}pontuação ${String(Math.round(top.score)).replace('.', ',')} de 100</span>`
-        : '<div class="sx-top-row"><span class="sx-ph"></span><div><b>—</b><span>nada assistido ${P.now}</span></div></div>'}
-      </article>
-    </div>
+    ${podiumHTML(podium, P)}
 
     <div class="sx-ranks">
       <article class="sx-card"><div class="sx-head"><h3>Ranking por horas assistidas</h3><span>% do tempo · ${esc(fmtHours(total))} · ${channels.length} ${channels.length === 1 ? 'canal' : 'canais'}</span></div>
