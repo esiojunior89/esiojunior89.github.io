@@ -546,7 +546,7 @@ main { min-height: 100vh; margin-left: var(--side-now); padding-bottom: var(--ta
 .sidebar.glass { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; }
 
 /* Topo: botão do menu (três linhas) e a marca */
-.sidebar .side-head { display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 16px 0 8px; flex-shrink: 0; }
+.sidebar .side-head { display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 16px; flex-shrink: 0; }
 .brand { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; text-decoration: none; }
 .brand-icon { display: grid; flex-shrink: 0; }
 .brand-icon svg { width: 28px; height: 28px; transition: transform .5s var(--ease-spring); }
@@ -751,8 +751,9 @@ main { min-height: 100vh; margin-left: var(--side-now); padding-bottom: var(--ta
 /* Recolhido (72 px): ícone em cima e o nome pequeno embaixo, como o mini-guia do YouTube */
 body.sidebar-mini .sidebar { width: var(--side-mini-w); }
 body.sidebar-mini :is(.brand, .side-title, .side-count, .side-new, .acct-text, .acct .ic, .side-section-lives, .side-empty, .side-signin) { display: none; }
-body.sidebar-mini .sidebar .side-head { justify-content: center; padding: 0; }
-body.sidebar-mini .side-search { width: 40px; height: 40px; margin: 2px auto 10px; border: 0; border-radius: 50%; background: transparent; cursor: pointer; }
+/* o botão do menu não sai do lugar (16 px) enquanto o menu encolhe ou cresce */
+body.sidebar-mini .sidebar .side-head { justify-content: flex-start; padding: 0 16px; }
+body.sidebar-mini .side-search { width: 40px; height: 40px; margin: 2px 16px 10px; border: 0; border-radius: 50%; background: transparent; cursor: pointer; }
 body.sidebar-mini .side-search:hover { background: var(--side-hover); }
 body.sidebar-mini .side-search .ic { flex-basis: 40px; width: 40px; padding: 0 9px; border: 0; background: transparent; }
 body.sidebar-mini .side-search input { display: none; }
@@ -2944,7 +2945,6 @@ body.channel-page .home-head { display: none; }
   #view-watch .cinema-bar :is([data-action="cinema-sidebar"], [data-action="cinema-back"]):hover { background: var(--side-hover); }
   #view-watch .cinema-bar :is([data-action="cinema-sidebar"], [data-action="cinema-back"]) .ic { width: 24px; height: 24px; }
   /* Com o menu aberto, o botão dele (no topo do menu) faz o papel deste */
-  body.cinema-side #view-watch .cinema-bar [data-action="cinema-sidebar"] { visibility: hidden; }
   #view-watch.theater .cinema-bar { margin-left: -12px; }
 }
 body.mini-player #view-watch .cinema-bar { display: none; }
@@ -2989,3 +2989,58 @@ body.sidebar-mini .side-version .sv-name { display: none; }
   #view-watch.theater .watch-title { font-size: 22px; line-height: 28px; }
   #view-watch.theater .watch-meta { margin-top: 10px; }
 }
+
+/* =========================================================
+   Botão de menu parado no mesmo lugar (canto de cima, à esquerda)
+   Com o menu aberto ou fechado, recolhido ou expandido, o botão fica
+   em 16 px da esquerda e 8 px do topo; só o menu se move. Na página
+   do vídeo, o botão fica preso nesse ponto e o menu abre por baixo dele.
+   ========================================================= */
+@media (min-width: 1100px) {
+  #view-watch .cinema-bar { padding-left: 44px; }
+  #view-watch .cinema-bar [data-action="cinema-sidebar"] { position: fixed; top: 8px; left: 16px; z-index: 46; background: var(--bg); }
+  #view-watch .cinema-bar [data-action="cinema-sidebar"]:hover { background: linear-gradient(var(--side-hover), var(--side-hover)), var(--bg); }
+  body.sidebar-hidden #menu-btn { visibility: hidden; }
+}
+
+/* =========================================================
+   A seguir: 3 vídeos. No modo normal, título + cartões + "Mostrar mais"
+   têm juntos a mesma altura do player. No Modo Cinema, os mesmos 3
+   numa coluna só, ao lado das informações do vídeo.
+   ========================================================= */
+@media (min-width: 1100px) {
+  body:not(.mini-player) #view-watch:not(.theater) .watch-side:not(:has(#upnext > :nth-child(4))) { display: flex; flex-direction: column; min-height: var(--player-h, auto); }
+  body:not(.mini-player) #view-watch:not(.theater) .watch-side:not(:has(#upnext > :nth-child(4))) .upnext { flex: 1; display: flex; flex-direction: column; justify-content: space-between; min-height: 0; margin-bottom: 12px; }
+  body:not(.mini-player) #view-watch:not(.theater) .watch-side:not(:has(#upnext > :nth-child(4))) #upnext-more { margin-top: auto; }
+  body:not(.mini-player) #view-watch:not(.theater) .upnext :is(.mini, .sk-mini) { grid-template-columns: min(56%, calc((var(--player-h, 600px) - 150px) / 3 * 16 / 9)) minmax(0, 1fr); }
+  #view-watch.theater .watch-side .side-head { display: flex; }
+  #view-watch.theater .upnext { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  #view-watch.theater .upnext .mini, #view-watch.theater .upnext .sk-mini { grid-template-columns: 200px minmax(0, 1fr); gap: 12px; }
+  #view-watch.theater .upnext .mini-title { font-size: 14px; line-height: 19px; -webkit-line-clamp: 2; }
+  #view-watch.theater .upnext .mini-meta + .mini-meta { display: block; }
+}
+
+/* =========================================================
+   Ícones do player no estilo do YouTube: brancos e cheios quando
+   ativos, cinza quando desativados; legendas ligadas com o traço
+   vermelho (Crimson) embaixo; qualidade como selinho na engrenagem;
+   reprodução automática com o botão do play/pausa.
+   ========================================================= */
+.pc-btn { color: #F4F9FF; }
+.pc-btn svg { width: 24px; height: 24px; }
+.pc-circle svg { width: 22px; height: 22px; }
+.pc-mid svg { width: 28px; height: 28px; }
+.pc-big svg { width: 36px; height: 36px; }
+.pc-btn:disabled { opacity: 1; color: rgba(244, 249, 255, .38); }
+#pc-cc { position: relative; }
+#pc-cc.on::after { left: 24%; right: 24%; bottom: 10%; height: 3px; border-radius: 2px; background: var(--crimson); }
+.pc-gear { position: relative; width: 40px; }
+.pc-gear.has-quality svg { display: block; }
+.pc-quality { position: absolute; top: 6px; right: 2px; padding: 1px 3px; border-radius: 3px; background: var(--crimson); color: #F4F9FF; font-size: 8.5px; font-weight: 800; line-height: 10px; letter-spacing: 0; }
+.pc-switch-track { width: 36px; height: 14px; margin: 0 4px; background: rgba(244, 249, 255, .3); }
+.pc-switch-knob { top: -3px; left: -4px; display: grid; place-items: center; width: 20px; height: 20px; background: #939597; box-shadow: 0 1px 3px rgba(16, 24, 32, .4); color: #101820; }
+.pc-switch-knob svg { width: 11px; height: 11px; }
+.pc-switch .sw-on, .pc-switch[aria-checked="true"] .sw-off { display: none; }
+.pc-switch[aria-checked="true"] .sw-on { display: block; }
+.pc-switch[aria-checked="true"] .pc-switch-track { background: rgba(244, 249, 255, .5); }
+.pc-switch[aria-checked="true"] .pc-switch-knob { left: 20px; background: #F4F9FF; }

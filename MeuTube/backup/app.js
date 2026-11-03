@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.28.2';
+const APP_VERSION = '1.28.3';
 
 /* =========================================================
    Canais — só os vídeos dos canais que você escolher
@@ -2413,21 +2413,22 @@ const ICON = (d, extra = '') => `<svg viewBox="0 0 24 24" aria-hidden="true"${ex
 // "Gostei" dos comentários: polegar só com o contorno, como no YouTube.
 const LIKE_ICON = SF('thumb');
 const PLAY_ICONS = {
-  play: SF('play'),
-  pause: SF('pause'),
-  replay: SF('replay'),
+  play: SF('yt-play'),
+  pause: SF('yt-pause'),
+  replay: SF('yt-replay'),
 };
 const SKIP_ICONS = {
-  prev: SF('prev'),
-  next: SF('next'),
+  prev: SF('yt-prev'),
+  next: SF('yt-next'),
 };
 const VOL_ICONS = {
-  high: SF('vol'),
-  low: SF('vol-low'),
-  muted: SF('vol-off'),
+  high: SF('yt-vol'),
+  low: SF('yt-vol-low'),
+  muted: SF('yt-vol-off'),
 };
-const CC_ICON = SF('cc');
-const GEAR_ICON = SF('sliders');
+// Ícones do player no estilo do YouTube (brancos; cinza quando desativados)
+const CC_ICON = SF('yt-cc');
+const GEAR_ICON = SF('yt-gear');
 const MENU_ICONS = {
   speed: SF('timer'),
   cc: CC_ICON,
@@ -2440,8 +2441,8 @@ const MENU_ICONS = {
   channel: SF('person'),
 };
 const FS_ICONS = {
-  enter: SF('expand'),
-  exit: SF('collapse'),
+  enter: SF('yt-expand'),
+  exit: SF('yt-collapse'),
 };
 const QUALITY_LABELS = {
   highres: ['Máxima', '8K'], hd2880: ['2880p', '5K'], hd2160: ['2160p', '4K'], hd1440: ['1440p', 'HD'],
@@ -2911,8 +2912,8 @@ function onPlayerControlsState(stateCode) {
    embaixo, à esquerda, e "A seguir" à direita, em lista. A escolha fica guardada neste
    aparelho. No celular o botão não existe (o player já ocupa a largura toda). */
 const THEATER_ICONS = {
-  on: SF('theater'),
-  off: SF('theater-off'),
+  on: SF('yt-theater'),
+  off: SF('yt-theater-off'),
 };
 const desktopQuery = matchMedia('(min-width: 1100px)');
 let theaterOn = store.get(KEYS.theater, false);
@@ -3677,9 +3678,9 @@ function setupPreviews() {
 /* =========================================================
    Página do vídeo
    ========================================================= */
-const UPNEXT_PAGE = 6;          // "A seguir" mostra 6 vídeos (4 no celular); "Mostrar mais" acrescenta outros tantos
+const UPNEXT_PAGE = 3;          // "A seguir" mostra 3 vídeos (4 no celular); "Mostrar mais" acrescenta outros tantos
 const UPNEXT_PAGE_PHONE = 4;
-const UPNEXT_PAGE_THEATER = 10; // no Modo Cinema, os cartões ficam ao lado das informações: 10 por vez
+const UPNEXT_PAGE_THEATER = 3;  // no Modo Cinema: os mesmos 3, numa coluna ao lado das informações
 const normalUpNext = () => (overlayQuery.matches ? UPNEXT_PAGE_PHONE : UPNEXT_PAGE);
 const upNextPage = () => (theaterActive() ? UPNEXT_PAGE_THEATER : normalUpNext());
 let upNextCount = UPNEXT_PAGE;
