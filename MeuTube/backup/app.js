@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.28.3';
+const APP_VERSION = '1.28.4';
 
 /* =========================================================
    Canais — só os vídeos dos canais que você escolher
@@ -3827,7 +3827,7 @@ function setUpNextContext(channelId) {
   const thumb = seg?.querySelector('.seg-thumb');
   const from = thumb ? { left: thumb.style.left, width: thumb.style.width } : null;
   state.filter = channelId || null;
-  state.sort = 'new';
+  state.sort = channelId ? (state.watchSorts?.[channelId] || 'new') : 'new';
   state.watchFeed = currentFeed();
   history.replaceState(history.state, '', watchHref(v.id));
   nav.hashes[nav.idx] = currentHash();
@@ -4944,6 +4944,10 @@ function applyView(view, id, channel, sort = 'new', sub = '') {
     const filter = channel && isHomeChannel(channel) ? channel : null;
     state.filter = filter;
     state.sort = filter ? sort : 'new';
+    // Ordem em que cada canal foi aberto nesta sessão de vídeos (mais novos ou mais antigos): trocar
+    // "Todos" ↔ canal no "A seguir" volta para o canal na mesma ordem. Recomeça ao chegar de outra página.
+    if (prev !== 'watch' || !state.watchSorts) state.watchSorts = {};
+    if (filter) state.watchSorts[filter] = state.sort;
     window.scrollTo({ top: 0, behavior: 'instant' });
     enterWatch(id, { resume });
   } else if (view === 'stats') {
