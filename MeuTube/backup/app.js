@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.30.0';
+const APP_VERSION = '1.30.1';
 
 /* =========================================================
    Canais — só os vídeos dos canais que você escolher
@@ -6054,9 +6054,10 @@ function bigTime(sec) {
 }
 
 /* ---------- Pódio dos favoritos ---------- */
-const podiumNum = n => Math.round(n).toLocaleString('pt-BR');
+// Pontuação final: inteiro a partir de 100; abaixo disso, com uma casa (ex.: 48,3) para não empatar à toa.
+const podiumNum = n => n.toLocaleString('pt-BR', { maximumFractionDigits: n >= 100 ? 0 : 1 });
 const podiumDec = n => n.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
-const PODIUM_TIP = 'Como o pódio é calculado\nPontuação final = pontuação × peso\nPeso = horas assistidas no período × √(horas do canal)\nPontuação = média entre a fatia do tempo e a fatia dos vídeos assistidos no período (0 a 100)\nHoras do canal = duração somada dos vídeos que o app tem do canal\nEmpate: fica na frente quem assistiu mais tempo';
+const PODIUM_TIP = 'Como o pódio é calculado\nPontuação final = pontuação × peso\nPeso = horas assistidas no período ÷ √(horas do canal)\nPontuação = média entre a fatia do tempo e a fatia dos vídeos assistidos no período (0 a 100)\nHoras do canal = duração somada dos vídeos que o app tem do canal\nEmpate: fica na frente quem assistiu mais tempo';
 // Medalhas em cores Pantone (hex de referência): ouro 7405 C/7563 C/7407 C, prata Cool Gray 1 C/6 C/8 C, bronze 7515 C/7516 C/4645 C
 const MEDALS = { 1: ['Ouro', '#F2CD00', '#D69A2D', '#CBA052', '#101820'], 2: ['Prata', '#D9D9D6', '#A7A8AA', '#888B8D', '#101820'], 3: ['Bronze', '#C58B68', '#99552B', '#AD7C59', '#F4F9FF'] };
 function medalSVG(pos) {
@@ -6065,7 +6066,7 @@ function medalSVG(pos) {
   return `<span class="pd-med" role="img" aria-label="Medalha de ${name.toLowerCase()}"><svg viewBox="0 0 60 78" aria-hidden="true"><defs><radialGradient id="${id}" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${z}"/></radialGradient></defs><path d="M17 2h11l6 22H23z" fill="var(--tint)"/><path d="M43 2H32l-6 22h11z" fill="var(--tint)" opacity=".7"/><circle cx="30" cy="50" r="25" fill="url(#${id})" stroke="${rim}" stroke-width="2.5"/><circle cx="30" cy="50" r="18.5" fill="none" stroke="${rim}" stroke-width="1.5" opacity=".9"/><path d="M19 40a14 14 0 0 1 9-6" fill="none" stroke="#F4F9FF" stroke-width="2.5" stroke-linecap="round" opacity=".55"/><text x="30" y="57.5" text-anchor="middle" font-size="21" font-weight="800" font-family="Inter, system-ui, sans-serif" fill="${ink}" fill-opacity=".85">${pos}</text></svg></span>`;
 }
 function podiumTip(r) {
-  return `${r.c.title}\npontuação ${podiumDec(r.score)} × peso ${podiumDec(r.peso)} = ${podiumNum(r.final)}\npontuação: (${r.pctT}% do tempo + ${r.pctV}% dos vídeos) ÷ 2\npeso: ${fmtHours(r.sec)} assistidas × √${podiumDec(r.catSec / 3600)} h do canal`;
+  return `${r.c.title}\npontuação ${podiumDec(r.score)} × peso ${podiumDec(r.peso)} = ${podiumNum(r.final)}\npontuação: (${r.pctT}% do tempo + ${r.pctV}% dos vídeos) ÷ 2\npeso: ${fmtHours(r.sec)} assistidas ÷ √${podiumDec(r.catSec / 3600)} h do canal`;
 }
 function podiumHTML(podium, P) {
   const active = podium.filter(r => r.final > 0);
@@ -6139,7 +6140,7 @@ function renderStats({ refresh = true, animate = refresh } = {}) {
 
   // Pódio dos favoritos.
   // Pontuação = média entre a fatia do tempo e a fatia dos vídeos no período (0 a 100).
-  // Peso = horas assistidas do canal no período × √(horas do canal: duração somada dos vídeos que o app tem dele).
+  // Peso = horas assistidas do canal no período ÷ √(horas do canal: duração somada dos vídeos que o app tem dele).
   // Pontuação final = pontuação × peso. Empate: mais tempo assistido.
   const rows = channels.map(c => {
     const sec = secBy.get(c.id) || 0;
@@ -6149,7 +6150,7 @@ function renderStats({ refresh = true, animate = refresh } = {}) {
     const score = ((shareT + shareV) / 2) * 100;
     let catSec = 0;
     for (const d of channelCatalogs.get(c.id)?.values() || []) if (!c.maxDur || d <= c.maxDur) catSec += d;
-    const peso = (sec / 3600) * Math.sqrt(catSec / 3600);
+    const peso = catSec > 0 ? (sec / 3600) / Math.sqrt(catSec / 3600) : 0; // sem vídeos contados ainda: peso 0
     return { c, sec, vids, catSec, pctT: Math.round(shareT * 100), pctV: Math.round(shareV * 100), score, peso, final: score * peso };
   });
   const podium = [...rows].sort((a, b) => b.final - a.final || b.sec - a.sec || byName(a.c.title, b.c.title));
