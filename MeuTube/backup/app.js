@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.30.1';
+const APP_VERSION = '1.31.0';
 
 /* =========================================================
    Canais — só os vídeos dos canais que você escolher
@@ -1954,7 +1954,6 @@ function closeSidebarOverlay() {
    ========================================================= */
 const PROGRESS_MIN_SECONDS = 10;   // antes disso não vale a pena retomar
 const PROGRESS_END_SECONDS = 20;   // nos últimos 20 s (ou 95%) conta como assistido
-const PROGRESS_MAX_ENTRIES = 1000;
 const progressStore = store.get(KEYS.progress, {});
 
 function fmtClock(sec) {
@@ -1982,29 +1981,32 @@ function resumeTime(id) {
   return p && !p.gone && p.t > 0 ? Math.max(0, p.t - 3) : 0; // volta 3 s para retomar o contexto
 }
 
+/** Tempo de conteúdo já assistido de um vídeo: a duração inteira se terminado; senão o ponto mais longe. */
+function progressCredit(p) {
+  if (!p) return 0;
+  if (p.done) return p.d || 0;
+  return Math.max(p.m || 0, p.gone ? 0 : p.t || 0);
+}
+
 function recordProgress(id, t, d, done = false) {
   if (!id || !d || !Number.isFinite(d)) return;
   const prev = progressStore[id];
   const wasWatched = Boolean(prev?.done && !prev.gone);
+  const before = progressCredit(prev);
+  const far = Math.floor(Math.max(prev?.m || 0, prev && !prev.gone ? prev.t || 0 : 0, t)); // ponto mais longe (nunca diminui)
   if (done || t >= d - PROGRESS_END_SECONDS || t / d >= 0.95) {
-    progressStore[id] = { t: 0, d: Math.round(d), done: true, at: Date.now() };
+    progressStore[id] = { t: 0, d: Math.round(d), m: Math.round(d), done: true, at: Date.now() };
     logCompletion(id);
   } else if (t >= PROGRESS_MIN_SECONDS) {
     // Rever um vídeo assistido mantém a marca de assistido.
-    progressStore[id] = { t: Math.floor(t), d: Math.round(d), ...(wasWatched && { done: true }), at: Date.now() };
+    progressStore[id] = { t: Math.floor(t), d: Math.round(d), m: far, ...(wasWatched && { done: true }), at: Date.now() };
   } else if (prev && !prev.gone && prev.t > 0) {
-    // Voltou para o início: esquece o ponto salvo (mas não a marca de assistido). Sem a marca,
-    // fica um registro "apagado" para a sincronização levar o esquecimento aos outros aparelhos.
-    progressStore[id] = wasWatched ? { t: 0, d: prev.d, done: true, at: Date.now() } : { gone: true, at: Date.now() };
+    // Voltou para o início: esquece o ponto de retomar, mas não a marca de assistido nem o ponto mais longe.
+    progressStore[id] = { t: 0, d: prev.d, m: far, ...(wasWatched && { done: true }), at: Date.now() };
   } else {
     return;
   }
-  const ids = Object.keys(progressStore);
-  if (ids.length > PROGRESS_MAX_ENTRIES) {
-    ids.sort((a, b) => progressStore[a].at - progressStore[b].at)
-      .slice(0, ids.length - PROGRESS_MAX_ENTRIES)
-      .forEach(k => delete progressStore[k]);
-  }
+  logContentTime(id, progressCredit(progressStore[id]) - before);
   store.set(KEYS.progress, progressStore);
   updateProgressBars(id);
   Sync.schedule(SYNC_PROGRESS_MS);
@@ -4724,8 +4726,15 @@ const Sync = {
     const progressIds = [];
     for (const [id, r] of Object.entries(remote.progress || {})) {
       const l = progressStore[id];
-      if (r && (!l || (r.at || 0) > (l.at || 0))) {
-        progressStore[id] = r;
+      if (!r) continue;
+      const newer = !l || (r.at || 0) > (l.at || 0) ? r : l;
+      const merged = { ...newer };
+      const m = Math.max(r.m || 0, l?.m || 0, r.gone ? 0 : r.t || 0, l && !l.gone ? l.t || 0 : 0);
+      if (m) merged.m = m;
+      if (r.done || l?.done) { merged.done = true; delete merged.gone; merged.d = merged.d || r.d || l?.d; }
+      if (merged.gone && merged.m) { delete merged.gone; merged.t = 0; merged.d = r.d || l?.d; }
+      if (JSON.stringify(merged) !== JSON.stringify(l)) {
+        progressStore[id] = merged;
         progressIds.push(id);
       }
     }
@@ -5463,13 +5472,15 @@ async function installApp() {
    =========================================================
    O app não pode ler o histórico do YouTube, então registra por
    conta própria, por dia e por canal:
-     • tempo assistido: enquanto um vídeo toca, a cada 5 s o tempo
-       é somado ao dia de hoje e ao canal do vídeo;
-     • vídeos assistidos: um vídeo conta no dia em que é visto até
-       o fim (a mesma regra do "assistido" do app).
+     • horas assistidas = conteúdo assistido (w): quanto cada vídeo
+       avançou no dia (até o ponto mais longe; terminado = duração
+       inteira). Velocidade, trechos pulados e aba escondida não
+       importam, e rever não conta de novo;
+     • lives ao vivo (l): pelo tempo de relógio, a cada 5 s;
+     • vídeos assistidos (v): no dia em que o vídeo é visto até o fim.
    Cada aparelho guarda o próprio registro e a sincronização junta
-   os de todos (o total é a soma dos aparelhos). O que aconteceu
-   antes de o registro existir é estimado pelo progresso salvo.
+   os de todos. O que foi visto antes do registro por dia entra pelo
+   progresso salvo (no dia em que terminou ou do último acesso).
    Canais marcados como "Só lives" ficam de fora: não contam e não
    aparecem. Ao desmarcar, voltam a contar e aparecem nas estatísticas.
    ========================================================= */
@@ -5525,6 +5536,11 @@ function tickWatchTime() {
     const sec = Math.min(now - watchTick, 3 * STATS_TICK_MS) / 1000;
     const log = todayLog();
     log.s[v.channelId] = Math.round(((log.s[v.channelId] || 0) + sec) * 10) / 10;
+    // Live assistida ao vivo (sem duração fechada): conta pelo tempo de relógio.
+    if (v.live === 'live') {
+      log.l ||= {};
+      log.l[v.channelId] = Math.round(((log.l[v.channelId] || 0) + sec) * 10) / 10;
+    }
     if (!videoChannels[v.id]) {
       videoChannels[v.id] = v.channelId;
       store.set(KEYS.videoChannels, videoChannels);
@@ -5532,6 +5548,21 @@ function tickWatchTime() {
     saveWatchLog();
   }
   watchTick = same && (state.view === 'watch' || mini.on) && isPlaying() ? now : 0;
+}
+
+/** Horas assistidas pelo conteúdo: o quanto o vídeo avançou hoje (ponto mais longe / terminado),
+    sem contar de novo o que já foi visto. Velocidade, trechos pulados e aba escondida não importam. */
+function logContentTime(id, sec) {
+  if (!(sec > 0)) return;
+  const ch = videoForProgress(id)?.channelId || videoChannels[id];
+  if (ch && videoChannels[id] !== ch) {
+    videoChannels[id] = ch;
+    store.set(KEYS.videoChannels, videoChannels);
+  }
+  const log = todayLog();
+  log.w ||= {};
+  log.w[id] = Math.round(((log.w[id] || 0) + sec) * 10) / 10;
+  saveWatchLog();
 }
 
 /** Registra que o vídeo foi assistido até o fim hoje (uma vez por dia). */
@@ -5571,6 +5602,12 @@ function mergeWatchLog(remoteLog, remoteChannels) {
       }
       for (const [id, ch] of Object.entries(rd?.v || {})) {
         if (!ld.v[id]) { ld.v[id] = ch; changed = true; }
+      }
+      for (const key of ['w', 'l']) {
+        for (const [k, sec] of Object.entries(rd?.[key] || {})) {
+          ld[key] ||= {};
+          if (sec > (ld[key][k] || 0)) { ld[key][k] = sec; changed = true; }
+        }
       }
     }
   }
@@ -5686,9 +5723,13 @@ async function loadCatalogs(channels, onProgress) {
   return changed;
 }
 
-/** Junta o registro de todos os aparelhos + a estimativa do período anterior a ele. */
+/** Junta o registro de todos os aparelhos.
+    Horas assistidas = conteúdo assistido: vídeo terminado conta a duração inteira; em andamento, até o
+    ponto mais longe — no dia em que cada parte foi vista. Velocidade, trechos pulados e aba escondida não
+    importam, e rever não conta de novo. Lives assistidas ao vivo (sem duração fechada) contam pelo relógio.
+    Retroativo: o que foi visto antes do registro por dia (versões antigas) entra pelo progresso salvo —
+    no dia em que o vídeo foi terminado ou, se ainda em andamento, no dia do último acesso. */
 function computeStats() {
-  const since = Math.min(...Object.values(watchLog).map(d => d.since || Date.now()));
   const hidden = livesOnlyIds();
   // Vídeos que contam: os da aba "Vídeos" dos canais, dentro do limite de duração (vídeo -> canal).
   const owner = new Map();
@@ -5697,6 +5738,13 @@ function computeStats() {
     if (!catalog) continue;
     for (const [id, d] of catalog) if (!c.maxDur || d <= c.maxDur) owner.set(id, c.id);
   }
+  const home = new Set(homeChannels().map(c => c.id));
+  // Canal de um vídeo: pelo catálogo; enquanto o catálogo do canal ainda não foi contado, pelo registro.
+  const chOf = id => {
+    if (owner.has(id)) return owner.get(id);
+    const ch = videoChannels[id];
+    return ch && home.has(ch) && !channelCatalogs.has(ch) ? ch : null;
+  };
   const daySec = new Map();     // dia -> segundos
   const dayChSec = new Map();   // dia -> Map(canal -> segundos)
   const dayVids = new Map();    // dia -> Set(vídeos assistidos até o fim)
@@ -5712,35 +5760,60 @@ function computeStats() {
     if (!dayVids.has(day)) dayVids.set(day, new Set());
     dayVids.get(day).add(id);
   };
+  // Do registro por dia: partes vistas (w), lives ao vivo (l) e vídeos terminados (v).
+  const parts = new Map();      // vídeo -> [[dia, segundos], ...]
+  const doneDay = new Map();    // vídeo -> primeiro dia em que foi terminado
+  let first = Date.now();
   for (const dev of Object.values(watchLog)) {
+    if (dev.since) first = Math.min(first, dev.since);
     for (const [day, d] of Object.entries(dev.days || {})) {
-      for (const [ch, sec] of Object.entries(d.s || {})) if (!hidden.has(ch)) addTime(day, ch, sec);
-      for (const id of Object.keys(d.v || {})) if (owner.has(id)) addVid(day, id);
+      for (const [id, sec] of Object.entries(d.w || {})) {
+        if (!parts.has(id)) parts.set(id, []);
+        parts.get(id).push([day, sec]);
+      }
+      for (const [ch, sec] of Object.entries(d.l || {})) if (home.has(ch) && !hidden.has(ch)) addTime(day, ch, sec);
+      for (const id of Object.keys(d.v || {})) {
+        if (!chOf(id)) continue;
+        addVid(day, id);
+        if (!doneDay.has(id) || day < doneDay.get(id)) doneDay.set(id, day);
+      }
     }
   }
   const doneByCh = new Map();
   let started = 0;
   let done = 0;
-  let estimated = false;
-  for (const [id, p] of Object.entries(progressStore)) {
-    if (!p || p.gone) continue;
-    const ch = owner.get(id);
-    if (!ch) continue; // Short, live gravada, acima do limite, de outro canal ou removido
-    started++;
-    if (p.done) {
+  const ids = new Set([...Object.keys(progressStore), ...parts.keys()]);
+  for (const id of ids) {
+    const ch = chOf(id);
+    if (!ch) continue; // Short, live gravada, acima do limite, de outro canal ou "Só lives"
+    const p = progressStore[id];
+    const logged = (parts.get(id) || []).sort((x, y) => (x[0] < y[0] ? -1 : 1));
+    const credit = p ? progressCredit(p) : logged.reduce((sum, [, sec]) => sum + sec, 0);
+    if (p && !p.gone) started++;
+    if (p?.done) {
       done++;
       add(doneByCh, ch, 1);
+      if (!doneDay.has(id)) { // terminado antes do registro por dia: no dia do último acesso
+        const day = dayKey(p.at);
+        addVid(day, id);
+        doneDay.set(id, day);
+      }
     }
-    if ((p.at || 0) < since) {
-      // Antes do registro: conta o vídeo inteiro (assistido) ou até onde parou, no dia do último acesso.
-      estimated = true;
-      const day = dayKey(p.at);
-      const sec = p.done ? p.d : p.t;
-      if (sec) addTime(day, ch, sec);
-      if (p.done) addVid(day, id);
+    // Cada parte no dia em que foi vista, sem passar do total do vídeo (o mesmo trecho visto em dois
+    // aparelhos sem sincronizar conta uma vez); o que sobrar (visto antes do registro por dia) vai para
+    // o dia em que o vídeo foi terminado ou, se em andamento, para o dia do último acesso.
+    let left = credit;
+    for (const [day, sec] of logged) {
+      if (left <= 0) break;
+      const n = Math.min(sec, left);
+      addTime(day, ch, n);
+      left -= n;
     }
+    if (left > 0.5 && p) addTime(doneDay.get(id) || dayKey(p.at), ch, left);
   }
-  return { since, daySec, dayChSec, dayVids, chSec, doneByCh, started, done, estimated, owner };
+  for (const day of daySec.keys()) first = Math.min(first, parseDay(day).getTime());
+  for (const day of dayVids.keys()) first = Math.min(first, parseDay(day).getTime());
+  return { since: first, daySec, dayChSec, dayVids, chSec, doneByCh, started, done, owner };
 }
 
 /* ---------- Períodos (Dia, Semana, Mês, Ano, Total) ----------
@@ -5833,7 +5906,7 @@ function forecastFor(data, chId) {
       total++;
       const p = progressStore[id];
       if (p?.done) { done++; continue; }
-      remaining += Math.max(0, dur - (p && !p.gone ? p.t || 0 : 0)); // começado: só o que falta
+      remaining += Math.max(0, dur - progressCredit(p)); // começado: só o que falta (desde o ponto mais longe)
     }
   }
   const today = new Date();
@@ -6164,11 +6237,11 @@ function renderStats({ refresh = true, animate = refresh } = {}) {
           <summary aria-label="Como os números são calculados" title="Como os números são calculados">i</summary>
           <p>
             Contam só os vídeos que aparecem no app: os da aba “Vídeos” de cada canal, dentro do limite de duração
-            (nos Ajustes, em Canais). Horas são o tempo em que o vídeo esteve tocando no app, incluindo as
-            lives assistidas ao vivo (neste e nos seus outros aparelhos, pela sincronização). Um vídeo conta como
-            assistido quando é visto até o fim. O pódio usa a pontuação final de cada canal (veja o “i” do pódio).
-            ${data.estimated ? `Antes de ${sinceText}, horas e vídeos são <strong>estimados</strong> pelo progresso salvo
-              (o vídeo inteiro, se assistido, ou até onde parou, no dia do último acesso).` : ''}
+            (nos Ajustes, em Canais). Horas assistidas são o conteúdo assistido: um vídeo terminado conta a duração
+            inteira, e um em andamento conta até o ponto mais longe em que você chegou, no dia em que cada parte foi
+            vista — a velocidade, os trechos pulados e a aba em segundo plano não mudam a conta, e rever um vídeo não
+            conta de novo. Lives assistidas ao vivo contam pelo tempo assistido. Vale para este e seus outros
+            aparelhos, pela sincronização. Um vídeo conta como assistido quando chega a 95% ou aos últimos 20 segundos. O pódio usa a pontuação final de cada canal (veja o “i” do pódio).
             A Previsão usa o seu ritmo dos últimos ${FORECAST_DAYS} dias, em qualquer período.
           </p>
         </details></h1>
