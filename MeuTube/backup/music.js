@@ -58,6 +58,55 @@ function saveMusicList({ sync = true } = {}) {
 function saveMusicData() {
   store.set(MUSIC_DATA_KEY, musicData);
 }
+
+/* ---------- Nuvem: a discografia organizada vai para o Google Drive ----------
+   Um aparelho organiza (YouTube + MusicBrainz) e salva no Drive; os outros baixam de lá, sem
+   consultar o YouTube nem o MusicBrainz de novo. O arquivo principal da sincronização guarda só
+   a versão (rev) de cada artista; o arquivo das Músicas (meutube-music.json) só é baixado
+   quando outro aparelho tem uma versão mais nova. */
+/** Marca os dados de um artista como alterados aqui (vão para a nuvem na próxima sincronização). */
+function touchMusicData(id) {
+  const d = musicStore()[id];
+  if (d) d.rev = Date.now();
+  saveMusicData();
+  if (typeof Sync !== 'undefined') Sync.schedule(SYNC_QUICK_MS);
+}
+/** Versões dos artistas deste aparelho que valem para a nuvem: { id: rev } */
+function musicIndex() {
+  const out = {};
+  for (const a of musicArtists()) {
+    const d = musicStore()[a.id];
+    if (d?.v === MUSIC_DATA_VERSION && d.releases?.length) out[a.id] = d.rev || d.at || 1; // da 1.32.1 (sem rev): a data em que foi organizado
+  }
+  return out;
+}
+/** O que vai para o arquivo das Músicas no Drive (sem os erros deste aparelho). */
+function musicCloudData() {
+  const artists = {};
+  for (const id of Object.keys(musicIndex())) {
+    const { error, errAt, ...d } = musicStore()[id];
+    artists[id] = d;
+  }
+  return { version: 1, artists };
+}
+/** Junta o que veio da nuvem: vale a versão mais nova de cada artista da lista. */
+function mergeMusicData(remote) {
+  let changed = false;
+  for (const [id, r] of Object.entries(remote?.artists || {})) {
+    if (!musicArtist(id) || r?.v !== MUSIC_DATA_VERSION || !r.releases?.length) continue;
+    const l = musicStore()[id];
+    if ((r.rev || r.at || 0) > (l?.v === MUSIC_DATA_VERSION && l.releases?.length ? l.rev || l.at || 1 : 0)) {
+      musicStore()[id] = r;
+      changed = true;
+    }
+  }
+  if (changed) {
+    saveMusicData();
+    musicFeeds.clear();
+    renderMusicEverywhere();
+  }
+  return changed;
+}
 const musicArtist = id => musicArtists().find(a => a.id === id) || null;
 /** Artista das Músicas de um canal do YouTube (o oficial ou o "Tema"). */
 const musicArtistOf = channelId => musicArtists().find(a => a.id === channelId || a.topicId === channelId) || null;
@@ -85,13 +134,16 @@ function mb(path, params = {}) {
     mbLast = Date.now();
     const url = new URL(path, MB_API);
     for (const [k, v] of Object.entries({ ...params, fmt: 'json' })) url.searchParams.set(k, v);
-    let res;
-    try { res = await fetch(url); } catch { throw new Error('Sem conexão com o MusicBrainz.'); }
-    if (res.status === 503) { // ocupado: espera um pouco e tenta de novo, uma vez
-      await new Promise(r => setTimeout(r, 2500));
-      mbLast = Date.now();
-      res = await fetch(url);
+    let res = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt) { // ocupado ou falha de conexão: espera um pouco (2,5 s, depois 5 s) e tenta de novo
+        await new Promise(r => setTimeout(r, 2500 * attempt));
+        mbLast = Date.now();
+      }
+      try { res = await fetch(url); } catch { res = null; continue; }
+      if (res.status !== 503) break;
     }
+    if (!res) throw new Error('Sem conexão com o MusicBrainz. Tente “Atualizar” mais tarde.');
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`O MusicBrainz não respondeu (${res.status}).`);
     return res.json();
@@ -220,6 +272,11 @@ function refreshMusicArtist(a, { force = false } = {}) {
   if (musicBusy.has(a.id)) return musicBusy.get(a.id);
   const job = (async () => {
     try {
+      // Outro aparelho pode já ter organizado: confere a nuvem antes de consultar o YouTube e o MusicBrainz.
+      if (!force && typeof Sync !== 'undefined' && Sync.enabled()) {
+        await Sync.run().catch(() => {});
+        if (musicFresh(musicStore()[a.id])) return musicStore()[a.id];
+      }
       // Atualização automática: só as faixas novas desde a última vez. "Atualizar" (force): a lista inteira.
       const prev = d?.v === MUSIC_DATA_VERSION && Array.isArray(d.raw) && d.raw.length ? d : null;
       const since = !force && prev ? prev.at - 2 * 864e5 : 0;
@@ -229,7 +286,8 @@ function refreshMusicArtist(a, { force = false } = {}) {
       const raw = [...byId.values()].sort((x, y) => (x.pub < y.pub ? 1 : x.pub > y.pub ? -1 : 0)); // mais nova primeiro
       if (!raw.length) throw new Error(`O YouTube não devolveu nenhuma faixa de ${a.name} (canal “${a.name} - Tema”). Tente “Atualizar” mais tarde.`);
       const releases = buildReleases(groups, raw, d?.releases || []);
-      musicStore()[a.id] = { v: MUSIC_DATA_VERSION, at: Date.now(), releases, raw };
+      musicStore()[a.id] = { v: MUSIC_DATA_VERSION, at: Date.now(), rev: Date.now(), releases, raw };
+      if (typeof Sync !== 'undefined') Sync.schedule(SYNC_QUICK_MS); // salva na nuvem para os outros aparelhos
     } catch (e) {
       const cur = musicStore()[a.id] || {};
       musicStore()[a.id] = { ...cur, ...(cur.v !== MUSIC_DATA_VERSION && { releases: undefined, raw: undefined }), error: e.message || String(e), errAt: Date.now(), at: cur.at || 0 };
@@ -385,7 +443,7 @@ async function ensureAlbumOrder(artistId, rel) {
     order = ytTitles.map((t, i) => ({ ...t, i })).sort((a, b) => pos(a) - pos(b) || a.i - b.i).map(t => t.id);
   }
   rel.order = order;
-  saveMusicData();
+  touchMusicData(artistId); // a ordem também vai para a nuvem
   return order;
 }
 
@@ -556,8 +614,9 @@ function renderMusicAlbum(box, a, d) {
   // Ordem oficial (MusicBrainz) e duração das faixas (YouTube): busca uma vez e redesenha.
   const key = rel.key;
   (async () => {
+    const durations = ensureMusicVideos(ids).catch(() => {}); // em paralelo: não espera o MusicBrainz
     const order = await ensureAlbumOrder(a.id, rel).catch(() => ids);
-    await ensureMusicVideos(order).catch(() => {});
+    await durations;
     if (state.view === 'music' && musicRoute.album === key && (order !== ids || order.some(id => !vids[ids.indexOf(id)]))) renderMusicView();
   })();
 }
