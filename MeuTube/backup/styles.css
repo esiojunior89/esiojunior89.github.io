@@ -2187,6 +2187,7 @@ body.mini-player .to-top { bottom: calc(24px + var(--tabbar-space) + 330px); }
 #view-settings[data-sub] .set-sec { display: none !important; }
 #view-settings[data-sub="conta"] .set-sec[data-sec="conta"],
 #view-settings[data-sub="canais"] .set-sec[data-sec="canais"],
+#view-settings[data-sub="musicas"] .set-sec[data-sec="musicas"],
 #view-settings[data-sub="app"] .set-detail[data-detail="app"],
 #view-settings[data-sub="sobre"] .set-detail[data-detail="sobre"] { display: block !important; margin-top: 0; }
 #view-settings[data-sub="conta"] .set-detail[data-detail="conta"] { display: block; margin-top: 16px; }
@@ -2200,7 +2201,7 @@ body.mini-player .to-top { bottom: calc(24px + var(--tabbar-space) + 330px); }
 @media (max-width: 760px) {
   .set-compact-only { display: block !important; }
   .set-regular-only { display: none !important; }
-  #view-settings:not([data-sub]) .set-sec[data-sec="canais"] { display: none; }
+  #view-settings:not([data-sub]) .set-sec:is([data-sec="canais"], [data-sec="musicas"]) { display: none; }
   #view-settings:not([data-sub]) .acct-card .chev { display: block; }
   #view-settings:not([data-sub]) .acct-card .btn { display: none; }
   .settings-cols { gap: 28px; }
@@ -3261,4 +3262,69 @@ body.sidebar-mini .side-version .sv-name { display: none; }
   .pd-med svg { width: 36px; height: 47px; }
   .pd-spot.p1 .pd-med svg { width: 42px; height: 55px; }
   .pd-med { margin-bottom: 8px; }
+}
+
+/* =========================================================
+   Músicas (1.32.0): página do artista e do álbum
+   Seções: álbuns de estúdio no topo, em ordem de lançamento,
+   com capa, título e ano; depois EPs, singles, ao vivo,
+   coletâneas e outros. Página do álbum: faixas na ordem oficial.
+   ========================================================= */
+.music-page { max-width: 2200px; margin: 0 auto; container-type: inline-size; }
+.mu-head { display: flex; align-items: center; gap: 22px; margin-bottom: 28px; }
+.mu-avatar { width: 120px; height: 120px; flex-shrink: 0; border-radius: 50%; object-fit: cover; background: var(--fill); }
+.mu-head-text { display: grid; gap: 4px; min-width: 0; }
+.mu-head-text h1 { margin: 0; }
+.mu-sub { margin: 0; color: var(--text-2); font-size: 14px; }
+.mu-sub a { color: inherit; font-weight: 600; text-decoration: none; }
+.mu-sub a:hover { text-decoration: underline; }
+.mu-section { margin-bottom: 34px; }
+.mu-section-title { display: flex; align-items: baseline; gap: 8px; margin: 0 0 14px; font-size: 20px; line-height: 26px; font-weight: 700; letter-spacing: -0.02em; }
+.mu-section-title span { color: var(--text-3); font-size: 14px; font-weight: 600; }
+.mu-section-title .side-add { align-self: center; margin-left: 4px; }
+.mu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 24px 18px; }
+.mu-card { display: grid; gap: 4px; min-width: 0; color: var(--text); text-decoration: none; border-radius: 12px; outline: none; }
+.mu-card:focus-visible .mu-cover { box-shadow: 0 0 0 3px var(--tint); }
+.mu-cover { position: relative; display: grid; place-items: center; aspect-ratio: 1; overflow: hidden; margin-bottom: 6px; border-radius: 10px; background: var(--side-hover); color: var(--text-3); box-shadow: var(--card-shadow); transition: transform .35s var(--ease-smooth), box-shadow .35s var(--ease-smooth); }
+.mu-cover img { width: 100%; height: 100%; object-fit: cover; }
+.mu-cover .ic { width: 40%; height: 40%; }
+.mu-card:hover .mu-cover { transform: translateY(-3px); box-shadow: var(--lift-shadow); }
+.mu-title { display: -webkit-box; overflow: hidden; font-size: 15px; line-height: 20px; font-weight: 600; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
+.mu-year { color: var(--text-2); font-size: 13px; line-height: 18px; font-variant-numeric: tabular-nums; }
+.mu-card .sk-line { height: 12px; margin-top: 4px; border-radius: 6px; }
+.stats.st-anim .mu-card, .mu-grid .mu-card { animation: tileIn .55s var(--ease-smooth) backwards; animation-delay: calc(var(--i, 0) * 35ms); }
+/* álbum */
+.mu-back { display: inline-flex; margin-bottom: 14px; }
+.mu-album-head { display: flex; align-items: flex-end; gap: 26px; margin-bottom: 26px; }
+.mu-cover-lg { width: min(260px, 38vw); flex-shrink: 0; margin: 0; border-radius: 14px; }
+.mu-album-text { display: grid; gap: 6px; min-width: 0; }
+.mu-album-text h1 { margin: 0; overflow-wrap: anywhere; }
+.mu-play-all { justify-self: start; display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding-left: 14px; }
+.mu-play-all .ic { width: 18px; height: 18px; }
+.mu-tracks { display: grid; gap: 2px; max-width: 980px; }
+.mu-track { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 52px; padding: 6px 12px; border-radius: 10px; color: var(--text); text-decoration: none; }
+.mu-track:hover, .mu-track:focus-visible { background: var(--side-hover); outline: none; }
+.mu-num, .mu-play { grid-column: 1; grid-row: 1; justify-self: center; color: var(--text-3); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.mu-play { display: none; color: var(--text); }
+.mu-play .ic { width: 20px; height: 20px; }
+.mu-track:hover .mu-num, .mu-track:focus-visible .mu-num { display: none; }
+.mu-track:hover .mu-play, .mu-track:focus-visible .mu-play { display: grid; }
+.mu-track-title { grid-column: 2; overflow: hidden; font-size: 15px; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
+.mu-dur { grid-column: 3; color: var(--text-2); font-size: 13px; font-variant-numeric: tabular-nums; }
+.mu-track.is-watched .mu-track-title { color: var(--text-2); }
+/* página Canais (celular) */
+.channels-music { margin-top: 30px; }
+.mu-artists { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 18px 12px; }
+.mu-artist { display: grid; justify-items: center; gap: 8px; color: var(--text); text-align: center; text-decoration: none; font-size: 13px; font-weight: 600; }
+.mu-artist img { width: 76px; height: 76px; border-radius: 50%; object-fit: cover; background: var(--fill); }
+/* Ajustes › Músicas */
+.music-item .ci-text .error { color: var(--error); }
+.ci-refresh .ic { width: 18px; height: 18px; }
+.ci-refresh:disabled { opacity: .4; }
+@container (max-width: 640px) {
+  .mu-head { gap: 14px; }
+  .mu-avatar { width: 72px; height: 72px; }
+  .mu-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 12px; }
+  .mu-album-head { flex-direction: column; align-items: flex-start; gap: 16px; }
+  .mu-cover-lg { width: min(220px, 60vw); }
 }

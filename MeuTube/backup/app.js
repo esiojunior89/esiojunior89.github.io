@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.31.0';
+const APP_VERSION = '1.32.0';
 
 /* =========================================================
    Canais — só os vídeos dos canais que você escolher
@@ -277,7 +277,7 @@ const state = {
 };
 
 const channelById = id => state.channels.find(c => c.id === id);
-const allowedChannels = () => new Set(state.channels.map(c => c.id));
+const allowedChannels = () => new Set([...state.channels.map(c => c.id), ...musicChannelIds()]); // + artistas das Músicas
 /** Canais que aparecem no Início e na lista de canais (os marcados "Só lives" ficam só em "Ao vivo"). */
 const homeChannels = () => state.channels.filter(c => !c.livesOnly);
 
@@ -1094,6 +1094,7 @@ function renderIndexProgress(n) {
 const feeds = new Map();
 
 function currentFeed() {
+  if (state.musicCtx) return musicFeed(state.musicCtx.artist, state.musicCtx.album); // tocando um álbum das Músicas
   const oldest = Boolean(state.filter) && state.sort === 'old';
   const key = (state.filter || 'all') + (oldest ? ':old' : '');
   if (!feeds.has(key)) {
@@ -1105,6 +1106,7 @@ function currentFeed() {
 
 /** Endereço de um vídeo levando o filtro atual (canal e ordem), para os vídeos seguintes continuarem nele. */
 function watchContext() {
+  if (state.musicCtx) return `/m/${state.musicCtx.artist}/${state.musicCtx.album}`;
   return state.filter ? `/c/${state.filter}${state.sort === 'old' ? '/antigos' : ''}` : '';
 }
 function watchHref(id, context = watchContext()) {
@@ -1676,6 +1678,7 @@ function updateSidebarActive() {
   $$('#sidebar .side-nav [data-nav]:not([data-channel]), #sidebar .side-footer [data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === state.view));
   const watching = state.view === 'watch' ? state.currentVideoId : null;
   $$('#side-lives [data-vid]').forEach(a => a.classList.toggle('active', a.dataset.vid === watching));
+  updateMusicSidebarActive();
   updateTabbar();
 }
 
@@ -1683,7 +1686,7 @@ function updateSidebarActive() {
 function updateTabbar() {
   const bar = $('#tabbar');
   if (!bar) return;
-  const tab = state.view === 'watch' ? (mini.on ? null : 'home') : state.view === 'home' ? (state.filter ? 'channels' : 'home') : state.view;
+  const tab = state.view === 'watch' ? (mini.on ? null : 'home') : state.view === 'home' ? (state.filter ? 'channels' : 'home') : state.view === 'music' ? 'channels' : state.view;
   let on = null;
   bar.querySelectorAll('.tab').forEach(t => {
     const hit = t.dataset.tab === tab;
@@ -3762,13 +3765,13 @@ function renderWatchInfo(v) {
   $('#watch-info').innerHTML = `
     <h1 class="watch-title">${esc(v.title)}</h1>
     <div class="watch-meta">
-      <${isHomeChannel(v.channelId) ? `a href="#/c/${esc(v.channelId)}" title="Ver os vídeos de ${esc(v.channelTitle)}"` : 'div'} class="watch-channel">
+      <${isHomeChannel(v.channelId) ? `a href="#/c/${esc(v.channelId)}" title="Ver os vídeos de ${esc(v.channelTitle)}"` : musicArtistOf(v.channelId) ? `a href="#/music/${esc(musicArtistOf(v.channelId).id)}" title="Ver os lançamentos de ${esc(musicArtistOf(v.channelId).name)}"` : 'div'} class="watch-channel">
         <img class="avatar watch-avatar" src="${esc(ch?.thumb || '')}" alt="" referrerpolicy="no-referrer" data-hide-broken>
         <div>
           <strong>${esc(v.channelTitle)}</strong>
           <span class="muted" id="watch-subs">${esc(subscribersText(v.channelId) || ch?.handle || '')}</span>
         </div>
-      </${isHomeChannel(v.channelId) ? 'a' : 'div'}>
+      </${isHomeChannel(v.channelId) || musicArtistOf(v.channelId) ? 'a' : 'div'}>
       <div class="watch-actions">
         ${v.likes != null ? `<span class="btn btn-fill" title="Curtidas no YouTube">${SF('heart')}${esc(compact.format(Number(v.likes)))}</span>` : ''}
         <button class="btn btn-fill btn-icon-only" type="button" data-action="watch-more" aria-label="Mais opções" title="Mais opções">${SF('more')}</button>
@@ -3920,6 +3923,7 @@ function enterWatch(id, { resume = false } = {}) {
 async function isAppVideo(v) {
   if (v.blocked) return false; // não toca fora do YouTube
   if (v.live === 'live') return true;
+  if (isMusicTrack(v.id)) return true; // faixa de um artista das Músicas
   if (!shownInApp(v)) return false;
   for (const feed of feeds.values()) if (feed.items.some(item => item.id === v.id)) return true; // veio da aba "Vídeos"
   return inVideosTab(v);
@@ -3966,7 +3970,7 @@ function upNextSlice(video) {
     start = feed.items.findIndex(v => (feed.ascending ? v.publishedAt > video.publishedAt : v.publishedAt < video.publishedAt));
     if (start < 0) return { list: [], ready: feed.exhausted, hasMore: !feed.exhausted };
   }
-  const rest = feed.items.slice(start).filter(v => !state.hideWatched || !isWatched(v.id));
+  const rest = feed.items.slice(start).filter(v => feed.music || !state.hideWatched || !isWatched(v.id)); // álbum: todas as faixas
   const list = rest.slice(0, upNextCount);
   const hasMore = rest.length > upNextCount || !feed.exhausted;
   return { list, ready: list.length >= upNextCount || feed.exhausted, hasMore };
@@ -4021,6 +4025,7 @@ async function renderUpNext(video) {
     box.innerHTML = failure
       ? `<p class="error">${esc(failure.message)}</p>`
       : slice.hasMore ? ''
+      : (state.watchFeed || currentFeed()).music ? '<p class="muted">Esta é a última faixa do álbum.</p>'
       : `<p class="muted">Não há vídeos seguintes. Este é o vídeo mais antigo ${state.filter ? 'deste canal' : 'dos seus canais'}.</p>`;
   }
   more.hidden = !slice.hasMore || Boolean(failure);
@@ -4272,7 +4277,7 @@ function renderChannelList() {
     </li>`).join('');
 }
 
-const SETTINGS_SUBS = { canais: 'Canais', conta: 'Conta Google', app: 'App no celular', sobre: 'Sobre' };
+const SETTINGS_SUBS = { canais: 'Canais', musicas: 'Músicas', conta: 'Conta Google', app: 'App no celular', sobre: 'Sobre' };
 
 function renderSettings(sub = '') {
   const view = $('#view-settings');
@@ -4589,6 +4594,7 @@ const Sync = {
     return {
       version: 1,
       channels: { at: at('channels'), value: state.channels },
+      music: { at: at('music'), value: musicArtists() },
       prefs: { at: at('prefs'), value: { hideWatched: state.hideWatched, autoplay: state.autoplay } },
       apiKey: { at: state.config.apiKey ? at('apiKey') : (this.meta.at.apiKey || 0), value: state.config.apiKey },
       progress: progressStore,
@@ -4713,6 +4719,10 @@ const Sync = {
         local.channels = rc.at;
       }
     }
+    if (Array.isArray(remote.music?.value) && (remote.music.at || 0) > (local.music || 0)) {
+      changes.music = remote.music.value;
+      local.music = remote.music.at;
+    }
     if (remote.prefs?.value && (remote.prefs.at || 0) > (local.prefs || 0)) {
       changes.prefs = remote.prefs.value;
       local.prefs = remote.prefs.at;
@@ -4752,6 +4762,11 @@ const Sync = {
     if (changes.channels) {
       state.channels = changes.channels;
       persistChannels();
+    }
+    if (changes.music) {
+      musicList = changes.music;
+      saveMusicList({ sync: false });
+      renderMusicEverywhere();
     }
     if (changes.prefs) {
       const p = changes.prefs;
@@ -4879,9 +4894,17 @@ function parseRoute() {
   const hash = location.hash || '#/';
   // O filtro de canal vai junto no endereço do vídeo (#/watch/ID/c/UC…[/antigos]): recarregar
   // a página mantém os vídeos seguintes do mesmo canal.
-  const watch = /^#\/watch\/([\w-]{11})(?:\/c\/(UC[\w-]{22})(\/antigos)?)?$/.exec(hash);
-  if (watch) return { view: 'watch', id: watch[1], channel: watch[2] || null, sort: watch[3] ? 'old' : 'new' };
-  const settings = /^#\/settings(?:\/(canais|conta|app|sobre))?$/.exec(hash);
+  const watch = /^#\/watch\/([\w-]{11})(?:\/c\/(UC[\w-]{22})(\/antigos)?|\/m\/(UC[\w-]{22})\/([\w-]{1,80}))?$/.exec(hash);
+  if (watch) {
+    musicRoute = { ...musicRoute, ctx: watch[4] ? { artist: watch[4], album: watch[5] } : null };
+    return { view: 'watch', id: watch[1], channel: watch[2] || null, sort: watch[3] ? 'old' : 'new' };
+  }
+  const music = /^#\/music\/(UC[\w-]{22})(?:\/([\w-]{1,80}))?$/.exec(hash);
+  if (music) {
+    musicRoute = { artist: music[1], album: music[2] || null, ctx: null };
+    return { view: 'music' };
+  }
+  const settings = /^#\/settings(?:\/(canais|musicas|conta|app|sobre))?$/.exec(hash);
   if (settings) return { view: 'settings', sub: settings[1] || '' };
   if (hash === '#/stats') return { view: 'stats' };
   if (hash === '#/live') return { view: 'live' };
@@ -4938,9 +4961,11 @@ function applyView(view, id, channel, sort = 'new', sub = '') {
   $('#view-stats').hidden = view !== 'stats';
   $('#view-live').hidden = view !== 'live';
   $('#view-channels').hidden = view !== 'channels';
+  $('#view-music').hidden = view !== 'music';
   updateSidebarMode();
   $('#search-note').hidden = view !== 'home' || !$('#side-search').value.trim();
 
+  if (view !== 'watch') state.musicCtx = null; // o álbum das Músicas só vale nos vídeos (o mini player guarda o seu)
   if (view === 'home') {
     const filter = channel && isHomeChannel(channel) ? channel : null;
     const order = filter ? sort : 'new';
@@ -4951,7 +4976,8 @@ function applyView(view, id, channel, sort = 'new', sub = '') {
     window.scrollTo({ top: filterChanged ? 0 : state.homeScroll, behavior: 'instant' });
   } else if (view === 'watch') {
     const filter = channel && isHomeChannel(channel) ? channel : null;
-    state.filter = filter;
+    state.musicCtx = musicRoute.ctx && musicArtist(musicRoute.ctx.artist) ? musicRoute.ctx : null;
+    state.filter = state.musicCtx ? null : filter;
     state.sort = filter ? sort : 'new';
     // Ordem em que cada canal foi aberto nesta sessão de vídeos (mais novos ou mais antigos): trocar
     // "Todos" ↔ canal no "A seguir" volta para o canal na mesma ordem. Recomeça ao chegar de outra página.
@@ -4971,7 +4997,11 @@ function applyView(view, id, channel, sort = 'new', sub = '') {
     window.scrollTo({ top: 0, behavior: 'instant' });
     document.title = 'Canais';
     renderChannelsPage();
+    renderMusicOnChannelsPage();
     if (state.channels.length) ensureChannelStats(state.channels[0].id).then(() => { if (state.view === 'channels') renderChannelsPage(); });
+  } else if (view === 'music') {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    renderMusicView();
   } else {
     window.scrollTo({ top: 0, behavior: 'instant' });
     renderSettings(sub);
@@ -5127,6 +5157,7 @@ function setupThemePicker() {
 
 function bindEvents() {
   setupThemePicker();
+  setupMusic();
   const sideVersion = $('#side-version');
   if (sideVersion) sideVersion.innerHTML = `<span class="sv-name">Canais </span>${APP_VERSION}`;
   setupChipArrows();
