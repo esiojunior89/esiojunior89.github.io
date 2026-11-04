@@ -34,7 +34,7 @@ const MUSIC_KEY = 'meutube.music';         // [{ id (canal oficial), handle, nam
 const MUSIC_DATA_KEY = 'meutube.musicData'; // { [id]: { at, releases: [...], error } }
 const MB_API = 'https://musicbrainz.org/ws/2/';
 const CAA_RG = 'https://coverartarchive.org/release-group/';
-const MUSIC_DATA_VERSION = 4;              // 4: só "Album" e "Album + Live"; buscas por álbum (1.36.0)
+const MUSIC_DATA_VERSION = 5;              // 5: só lançamentos com edição oficial (1.36.1); 4: só "Album" e "Album + Live" (1.36.0)
 const MUSIC_MIN_TRACKS = 6;                // só lançamentos com mais de 5 faixas
 const MUSIC_RETRY_MS = 30 * 6e4;           // depois de um erro, só tenta sozinho de novo em 30 min (a busca gasta cota)
 const MUSIC_SECTIONS = [
@@ -302,9 +302,11 @@ function refreshMusicArtist(a, { force = false } = {}) {
         if (musicFresh(now) || musicWaitingQuota(now)) return now;
       }
       const cur = musicStore()[a.id];
-      const same = cur?.v === MUSIC_DATA_VERSION;
+      const same = cur?.v === MUSIC_DATA_VERSION || cur?.v === 4; // a 1.36.0 (v4) busca do mesmo jeito
       // Da 1.35 (v3): o que já foi buscado lá não é buscado de novo.
       const searched = new Set(same ? cur.searched || [] : cur?.v === 3 ? (cur.releases || []).map(r => r.key) : []);
+      // Ainda esperando o limite do dia voltar (montagem da 1.36.0): não tenta buscar antes da hora.
+      const waitUntil = same && cur.pendingUntil > Date.now() ? cur.pendingUntil : 0;
       const aq = new Set(same ? cur.aq || [] : searched); // álbuns cuja busca pelo nome já foi feita
       const byId = new Map((Array.isArray(cur?.raw) ? cur.raw : []).map(t => [t.id, t]));
       const editions = await fetchEditions(a.mbid);
@@ -313,6 +315,7 @@ function refreshMusicArtist(a, { force = false } = {}) {
       let quota = null;
       for (const e of originals) {
         if (searched.has(e.rg.id)) continue;
+        if (waitUntil) { quota = { message: cur.quotaMsg || '' }; break; }
         try {
           if (!aq.has(e.rg.id)) {
             for (const t of await searchTopic(a.topicId, `"${e.rg.title.replace(/["|]/g, ' ').trim()}"`, byId)) byId.set(t.id, t);
@@ -334,7 +337,7 @@ function refreshMusicArtist(a, { force = false } = {}) {
       if (!built.releases.length) throw new Error(`O MusicBrainz não tem álbuns de estúdio ou ao vivo de ${a.name} com mais de 5 faixas.`);
       musicStore()[a.id] = {
         v: MUSIC_DATA_VERSION, at: Date.now(), rev: Date.now(), releases: built.releases, raw, searched: [...searched], aq: [...aq],
-        ...(quota && { pendingUntil: quotaResetAt(), quotaMsg: quota.message }),
+        ...(quota && { pendingUntil: waitUntil || quotaResetAt(), quotaMsg: quota.message }),
       };
       if (typeof Sync !== 'undefined') Sync.schedule(SYNC_QUICK_MS); // salva no Drive para os outros aparelhos
       ensureCovers(a.id).catch(() => {});
@@ -375,8 +378,10 @@ async function fetchEditions(mbid) {
 
 /** Só "Album" (estúdio) e "Album + Live" do MusicBrainz. */
 const musicWanted = rg => rg.primary === 'Album' && (!rg.secondary.length || (rg.secondary.length === 1 && rg.secondary[0] === 'Live'));
-/** Edição original de cada lançamento: a primeira oficial (data completa antes de "só o ano");
-    na mesma data, a com mais faixas. Só álbuns de estúdio e ao vivo com mais de 5 faixas. */
+/** Edição original de cada lançamento: a primeira OFICIAL (data completa antes de "só o ano");
+    na mesma data, a com mais faixas. Só álbuns de estúdio e ao vivo com mais de 5 faixas e com edição
+    oficial — como na página do artista no MusicBrainz (gravações piratas de shows, "Bootleg", e
+    promocionais ficam de fora). */
 function originalEditions(editions) {
   const groups = new Map();
   for (const e of editions) {
@@ -388,7 +393,8 @@ function originalEditions(editions) {
   const out = [];
   for (const list of groups.values()) {
     const official = list.filter(e => e.status === 'Official');
-    const pick = (official.length ? official : list).filter(e => e.tracks.length)
+    if (!official.length) continue; // só pirata ou promocional
+    const pick = official.filter(e => e.tracks.length)
       .sort((x, y) => (dateKey(x.date) < dateKey(y.date) ? -1 : dateKey(x.date) > dateKey(y.date) ? 1 : y.tracks.length - x.tracks.length))[0];
     if (pick && pick.tracks.length >= MUSIC_MIN_TRACKS) out.push(pick);
   }

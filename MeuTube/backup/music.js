@@ -7,9 +7,14 @@
    YouTube: https://www.youtube.com/@banda/releases
 
    • Lançamentos e faixas: o MusicBrainz (base aberta de música)
-     diz quais são os álbuns, EPs e singles, o tipo, a data e as
-     faixas da EDIÇÃO ORIGINAL de cada um, na ordem dela. Só entram
-     os que têm mais de 5 faixas.
+     diz quais são os álbuns de estúdio ("Album") e ao vivo
+     ("Album + Live"), a data e as faixas da EDIÇÃO ORIGINAL de cada
+     um, na ordem dela. Coletâneas, EPs, singles etc. não entram.
+   • Buscas no YouTube (limite diário do projeto): uma por álbum,
+     pelo nome do álbum (que está na descrição de cada faixa); só se
+     faltar faixa, mais uma pelos títulos. Se o limite do dia acabar
+     no meio, guarda o que achou e continua sozinho depois que ele
+     voltar (meia-noite no horário do Pacífico).
    • YouTube: cada faixa do MusicBrainz toca o vídeo correspondente
      do canal "Tema" (Topic) do artista. A versão de estúdio nunca é
      trocada por uma ao vivo ou remix. Faixa (ou álbum) que não está
@@ -29,11 +34,9 @@ const MUSIC_KEY = 'meutube.music';         // [{ id (canal oficial), handle, nam
 const MUSIC_DATA_KEY = 'meutube.musicData'; // { [id]: { at, releases: [...], error } }
 const MB_API = 'https://musicbrainz.org/ws/2/';
 const CAA_RG = 'https://coverartarchive.org/release-group/';
-const MUSIC_DATA_VERSION = 3;              // 3: faixas pela edição original do MusicBrainz (1.35.0)
+const MUSIC_DATA_VERSION = 4;              // 4: só "Album" e "Album + Live"; buscas por álbum (1.36.0)
 const MUSIC_MIN_TRACKS = 6;                // só lançamentos com mais de 5 faixas
-const MUSIC_EXTRA_SEARCH_MAX = 30;         // buscas extras por faixas que faltam (100 unidades cada), por atualização
 const MUSIC_RETRY_MS = 30 * 6e4;           // depois de um erro, só tenta sozinho de novo em 30 min (a busca gasta cota)
-const MUSIC_SEARCH_MAX_PAGES = 20;         // teto da busca completa: 20 × 50 faixas (2.000 unidades de cota)
 const MUSIC_SECTIONS = [
   ['studio', 'Álbuns de estúdio'],
   ['ep', 'EPs'],
@@ -281,38 +284,58 @@ function removeMusicArtist(id) {
 
 /* ---------- Montar um artista: lançamentos (MusicBrainz) + vídeos das faixas (YouTube) ----------
    Ordem: cache deste aparelho → Drive → internet. Depois de montado, só o botão "Atualizar"
-   (force) consulta de novo: o YouTube só pelas faixas novas, o MusicBrainz por inteiro. */
+   (force) consulta de novo — e só busca no YouTube os álbuns novos. */
+const isQuotaError = e => ['quotaExceeded', 'dailyLimitExceeded', 'rateLimitExceeded'].includes(e?.reason);
+/** Esperando o limite diário de buscas voltar (montagem incompleta)? */
+const musicWaitingQuota = d => Boolean(d?.v === MUSIC_DATA_VERSION && d.pendingUntil && Date.now() < d.pendingUntil);
+
 function refreshMusicArtist(a, { force = false } = {}) {
   const d = musicStore()[a.id];
-  if (!force && (musicFresh(d) || (d?.errAt && Date.now() - d.errAt < MUSIC_RETRY_MS))) return Promise.resolve(d);
+  if (!force && (musicFresh(d) || musicWaitingQuota(d) || (d?.errAt && Date.now() - d.errAt < MUSIC_RETRY_MS))) return Promise.resolve(d);
   if (musicBusy.has(a.id)) return musicBusy.get(a.id);
   const job = (async () => {
     try {
       // Outro aparelho pode já ter montado: confere o Drive antes de consultar o YouTube e o MusicBrainz.
       if (!force && typeof Sync !== 'undefined' && Sync.enabled()) {
         await Sync.run().catch(() => {});
-        if (musicFresh(musicStore()[a.id])) return musicStore()[a.id];
+        const now = musicStore()[a.id];
+        if (musicFresh(now) || musicWaitingQuota(now)) return now;
       }
       const cur = musicStore()[a.id];
-      // Faixas do canal "Tema" já buscadas (também as da 1.32/1.34): reaproveita e busca só as novas.
-      const prevRaw = Array.isArray(cur?.raw) && cur.raw.length ? cur.raw : null;
-      const since = prevRaw ? (cur.at || 0) - 2 * 864e5 : 0;
-      const [editions, fresh] = await Promise.all([fetchEditions(a.mbid), fetchTopicTracks(a.topicId, { since })]);
-      const byId = new Map((prevRaw || []).map(t => [t.id, t]));
-      for (const t of fresh) byId.set(t.id, t);
-      let raw = [...byId.values()].sort((x, y) => (x.pub < y.pub ? 1 : x.pub > y.pub ? -1 : 0)); // mais nova primeiro
-      let built = buildReleases(editions, raw);
-      // Faixas do MusicBrainz que a busca não trouxe: busca pelos títulos (vários por busca), uma vez por lançamento.
-      const tried = new Set(cur?.v === MUSIC_DATA_VERSION ? cur.tried || [] : []);
-      const extra = await searchMissingTracks(a.topicId, built.missing.filter(m => !tried.has(m.rg)), new Set(raw.map(t => t.id)));
-      built.missing.forEach(m => tried.add(m.rg));
-      if (extra.length) {
-        for (const t of extra) byId.set(t.id, t);
-        raw = [...byId.values()].sort((x, y) => (x.pub < y.pub ? 1 : x.pub > y.pub ? -1 : 0));
-        built = buildReleases(editions, raw);
+      const same = cur?.v === MUSIC_DATA_VERSION;
+      // Da 1.35 (v3): o que já foi buscado lá não é buscado de novo.
+      const searched = new Set(same ? cur.searched || [] : cur?.v === 3 ? (cur.releases || []).map(r => r.key) : []);
+      const aq = new Set(same ? cur.aq || [] : searched); // álbuns cuja busca pelo nome já foi feita
+      const byId = new Map((Array.isArray(cur?.raw) ? cur.raw : []).map(t => [t.id, t]));
+      const editions = await fetchEditions(a.mbid);
+      const originals = originalEditions(editions)
+        .sort((x, y) => (sectionOf(x.rg.primary, x.rg.secondary) === 'studio' ? 0 : 1) - (sectionOf(y.rg.primary, y.rg.secondary) === 'studio' ? 0 : 1) || (x.rg.date < y.rg.date ? -1 : 1));
+      let quota = null;
+      for (const e of originals) {
+        if (searched.has(e.rg.id)) continue;
+        try {
+          if (!aq.has(e.rg.id)) {
+            for (const t of await searchTopic(a.topicId, `"${e.rg.title.replace(/["|]/g, ' ').trim()}"`, byId)) byId.set(t.id, t);
+            aq.add(e.rg.id);
+          }
+          const missing = buildReleases([e], [...byId.values()]).missing[0];
+          for (const q of missing ? orQueries(missing.titles).slice(0, 2) : []) {
+            for (const t of await searchTopic(a.topicId, q, byId)) byId.set(t.id, t);
+          }
+          searched.add(e.rg.id);
+        } catch (err) {
+          if (!isQuotaError(err)) throw err;
+          quota = err; // acabou o limite do dia: guarda o que achou e continua depois que ele voltar
+          break;
+        }
       }
-      if (!built.releases.length) throw new Error(`O MusicBrainz não tem álbuns, EPs ou singles de ${a.name} com mais de 5 faixas.`);
-      musicStore()[a.id] = { v: MUSIC_DATA_VERSION, at: Date.now(), rev: Date.now(), releases: built.releases, raw, tried: [...tried] };
+      const raw = [...byId.values()].sort((x, y) => (x.pub < y.pub ? 1 : x.pub > y.pub ? -1 : 0)); // mais nova primeiro
+      const built = buildReleases(editions, raw, searched);
+      if (!built.releases.length) throw new Error(`O MusicBrainz não tem álbuns de estúdio ou ao vivo de ${a.name} com mais de 5 faixas.`);
+      musicStore()[a.id] = {
+        v: MUSIC_DATA_VERSION, at: Date.now(), rev: Date.now(), releases: built.releases, raw, searched: [...searched], aq: [...aq],
+        ...(quota && { pendingUntil: quotaResetAt(), quotaMsg: quota.message }),
+      };
       if (typeof Sync !== 'undefined') Sync.schedule(SYNC_QUICK_MS); // salva no Drive para os outros aparelhos
       ensureCovers(a.id).catch(() => {});
     } catch (e) {
@@ -330,7 +353,6 @@ function refreshMusicArtist(a, { force = false } = {}) {
   return job;
 }
 
-/** Todas as edições do artista no MusicBrainz, com as faixas (≈100 por consulta). */
 async function fetchEditions(mbid) {
   const out = [];
   for (let offset = 0, total = Infinity; offset < total && offset < 3000;) {
@@ -351,12 +373,14 @@ async function fetchEditions(mbid) {
   return out;
 }
 
+/** Só "Album" (estúdio) e "Album + Live" do MusicBrainz. */
+const musicWanted = rg => rg.primary === 'Album' && (!rg.secondary.length || (rg.secondary.length === 1 && rg.secondary[0] === 'Live'));
 /** Edição original de cada lançamento: a primeira oficial (data completa antes de "só o ano");
-    na mesma data, a com mais faixas. Só álbuns, EPs e singles com mais de 5 faixas. */
+    na mesma data, a com mais faixas. Só álbuns de estúdio e ao vivo com mais de 5 faixas. */
 function originalEditions(editions) {
   const groups = new Map();
   for (const e of editions) {
-    if (!e.rg.id || !['Album', 'EP', 'Single'].includes(e.rg.primary)) continue;
+    if (!e.rg.id || !musicWanted(e.rg)) continue;
     if (!groups.has(e.rg.id)) groups.set(e.rg.id, []);
     groups.get(e.rg.id).push(e);
   }
@@ -372,8 +396,8 @@ function originalEditions(editions) {
 }
 
 /** Monta os lançamentos: faixas da edição original (MusicBrainz), cada uma com o vídeo do YouTube.
-    Também devolve as faixas que faltaram (para a busca extra). */
-function buildReleases(editions, raw) {
+    searched: álbuns já buscados no YouTube (os outros ficam "aguardando"). Também devolve as faixas que faltaram. */
+function buildReleases(editions, raw, searched = null) {
   const byTitle = new Map(); // título da faixa -> vídeos do canal "Tema"
   const byLive = new Map();  // título sem "(Live…)" -> versões ao vivo (para os álbuns ao vivo)
   for (const t of raw) {
@@ -389,7 +413,6 @@ function buildReleases(editions, raw) {
   }
   const releases = [];
   const missing = [];
-  const knownAlbums = new Set(editions.map(e => musicNorm(e.rg.title)));
   for (const e of originalEditions(editions)) {
     const album = musicNorm(e.rg.title);
     const live = sectionOf(e.rg.primary, e.rg.secondary) === 'live';
@@ -411,6 +434,7 @@ function buildReleases(editions, raw) {
     if (ok.length < items.length) missing.push({ rg: e.rg.id, titles: items.filter(it => !it.id).map(it => it.t) });
     releases.push({
       key: e.rg.id, rg: e.rg.id, title: e.rg.title,
+      ...(searched && !searched.has(e.rg.id) && { pending: true }), // ainda não buscado no YouTube (limite do dia)
       section: sectionOf(e.rg.primary, e.rg.secondary),
       date: e.rg.date || e.date || '',
       cover: `${CAA_RG}${e.rg.id}/front-250`,
@@ -420,92 +444,32 @@ function buildReleases(editions, raw) {
       titles: Object.fromEntries(ok.map(it => [it.id, it.t])),
     });
   }
-  // Álbuns do YouTube que o MusicBrainz não conhece: entram em "Outros", se tiverem mais de 5 músicas.
-  const others = new Map();
-  for (const t of raw) {
-    const k = musicNorm(t.album);
-    if (!k || knownAlbums.has(k)) continue;
-    if (!others.has(k)) others.set(k, { name: t.album, list: [], seen: new Set() });
-    const al = others.get(k);
-    const n = trackNorm(t.title);
-    if (al.seen.has(n)) continue;
-    al.seen.add(n);
-    al.list.push(t);
-  }
-  for (const [k, al] of others) {
-    if (al.list.length < MUSIC_MIN_TRACKS) continue;
-    const list = al.list.slice().reverse(); // os envios vêm do mais novo para o mais antigo
-    const released = list.map(t => t.released).filter(Boolean).sort()[0] || list.map(t => t.year).find(Boolean) || '';
-    releases.push({
-      key: 'y-' + k.replace(/\s+/g, '-').slice(0, 60), rg: null, title: al.name, section: 'other', date: released, cover: '', thumb: list[0]?.thumb || '',
-      items: list.map(t => ({ t: t.title, id: t.id, ms: 0 })), tracks: list.map(t => t.id), titles: Object.fromEntries(list.map(t => [t.id, t.title])),
-    });
-  }
   return { releases, missing };
 }
 
-/** Busca no canal "Tema" as faixas que faltaram, vários títulos por busca ("A"|"B"|…). */
-async function searchMissingTracks(topicId, missing, known) {
-  const queries = [];
-  for (const m of missing) {
-    let cur = [];
-    for (const t of m.titles) {
-      const q = `"${t.replace(/["|]/g, ' ').trim()}"`;
-      if (cur.length && [...cur, q].join('|').length > 180) { queries.push(cur.join('|')); cur = []; }
-      cur.push(q);
-    }
-    if (cur.length) queries.push(cur.join('|'));
+/** Títulos agrupados em buscas ("A"|"B"|…), até ~180 caracteres cada. */
+function orQueries(titles) {
+  const out = [];
+  let cur = [];
+  for (const t of titles) {
+    const q = `"${t.replace(/["|]/g, ' ').trim()}"`;
+    if (cur.length && [...cur, q].join('|').length > 180) { out.push(cur.join('|')); cur = []; }
+    cur.push(q);
   }
-  const ids = new Set();
-  for (const q of queries.slice(0, MUSIC_EXTRA_SEARCH_MAX)) {
-    const data = await api('search', { part: 'snippet', channelId: topicId, type: 'video', q, maxResults: 50, fields: 'items(id/videoId)' });
-    for (const it of data.items || []) if (it.id?.videoId && !known.has(it.id.videoId)) ids.add(it.id.videoId);
-  }
-  return ids.size ? fetchTrackDetails([...ids], topicId) : [];
+  if (cur.length) out.push(cur.join('|'));
+  return out;
+}
+/** Uma busca no canal "Tema" (100 unidades do limite diário) + os detalhes das faixas novas (1 unidade por 50). */
+async function searchTopic(topicId, q, known) {
+  const data = await api('search', { part: 'snippet', channelId: topicId, type: 'video', q, maxResults: 50, fields: 'items(id/videoId,snippet/publishedAt)' });
+  const ids = new Map();
+  for (const it of data.items || []) if (it.id?.videoId && !known.has(it.id.videoId)) ids.set(it.id.videoId, it.snippet?.publishedAt || '');
+  return ids.size ? fetchTrackDetails([...ids.keys()], topicId, ids) : [];
 }
 
-/** Dados guardados valem? (versão atual, montado). Não vencem: só o "Atualizar" consulta de novo. */
+/** Dados guardados valem? (versão atual, montado por inteiro). Não vencem: só o "Atualizar" consulta de novo. */
 function musicFresh(d) {
-  return Boolean(d?.v === MUSIC_DATA_VERSION && d.releases?.length);
-}
-
-/** Faixas do canal "Tema" (as da aba Lançamentos).
-    O YouTube não deixa ler a lista de envios desses canais (responde 404 e "0 vídeos"), então as faixas vêm
-    da busca restrita ao canal (100 unidades de cota por página de 50) e os detalhes de cada uma (álbum e data
-    na descrição automática) de videos.list (1 unidade por 50). A busca para em ~500 resultados: passando
-    disso, continua a partir da data da faixa mais antiga já vista. since: só as publicadas depois dessa data. */
-async function fetchTopicTracks(topicId, { since = 0 } = {}) {
-  const ids = new Map(); // vídeo -> data de publicação
-  let before = null;
-  let pages = 0;
-  while (pages < MUSIC_SEARCH_MAX_PAGES) {
-    let pageToken;
-    let got = 0;
-    let oldest = null;
-    do {
-      const data = await api('search', {
-        part: 'snippet', channelId: topicId, type: 'video', order: 'date', maxResults: 50,
-        fields: 'nextPageToken,items(id/videoId,snippet/publishedAt)',
-        ...(since && { publishedAfter: new Date(since).toISOString() }),
-        ...(before && { publishedBefore: before }),
-        ...(pageToken && { pageToken }),
-      });
-      pages++;
-      for (const it of data.items || []) {
-        const id = it.id?.videoId;
-        const pub = it.snippet?.publishedAt || '';
-        if (!id) continue;
-        got++;
-        if (!ids.has(id)) ids.set(id, pub);
-        if (pub && (!oldest || pub < oldest)) oldest = pub;
-      }
-      pageToken = data.nextPageToken;
-    } while (pageToken && pages < MUSIC_SEARCH_MAX_PAGES);
-    // Bateu no limite da busca (~500)? Continua do ponto mais antigo; senão, terminou.
-    if (got < 450 || !oldest || oldest === before) break;
-    before = oldest;
-  }
-  return fetchTrackDetails([...ids.keys()], topicId, ids);
+  return Boolean(d?.v === MUSIC_DATA_VERSION && d.releases?.length && !d.pendingUntil);
 }
 
 /** Título, álbum e data (descrição automática) de cada faixa: videos.list, 1 unidade por 50. */
@@ -742,6 +706,8 @@ function musicCoverHTML(rel, cls = 'mu-cover', artistId = musicRoute.artist) {
   return `<span class="${cls}"><img ${musicCovers.has(k) || !coversBusy.has(artistId) ? `src="${net}` : `data-src="${net}`}alt="" decoding="async" referrerpolicy="no-referrer" data-cover="${esc(k)}"></span>`;
 }
 const musicYear = rel => (rel.date || '').slice(0, 4);
+const hhmm = t => (t ? new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '');
+const offText = rel => (rel.pending ? 'Aguardando o YouTube' : 'Indisponível no YouTube');
 
 function musicStatusText(a) {
   const d = musicStore()[a.id];
@@ -750,8 +716,10 @@ function musicStatusText(a) {
   if (!d?.releases) return 'Ainda não organizado';
   const n = s => d.releases.filter(r => r.section === s).length;
   const tracks = d.releases.reduce((s, r) => s + r.tracks.length, 0); // só as que estão no YouTube
+  const waiting = d.releases.filter(r => r.pending).length;
   const parts = [n('studio') && `${n('studio')} ${n('studio') === 1 ? 'álbum' : 'álbuns'}`, n('ep') && `${n('ep')} EP${n('ep') === 1 ? '' : 's'}`, n('single') && `${n('single')} single${n('single') === 1 ? '' : 's'}`].filter(Boolean);
-  return `${parts.join(' · ') || 'Lançamentos'} · ${intFmt.format(tracks)} ${tracks === 1 ? 'faixa' : 'faixas'}`;
+  const wait = waiting ? ` · ${waiting} ${waiting === 1 ? 'álbum aguardando' : 'álbuns aguardando'} o YouTube: o limite diário de buscas acabou; continua sozinho depois das ${hhmm(d.pendingUntil)}` : '';
+  return `${parts.join(' · ') || 'Lançamentos'} · ${intFmt.format(tracks)} ${tracks === 1 ? 'faixa' : 'faixas'}${wait}`;
 }
 
 /** Menu lateral: artistas das Músicas. */
@@ -838,7 +806,7 @@ function renderMusicView() {
           <a class="mu-card${r.tracks.length ? '' : ' is-off'}" href="#/music/${esc(a.id)}/${esc(r.key)}" style="--i:${Math.min(i, 12)}">
             ${musicCoverHTML(r)}
             <strong class="mu-title" title="${esc(r.title)}">${esc(r.title)}</strong>
-            <span class="mu-year">${esc(musicYear(r) || '—')}${r.tracks.length ? '' : ' · Indisponível no YouTube'}</span>
+            <span class="mu-year">${esc(musicYear(r) || '—')}${r.tracks.length ? '' : ` · ${offText(r)}`}</span>
           </a>`).join('')}</div>
       </section>`;
   }).join('');
@@ -858,10 +826,10 @@ function renderMusicAlbum(box, a, d) {
   const rowHTML = (it, i) => {
     const v = it.id ? musicVideos.get(it.id) : null;
     if (!it.id) return `
-    <div class="mu-track is-off" title="Esta faixa não está no YouTube">
+    <div class="mu-track is-off" title="${rel.pending ? 'Ainda não buscada: o limite diário de buscas do YouTube acabou' : 'Esta faixa não está no YouTube'}">
       <span class="mu-num">${i + 1}</span>
       <span class="mu-track-title">${esc(it.t || '')}</span>
-      <span class="mu-views">Indisponível no YouTube</span>
+      <span class="mu-views">${offText(rel)}</span>
       <span class="mu-dur">${esc(mmss(it.ms))}</span>
     </div>`;
     return `
@@ -876,13 +844,13 @@ function renderMusicAlbum(box, a, d) {
   const vids = ids.map(id => musicVideos.get(id));
   const total = items.reduce((s, it) => s + ((it.id && musicVideos.get(it.id)?.durationSec) || Math.round((it.ms || 0) / 1000)), 0);
   const off = items.length - ids.length;
-  const meta = [MUSIC_TYPE_LABEL[rel.section], musicYear(rel), `${items.length} ${items.length === 1 ? 'música' : 'músicas'}`, total ? fmtHours(total) : '', off ? (ids.length ? `${off} ${off === 1 ? 'indisponível' : 'indisponíveis'} no YouTube` : 'indisponível no YouTube') : ''].filter(Boolean).join(' · ');
+  const meta = [MUSIC_TYPE_LABEL[rel.section], musicYear(rel), `${items.length} ${items.length === 1 ? 'música' : 'músicas'}`, total ? fmtHours(total) : '', off ? (rel.pending ? `aguardando o YouTube (continua depois das ${hhmm(d?.pendingUntil)})` : ids.length ? `${off} ${off === 1 ? 'indisponível' : 'indisponíveis'} no YouTube` : 'indisponível no YouTube') : ''].filter(Boolean).join(' · ');
   box.innerHTML = `
     <a class="back-link mu-back" href="#/music/${esc(a.id)}">${SF('chev-l')}${esc(a.name)}</a>
     <header class="mu-album-head">
       ${musicCoverHTML(rel, 'mu-cover mu-cover-lg')}
       <div class="mu-album-text">
-        <span class="eyebrow">${esc(MUSIC_TYPE_LABEL[rel.section])}${ids.length ? '' : ' · Indisponível no YouTube'}</span>
+        <span class="eyebrow">${esc(MUSIC_TYPE_LABEL[rel.section])}${ids.length ? '' : ` · ${offText(rel)}`}</span>
         <h1 class="t-large">${esc(rel.title)}</h1>
         <p class="mu-sub"><a href="#/music/${esc(a.id)}">${esc(a.name)}</a> · ${esc(meta.replace(`${MUSIC_TYPE_LABEL[rel.section]} · `, ''))}</p>
         ${ids.length ? `<a class="btn btn-tint mu-play-all" href="${musicTrackHref(ids[0], a.id, rel.key)}">${SF('yt-play')}Tocar</a>` : ''}

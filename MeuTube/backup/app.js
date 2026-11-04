@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.35.0';
+const APP_VERSION = '1.36.0';
 
 /* =========================================================
    Canais — só os vídeos dos canais que você escolher
@@ -341,6 +341,16 @@ class ApiError extends Error {
   }
 }
 
+/** Quando a cota diária da API do YouTube volta: meia-noite no horário do Pacífico (em ms). */
+function quotaResetAt(now = Date.now()) {
+  const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' });
+  for (let t = Math.ceil((now + 1) / 36e5) * 36e5, i = 0; i < 50; i++, t += 36e5) {
+    if (fmt.format(t) === '00:00' || fmt.format(t) === '0:00') return t;
+  }
+  return now + 864e5;
+}
+const quotaResetText = () => new Date(quotaResetAt()).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
 const ERROR_MESSAGES = {
   quotaExceeded: 'O Google recusou a requisição por cota do projeto. Confira em Google Cloud Console › YouTube Data API v3 › Cotas o limite de “Queries per day”.',
   dailyLimitExceeded: 'O Google recusou a requisição por limite diário do projeto. Confira as cotas da YouTube Data API v3 no Google Cloud Console.',
@@ -400,7 +410,13 @@ async function api(endpoint, params = {}, { retry = true, useToken = true } = {}
     const googleMsg = (data?.error?.message || '').replace(/<[^>]*>/g, '');
     if (res.status !== 404) console.error('[YouTube API]', endpoint, res.status, reason, data?.error || data);
     const detail = googleMsg ? ` [${reason || res.status}: ${googleMsg}]` : ` [${reason || res.status}]`;
-    const message = ERROR_MESSAGES[reason] ? ERROR_MESSAGES[reason] + detail : (googleMsg || `Erro ${res.status} na API do YouTube.`);
+    // Limite diário (o Google responde "rateLimitExceeded" também para ele): diz qual e quando volta.
+    const daily = /per day/i.test(googleMsg);
+    const message = daily && /search/i.test(googleMsg)
+      ? `Acabou o limite diário de buscas do YouTube do seu projeto (“Search queries per day”). Ele volta por volta das ${quotaResetText()}.${detail}`
+      : daily || reason === 'quotaExceeded' || reason === 'dailyLimitExceeded'
+        ? `Acabou a cota diária da API do YouTube do seu projeto (“Queries per day”). Ela volta por volta das ${quotaResetText()}.${detail}`
+        : ERROR_MESSAGES[reason] ? ERROR_MESSAGES[reason] + detail : (googleMsg || `Erro ${res.status} na API do YouTube.`);
     throw new ApiError(message, res.status, reason);
   }
   return data;
