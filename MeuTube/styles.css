@@ -3314,7 +3314,25 @@ body.sidebar-mini .side-version .sv-name { display: none; }
 .mu-dur { grid-column: 4; min-width: 40px; color: var(--text-2); font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; }
 .mu-track.is-watched .mu-track-title { color: var(--text-2); }
 /* página Canais (celular) */
-.channels-music { margin-top: 30px; }
+.channels-music:empty { display: none; }
+/* 1.35.0: banner do artista, Atualizar, indisponíveis, aba Músicas */
+.mu-banner { margin-bottom: 20px; }
+.mu-head .mu-refresh { margin-left: auto; align-self: center; display: inline-flex; align-items: center; gap: 6px; }
+.mu-refresh .ic { width: 17px; height: 17px; }
+.mu-refresh:disabled { opacity: .55; }
+.mu-refresh:disabled .ic { animation: mu-spin 1s linear infinite; }
+@keyframes mu-spin { to { transform: rotate(360deg); } }
+.mu-card.is-off .mu-cover { filter: grayscale(1); opacity: .45; }
+.mu-card.is-off .mu-title, .mu-card.is-off .mu-year { color: var(--text-3); }
+.mu-track.is-off { cursor: default; }
+.mu-track.is-off:hover { background: none; }
+.mu-track.is-off .mu-track-title, .mu-track.is-off .mu-dur { color: var(--text-3); }
+.mu-track.is-off .mu-views { color: var(--text-3); font-style: italic; }
+.mu-track.is-off:hover .mu-num { display: grid; }
+.mu-list-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 22px; }
+.mu-list-head .btn { display: inline-flex; align-items: center; gap: 6px; }
+.mu-list-head .btn .ic { width: 17px; height: 17px; }
+.ch-live-link .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--live); margin-right: 4px; }
 .mu-artists { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 18px 12px; }
 .mu-artist { display: grid; justify-items: center; gap: 8px; color: var(--text); text-align: center; text-decoration: none; font-size: 13px; font-weight: 600; }
 .mu-artist img { width: 76px; height: 76px; border-radius: 50%; object-fit: cover; background: var(--fill); }
@@ -3328,6 +3346,8 @@ body.sidebar-mini .side-version .sv-name { display: none; }
   .mu-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 12px; }
   .mu-album-head { flex-direction: column; align-items: flex-start; gap: 16px; }
   .mu-cover-lg { width: min(220px, 60vw); }
+  .mu-head { flex-wrap: wrap; }
+  .mu-head .mu-refresh { margin-left: 0; }
   /* faixas: visualizações embaixo do título */
   .mu-track { grid-template-columns: 36px minmax(0, 1fr) auto; row-gap: 0; }
   .mu-track-title { grid-row: 1; align-self: end; }

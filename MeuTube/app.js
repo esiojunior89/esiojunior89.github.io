@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.34.0';
+const APP_VERSION = '1.35.0';
 
 /* =========================================================
    Canais — só os vídeos dos canais que você escolher
@@ -1630,8 +1630,17 @@ function renderChannelsPage() {
         ${SF('chev-r', 'ic chev')}
       </a>`;
   }).join('');
-  box.innerHTML = `${live}
-    <h2 class="grp-title"${live ? ' style="margin-top:26px"' : ''}>Seus canais · ${list.length}</h2>
+  const nLive = Lives.items.length;
+  const liveLink = `
+    <div class="group ch-live-link">
+      <a class="row row-link" href="#/live">
+        <span class="sq-ic" style="--c:var(--live)">${SF('live')}</span>
+        <span class="grow"><b>Ao Vivo</b><span class="sub">${nLive ? `${nLive} ${nLive === 1 ? 'transmissão' : 'transmissões'} agora` : 'Nenhuma transmissão agora'}</span></span>
+        ${nLive ? '<i class="live-dot" aria-hidden="true"></i>' : ''}${SF('chev-r', 'ic chev')}
+      </a>
+    </div>`;
+  box.innerHTML = `${liveLink}${live ? live.replace('<h2 class="grp-title live-title">', '<h2 class="grp-title live-title" style="margin-top:26px">') : ''}
+    <h2 class="grp-title" style="margin-top:26px">Seus canais · ${list.length}</h2>
     <div class="group">${rows || `<p class="channel-empty">${q ? 'Nenhum canal com esse nome.' : 'Nenhum canal adicionado ainda.'} <a class="link-btn" href="#/settings/canais">Adicionar canais</a></p>`}</div>`;
 }
 
@@ -1686,7 +1695,7 @@ function updateSidebarActive() {
 function updateTabbar() {
   const bar = $('#tabbar');
   if (!bar) return;
-  const tab = state.view === 'watch' ? (mini.on ? null : 'home') : state.view === 'home' ? (state.filter ? 'channels' : 'home') : state.view === 'music' ? 'channels' : state.view;
+  const tab = state.view === 'watch' ? (mini.on ? null : 'home') : state.view === 'home' ? (state.filter ? 'channels' : 'home') : state.view === 'live' ? 'channels' : state.view;
   let on = null;
   bar.querySelectorAll('.tab').forEach(t => {
     const hit = t.dataset.tab === tab;
@@ -1973,6 +1982,7 @@ function fmtClock(sec) {
  * assistido continua oculto pelo "Ocultar assistidos", mas ainda lembra onde você parou.
  */
 function progressPercent(id) {
+  if (isMusicTrack(id)) return 0; // Músicas: sem progresso
   const p = progressStore[id];
   if (!p || p.gone) return 0;
   if (p.t > 0) return Math.min(100, (p.t / p.d) * 100); // assistindo (ou revendo): ponto atual
@@ -1980,6 +1990,7 @@ function progressPercent(id) {
 }
 
 function resumeTime(id) {
+  if (isMusicTrack(id)) return 0; // Músicas: sempre do início
   const p = progressStore[id];
   return p && !p.gone && p.t > 0 ? Math.max(0, p.t - 3) : 0; // volta 3 s para retomar o contexto
 }
@@ -1993,6 +2004,7 @@ function progressCredit(p) {
 
 function recordProgress(id, t, d, done = false) {
   if (!id || !d || !Number.isFinite(d)) return;
+  if (isMusicTrack(id)) return; // Músicas não guardam progresso: ao voltar, começam do início
   const prev = progressStore[id];
   const wasWatched = Boolean(prev?.done && !prev.gone);
   const before = progressCredit(prev);
@@ -2021,6 +2033,7 @@ function progressBarHTML(id) {
 }
 
 function isWatched(id) {
+  if (isMusicTrack(id)) return false;
   return Boolean(progressStore[id]?.done);
 }
 
@@ -5002,9 +5015,9 @@ function parseRoute() {
     musicRoute = { ...musicRoute, ctx: watch[4] ? { artist: watch[4], album: watch[5] } : null };
     return { view: 'watch', id: watch[1], channel: watch[2] || null, sort: watch[3] ? 'old' : 'new' };
   }
-  const music = /^#\/music\/(UC[\w-]{22})(?:\/([\w-]{1,80}))?$/.exec(hash);
+  const music = /^#\/music(?:\/(UC[\w-]{22})(?:\/([\w-]{1,80}))?)?$/.exec(hash);
   if (music) {
-    musicRoute = { artist: music[1], album: music[2] || null, ctx: null };
+    musicRoute = { artist: music[1] || null, album: music[2] || null, ctx: null };
     return { view: 'music' };
   }
   const settings = /^#\/settings(?:\/(canais|musicas|conta|app|sobre))?$/.exec(hash);
@@ -5666,7 +5679,7 @@ function tickWatchTime() {
   const now = Date.now();
   const v = state.currentVideo;
   const same = Boolean(v && v.id === playerVideoId && v.channelId);
-  if (watchTick && same && !livesOnlyIds().has(v.channelId) && withinDurationLimit(v)) {
+  if (watchTick && same && !livesOnlyIds().has(v.channelId) && withinDurationLimit(v) && !isMusicTrack(v.id)) {
     const sec = Math.min(now - watchTick, 3 * STATS_TICK_MS) / 1000;
     const log = todayLog();
     log.s[v.channelId] = Math.round(((log.s[v.channelId] || 0) + sec) * 10) / 10;

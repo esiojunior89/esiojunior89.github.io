@@ -3302,7 +3302,7 @@ body.sidebar-mini .side-version .sv-name { display: none; }
 .mu-play-all { justify-self: start; display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding-left: 14px; }
 .mu-play-all .ic { width: 18px; height: 18px; }
 .mu-tracks { display: grid; gap: 2px; max-width: 980px; }
-.mu-track { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 52px; padding: 6px 12px; border-radius: 10px; color: var(--text); text-decoration: none; }
+.mu-track { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto auto; align-items: center; gap: 12px; min-height: 52px; padding: 6px 12px; border-radius: 10px; color: var(--text); text-decoration: none; }
 .mu-track:hover, .mu-track:focus-visible { background: var(--side-hover); outline: none; }
 .mu-num, .mu-play { grid-column: 1; grid-row: 1; justify-self: center; color: var(--text-3); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .mu-play { display: none; color: var(--text); }
@@ -3310,7 +3310,8 @@ body.sidebar-mini .side-version .sv-name { display: none; }
 .mu-track:hover .mu-num, .mu-track:focus-visible .mu-num { display: none; }
 .mu-track:hover .mu-play, .mu-track:focus-visible .mu-play { display: grid; }
 .mu-track-title { grid-column: 2; overflow: hidden; font-size: 15px; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
-.mu-dur { grid-column: 3; color: var(--text-2); font-size: 13px; font-variant-numeric: tabular-nums; }
+.mu-views { grid-column: 3; color: var(--text-2); font-size: 13px; white-space: nowrap; text-align: right; }
+.mu-dur { grid-column: 4; min-width: 40px; color: var(--text-2); font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; }
 .mu-track.is-watched .mu-track-title { color: var(--text-2); }
 /* página Canais (celular) */
 .channels-music { margin-top: 30px; }
@@ -3327,4 +3328,11 @@ body.sidebar-mini .side-version .sv-name { display: none; }
   .mu-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 12px; }
   .mu-album-head { flex-direction: column; align-items: flex-start; gap: 16px; }
   .mu-cover-lg { width: min(220px, 60vw); }
+  /* faixas: visualizações embaixo do título */
+  .mu-track { grid-template-columns: 36px minmax(0, 1fr) auto; row-gap: 0; }
+  .mu-track-title { grid-row: 1; align-self: end; }
+  .mu-views { grid-column: 2; grid-row: 2; align-self: start; text-align: left; font-size: 12px; }
+  .mu-views:empty { display: none; }
+  .mu-dur { grid-column: 3; grid-row: 1 / span 2; }
+  .mu-num, .mu-play { grid-row: 1 / span 2; }
 }

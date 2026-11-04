@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.33.0';
+const APP_VERSION = '1.34.0';
 
 /* =========================================================
    Canais — só os vídeos dos canais que você escolher
@@ -4597,6 +4597,7 @@ const Sync = {
       channels: { at: at('channels'), value: state.channels },
       music: { at: at('music'), value: musicArtists() },
       musicIndex: musicIndex(), // versão da discografia de cada artista (os dados ficam em meutube-music.json)
+      coversIndex: coversIndex(), // versão das capas de cada artista (meutube-covers-<artista>.json)
       prefs: { at: at('prefs'), value: { hideWatched: state.hideWatched, autoplay: state.autoplay } },
       apiKey: { at: state.config.apiKey ? at('apiKey') : (this.meta.at.apiKey || 0), value: state.config.apiKey },
       progress: progressStore,
@@ -4648,6 +4649,7 @@ const Sync = {
 
       const changed = remote ? this.merge(remote) : false;
       await this.syncMusic(remote?.musicIndex || {});
+      await this.syncCovers(remote?.coversIndex || {});
       const remoteBody = remote ? JSON.stringify({ ...remote, updatedAt: undefined }) : '';
       const body = JSON.stringify(this.snapshot());
 
@@ -4738,16 +4740,68 @@ const Sync = {
 
   /** Id do arquivo das Músicas no Drive (guardado; senão, procura pelo nome). */
   async musicFileId() {
-    if (this.meta.musicFileId) {
-      const ok = await driveFetch(`${DRIVE_FILES}/${this.meta.musicFileId}?fields=id`).then(() => true, e => { if (e.status === 404) return false; throw e; });
-      if (ok) return this.meta.musicFileId;
-      this.meta.musicFileId = null;
+    return this.driveFileId('musicFileId', SYNC_MUSIC_FILE);
+  },
+
+  /** Id de um arquivo da pasta do app no Drive, guardado em meta[slot] (ou em meta.files[nome]). */
+  async driveFileId(slot, name) {
+    const files = (this.meta.files ||= {});
+    const get = () => (slot ? this.meta[slot] : files[name]) || null;
+    const set = id => { if (slot) this.meta[slot] = id; else if (id) files[name] = id; else delete files[name]; this.saveMeta(); };
+    if (get()) {
+      const ok = await driveFetch(`${DRIVE_FILES}/${get()}?fields=id`).then(() => true, e => { if (e.status === 404) return false; throw e; });
+      if (ok) return get();
+      set(null);
     }
-    const q = encodeURIComponent(`name='${SYNC_MUSIC_FILE}'`);
+    const q = encodeURIComponent(`name='${name}'`);
     const list = await (await driveFetch(`${DRIVE_FILES}?spaces=appDataFolder&q=${q}&orderBy=modifiedTime%20desc&fields=files(id)`)).json();
-    this.meta.musicFileId = list.files?.[0]?.id || null;
+    set(list.files?.[0]?.id || null);
+    return get();
+  },
+
+  /** Grava um JSON na pasta do app no Drive (cria o arquivo se ainda não existir). */
+  async driveSave(slot, name, payload) {
+    const fileId = await this.driveFileId(slot, name);
+    if (fileId) {
+      await driveFetch(`${DRIVE_UPLOAD}/${fileId}?uploadType=media`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: payload });
+      return;
+    }
+    const boundary = `meutube${Math.random().toString(36).slice(2)}`;
+    const metadata = { name, parents: ['appDataFolder'], mimeType: 'application/json' };
+    const multipart = [
+      `--${boundary}`, 'Content-Type: application/json; charset=UTF-8', '', JSON.stringify(metadata),
+      `--${boundary}`, 'Content-Type: application/json', '', payload,
+      `--${boundary}--`,
+    ].join('\r\n');
+    const res = await driveFetch(`${DRIVE_UPLOAD}?uploadType=multipart&fields=id`, {
+      method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body: multipart,
+    });
+    const id = (await res.json()).id;
+    if (slot) this.meta[slot] = id; else this.meta.files[name] = id;
     this.saveMeta();
-    return this.meta.musicFileId;
+  },
+
+  /** Capas das Músicas: um arquivo por artista; baixa o que outro aparelho tem mais novo e envia o que este tem. */
+  async syncCovers(remoteIndex) {
+    await coversLoaded;
+    for (const a of musicArtists()) {
+      const r = remoteIndex[a.id] || 0, l = coversIndex()[a.id] || 0;
+      const name = `meutube-covers-${a.id}.json`;
+      if (r > l) {
+        const id = await this.driveFileId(null, name);
+        if (id) {
+          const data = await (await driveFetch(`${DRIVE_FILES}/${id}?alt=media`)).json();
+          await applyCovers(a.id, r, data?.covers);
+          if (Object.keys(coversOf(a.id)).length > Object.keys(data?.covers || {}).length) {
+            coversMetaGet()[a.id] = Date.now(); // este aparelho tem capas que faltavam lá: completa o arquivo
+            store.set(COVERS_META_KEY, coversMetaGet());
+          }
+        }
+      }
+      if ((coversIndex()[a.id] || 0) > r) {
+        await this.driveSave(null, name, JSON.stringify({ version: 1, artist: a.id, covers: coversOf(a.id), updatedAt: Date.now() }));
+      }
+    }
   },
 
   /** Junta os dados da nuvem com os deste aparelho. Retorna true se algo local mudou. */

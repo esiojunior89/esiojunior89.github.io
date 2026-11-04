@@ -260,6 +260,7 @@ async function addMusicArtist(url) {
 function removeMusicArtist(id) {
   musicList = musicArtists().filter(a => a.id !== id);
   delete musicStore()[id];
+  removeCovers(id);
   saveMusicList();
   saveMusicData();
   renderMusicEverywhere();
@@ -288,6 +289,7 @@ function refreshMusicArtist(a, { force = false } = {}) {
       const releases = buildReleases(groups, raw, d?.releases || []);
       musicStore()[a.id] = { v: MUSIC_DATA_VERSION, at: Date.now(), rev: Date.now(), releases, raw };
       if (typeof Sync !== 'undefined') Sync.schedule(SYNC_QUICK_MS); // salva na nuvem para os outros aparelhos
+      ensureCovers(a.id).catch(() => {});
     } catch (e) {
       const cur = musicStore()[a.id] || {};
       musicStore()[a.id] = { ...cur, ...(cur.v !== MUSIC_DATA_VERSION && { releases: undefined, raw: undefined }), error: e.message || String(e), errAt: Date.now(), at: cur.at || 0 };
@@ -480,10 +482,169 @@ function musicFeed(artistId, key) {
 }
 const musicTrackHref = (id, artistId, key) => `#/watch/${id}/m/${artistId}/${key}`;
 
+/* ---------- Capas: baixadas uma vez, guardadas no aparelho e no Drive ----------
+   O primeiro aparelho baixa cada capa (Cover Art Archive do MusicBrainz ou, sem ela, a imagem da faixa
+   no YouTube, cortada no quadrado, sem as faixas pretas), reduz para 240 px e guarda no aparelho
+   (IndexedDB). Depois envia para o Drive, um arquivo por artista (meutube-covers-<id>.json). Os outros
+   aparelhos baixam esse arquivo; a capa aparece na hora, sem esperar a internet. */
+const COVER_PX = 240;
+const COVERS_META_KEY = 'meutube.musicCovers'; // { artista: versão das capas deste aparelho }
+const musicCovers = new Map(); // `${artista}/${lançamento}` -> imagem (data:) ou '' (não deu para baixar)
+let coversMeta = null;
+let coverDB = null;
+const coversMetaGet = () => (coversMeta ||= store.get(COVERS_META_KEY, {}));
+const coverKey = (artistId, rel) => `${artistId}/${rel.key}`;
+
+function openCoverDB() {
+  if (!coverDB) {
+    coverDB = new Promise(resolve => {
+      try {
+        const req = indexedDB.open('canais-music', 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('covers');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+      } catch { resolve(null); }
+    });
+  }
+  return coverDB;
+}
+async function coverTx(mode, fn) {
+  const db = await openCoverDB();
+  if (!db) return null;
+  return new Promise(resolve => {
+    try {
+      const tx = db.transaction('covers', mode);
+      const out = fn(tx.objectStore('covers'));
+      tx.oncomplete = () => resolve(out?.result ?? null);
+      tx.onerror = tx.onabort = () => resolve(null);
+    } catch { resolve(null); }
+  });
+}
+/** Carrega as capas guardadas neste aparelho (uma vez, ao abrir o app). */
+const coversLoaded = (async () => {
+  const db = await openCoverDB();
+  if (!db) return;
+  await new Promise(resolve => {
+    try {
+      const req = db.transaction('covers').objectStore('covers').openCursor();
+      req.onsuccess = () => {
+        const c = req.result;
+        if (!c) return resolve();
+        musicCovers.set(c.key, c.value);
+        c.continue();
+      };
+      req.onerror = () => resolve();
+    } catch { resolve(); }
+  });
+  // O app (app.js) pode ainda não ter terminado de carregar: espera a página ficar pronta.
+  if (document.readyState === 'loading') await new Promise(r => document.addEventListener('DOMContentLoaded', r, { once: true }));
+  if (musicCovers.size) renderMusicEverywhere();
+})();
+function saveCovers(entries) {
+  for (const [k, v] of entries) musicCovers.set(k, v);
+  return coverTx('readwrite', os => { for (const [k, v] of entries) os.put(v, k); });
+}
+/** Baixa uma imagem e devolve o quadrado de 240 px (data:image/jpeg). */
+async function shrinkCover(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(String(res.status));
+  const bmp = await createImageBitmap(await res.blob());
+  const side = Math.min(bmp.width, bmp.height);
+  const c = document.createElement('canvas');
+  c.width = c.height = Math.min(COVER_PX, side);
+  c.getContext('2d').drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, c.width, c.height);
+  bmp.close?.();
+  return c.toDataURL('image/jpeg', 0.82);
+}
+const coversBusy = new Map();
+/** Capas que faltam de um artista: primeiro confere o Drive; só baixa da internet o que não estiver lá. */
+function ensureCovers(artistId) {
+  if (coversBusy.has(artistId)) return coversBusy.get(artistId);
+  const job = (async () => {
+    await coversLoaded;
+    const d = musicStore()[artistId];
+    const missing = () => (d?.releases || []).filter(r => !musicCovers.has(coverKey(artistId, r)));
+    if (!missing().length) return;
+    if (typeof Sync !== 'undefined' && Sync.enabled()) await Sync.run().catch(() => {}); // outro aparelho já baixou?
+    const list = missing();
+    if (!list.length || !musicArtist(artistId)) return;
+    const queue = [...list];
+    const got = [];
+    const worker = async () => {
+      for (let rel; (rel = queue.shift());) {
+        let img = '';
+        for (const src of [rel.cover, rel.thumb].filter(Boolean)) {
+          try { img = await shrinkCover(src); break; } catch { /* sem capa no MusicBrainz: tenta a do YouTube */ }
+        }
+        const k = coverKey(artistId, rel);
+        got.push([k, img]);
+        musicCovers.set(k, img);
+        if (img) $$(`img[data-cover="${CSS.escape(k)}"]`).forEach(el => { el.src = img; el.removeAttribute('data-fallback'); el.removeAttribute('data-src'); });
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    showPendingCovers();
+    await saveCovers(got.filter(([, img]) => img)); // falha (sem internet etc.) não fica guardada: tenta de novo na próxima vez que abrir o app
+    if (got.some(([, img]) => img)) {
+      coversMetaGet()[artistId] = Date.now();
+      store.set(COVERS_META_KEY, coversMeta);
+      if (typeof Sync !== 'undefined') Sync.schedule(SYNC_QUICK_MS); // envia para o Drive
+    }
+  })().finally(() => { coversBusy.delete(artistId); showPendingCovers(); });
+  coversBusy.set(artistId, job);
+  return job;
+}
+/** Capas que ficaram esperando: a guardada, se houver; senão, direto da internet. */
+function showPendingCovers() {
+  $$('img[data-cover][data-src]').forEach(el => {
+    const img = musicCovers.get(el.dataset.cover);
+    el.src = img || el.dataset.src;
+    if (img) el.removeAttribute('data-fallback');
+    el.removeAttribute('data-src');
+  });
+}
+/** Versões das capas por artista (vão no arquivo principal da sincronização). */
+function coversIndex() {
+  const out = {};
+  for (const a of musicArtists()) if (coversMetaGet()[a.id]) out[a.id] = coversMetaGet()[a.id];
+  return out;
+}
+/** Capas de um artista para o Drive: { lançamento: imagem }. */
+function coversOf(artistId) {
+  const out = {};
+  for (const rel of musicStore()[artistId]?.releases || []) {
+    const img = musicCovers.get(coverKey(artistId, rel));
+    if (img) out[rel.key] = img;
+  }
+  return out;
+}
+/** Capas vindas do Drive. */
+async function applyCovers(artistId, rev, covers) {
+  const entries = Object.entries(covers || {}).filter(([, img]) => typeof img === 'string' && img.startsWith('data:image/')).map(([k, img]) => [`${artistId}/${k}`, img]);
+  await saveCovers(entries);
+  coversMetaGet()[artistId] = rev;
+  store.set(COVERS_META_KEY, coversMeta);
+  for (const [k, img] of entries) $$(`img[data-cover="${CSS.escape(k)}"]`).forEach(el => { el.src = img; el.removeAttribute('data-fallback'); el.removeAttribute('data-src'); });
+}
+function removeCovers(artistId) {
+  const keys = [...musicCovers.keys()].filter(k => k.startsWith(artistId + '/'));
+  keys.forEach(k => musicCovers.delete(k));
+  coverTx('readwrite', os => { keys.forEach(k => os.delete(k)); });
+  delete coversMetaGet()[artistId];
+  store.set(COVERS_META_KEY, coversMeta);
+}
+
 /* ---------- Telas ---------- */
-function musicCoverHTML(rel, cls = 'mu-cover') {
+function musicCoverHTML(rel, cls = 'mu-cover', artistId = musicRoute.artist) {
+  const k = coverKey(artistId, rel);
+  const saved = musicCovers.get(k);
+  if (saved) return `<span class="${cls}"><img src="${saved}" alt="" decoding="async" data-cover="${esc(k)}"></span>`;
   const src = rel.cover || rel.thumb;
-  return `<span class="${cls}">${src ? `<img src="${esc(src)}" ${rel.cover && rel.thumb ? `data-fallback="${esc(rel.thumb)}" ` : ''}alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : SF('music')}</span>`;
+  if (!src) return `<span class="${cls}">${SF('music')}</span>`;
+  // Ainda não guardada: a capa entra quando vier do Drive ou terminar de baixar (ensureCovers).
+  // Se não der para guardar (ex.: sem IndexedDB), mostra direto da internet.
+  const net = `${esc(src)}" ${rel.cover && rel.thumb ? `data-fallback="${esc(rel.thumb)}" ` : ''}`;
+  return `<span class="${cls}"><img ${musicCovers.has(k) || !coversBusy.has(artistId) ? `src="${net}` : `data-src="${net}`}alt="" decoding="async" referrerpolicy="no-referrer" data-cover="${esc(k)}"></span>`;
 }
 const musicYear = rel => (rel.date || '').slice(0, 4);
 
@@ -551,7 +712,8 @@ function renderMusicView() {
   }
   const d = musicStore()[a.id];
   refreshMusicArtist(a).catch(() => {}); // só busca se os dados venceram (e não logo depois de um erro)
-  if (musicRoute.album) return renderMusicAlbum(box, a, d);
+  if (d?.releases?.length) ensureCovers(a.id).catch(() => {});
+  if (musicRoute.album) { renderMusicAlbum(box, a, d); return; }
   document.title = `${a.name} · Músicas · Canais`;
   const head = `
     <header class="mu-head">
@@ -594,6 +756,7 @@ function renderMusicAlbum(box, a, d) {
       <span class="mu-num">${i + 1}</span>
       <span class="mu-play">${SF('yt-play')}</span>
       <span class="mu-track-title">${esc(v?.title || rel.titles?.[id] || '…')}</span>
+      <span class="mu-views">${v?.views != null ? esc(fmtViews(v.views)) : ''}</span>
       <span class="mu-dur">${v?.duration ? esc(v.duration) : ''}</span>
     </a>`;
   const vids = ids.map(id => musicVideos.get(id));
@@ -613,12 +776,10 @@ function renderMusicAlbum(box, a, d) {
     <div class="mu-tracks" id="mu-tracks">${ids.map((id, i) => rowHTML(id, i, musicVideos.get(id))).join('')}</div>`;
   // Ordem oficial (MusicBrainz) e duração das faixas (YouTube): busca uma vez e redesenha.
   const key = rel.key;
-  (async () => {
-    const durations = ensureMusicVideos(ids).catch(() => {}); // em paralelo: não espera o MusicBrainz
-    const order = await ensureAlbumOrder(a.id, rel).catch(() => ids);
-    await durations;
-    if (state.view === 'music' && musicRoute.album === key && (order !== ids || order.some(id => !vids[ids.indexOf(id)]))) renderMusicView();
-  })();
+  const here = () => state.view === 'music' && musicRoute.artist === a.id && musicRoute.album === key;
+  // Duração e visualizações (YouTube) e ordem oficial (MusicBrainz) chegam separadas: uma não espera a outra.
+  ensureMusicVideos(ids).then(() => { if (here() && ids.some((id, i) => !vids[i] && musicVideos.has(id))) renderMusicView(); }).catch(() => {});
+  ensureAlbumOrder(a.id, rel).then(order => { if (here() && order.join() !== ids.join()) renderMusicView(); }).catch(() => {});
 }
 
 /** Página "Canais" (celular): os artistas das Músicas embaixo dos canais. */
