@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.32.0';
+const APP_VERSION = '1.32.1';
 
 /* =========================================================
    Canais — só os vídeos dos canais que você escolher

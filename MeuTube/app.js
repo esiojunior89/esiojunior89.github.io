@@ -8,7 +8,7 @@ if (window.top !== window.self) {
 }
 
 /** Versão do app (SemVer: MAJOR.MINOR.PATCH). Mantenha igual à do index.html e do sw.js. */
-const APP_VERSION = '1.32.1';
+const APP_VERSION = '1.33.0';
 
 /* =========================================================
    Canais — só os vídeos dos canais que você escolher
@@ -4160,7 +4160,7 @@ function renderAccount() {
     : 'Conectado';
 
   if (!account) {
-    side.innerHTML = `<p class="side-signin">Entre para sincronizar seus canais e o progresso entre os aparelhos.</p>
+    side.innerHTML = `<p class="side-signin">Entre para sincronizar seus canais, músicas e o progresso entre os aparelhos.</p>
       <button class="btn btn-google btn-sm" type="button" data-action="signin">${ICONS.google}<span>Entrar com o Google</span></button>`;
     miniBox.innerHTML = SF('person');
     miniBox.title = 'Entrar com o Google';
@@ -4498,6 +4498,7 @@ function onCredentialsChanged() {
 const DRIVE_FILES = 'https://www.googleapis.com/drive/v3/files';
 const DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files';
 const SYNC_FILE = 'meutube-sync.json';
+const SYNC_MUSIC_FILE = 'meutube-music.json'; // discografias organizadas das Músicas (só baixado quando muda)
 const SYNC_QUICK_MS = 1500;      // depois de mudar canais/opções
 const SYNC_PROGRESS_MS = 30_000; // progresso muda o tempo todo: no máximo a cada 30 s
 const SYNC_PULL_MS = 2 * 60_000; // busca novidades de outros aparelhos a cada 2 min
@@ -4595,6 +4596,7 @@ const Sync = {
       version: 1,
       channels: { at: at('channels'), value: state.channels },
       music: { at: at('music'), value: musicArtists() },
+      musicIndex: musicIndex(), // versão da discografia de cada artista (os dados ficam em meutube-music.json)
       prefs: { at: at('prefs'), value: { hideWatched: state.hideWatched, autoplay: state.autoplay } },
       apiKey: { at: state.config.apiKey ? at('apiKey') : (this.meta.at.apiKey || 0), value: state.config.apiKey },
       progress: progressStore,
@@ -4645,6 +4647,7 @@ const Sync = {
       }
 
       const changed = remote ? this.merge(remote) : false;
+      await this.syncMusic(remote?.musicIndex || {});
       const remoteBody = remote ? JSON.stringify({ ...remote, updatedAt: undefined }) : '';
       const body = JSON.stringify(this.snapshot());
 
@@ -4688,7 +4691,7 @@ const Sync = {
       this.saveMeta();
       this.status = 'ok';
       this.error = null;
-      if (changed && firstSync) toast('Seus canais, opções e progresso foram carregados da nuvem.', 'success', 6000);
+      if (changed && firstSync) toast('Seus canais, músicas, opções e progresso foram carregados da nuvem.', 'success', 6000);
     } catch (e) {
       this.status = 'error';
       this.error = e;
@@ -4699,6 +4702,52 @@ const Sync = {
       }
     }
     renderSyncStatus();
+  },
+
+  /** Arquivo das Músicas: baixa se outro aparelho tem versão mais nova; envia se este tem.
+      Envia antes do arquivo principal, para que nenhum aparelho veja uma versão que ainda não está lá. */
+  async syncMusic(remoteIndex) {
+    const newer = (a, b) => Object.entries(a).some(([id, rev]) => musicArtist(id) && rev > (b[id] || 0));
+    if (newer(remoteIndex, musicIndex())) {
+      const fileId = await this.musicFileId();
+      if (fileId) mergeMusicData(await (await driveFetch(`${DRIVE_FILES}/${fileId}?alt=media`)).json());
+    }
+    const local = musicIndex();
+    const removed = Object.keys(remoteIndex).some(id => !musicArtist(id));
+    if (!newer(local, remoteIndex) && !removed) return;
+    const payload = JSON.stringify({ ...musicCloudData(), updatedAt: Date.now() });
+    let fileId = await this.musicFileId();
+    if (fileId) {
+      await driveFetch(`${DRIVE_UPLOAD}/${fileId}?uploadType=media`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: payload });
+    } else {
+      const boundary = `meutube${Math.random().toString(36).slice(2)}`;
+      const metadata = { name: SYNC_MUSIC_FILE, parents: ['appDataFolder'], mimeType: 'application/json' };
+      const multipart = [
+        `--${boundary}`, 'Content-Type: application/json; charset=UTF-8', '', JSON.stringify(metadata),
+        `--${boundary}`, 'Content-Type: application/json', '', payload,
+        `--${boundary}--`,
+      ].join('\r\n');
+      const res = await driveFetch(`${DRIVE_UPLOAD}?uploadType=multipart&fields=id`, {
+        method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body: multipart,
+      });
+      fileId = (await res.json()).id;
+      this.meta.musicFileId = fileId;
+      this.saveMeta();
+    }
+  },
+
+  /** Id do arquivo das Músicas no Drive (guardado; senão, procura pelo nome). */
+  async musicFileId() {
+    if (this.meta.musicFileId) {
+      const ok = await driveFetch(`${DRIVE_FILES}/${this.meta.musicFileId}?fields=id`).then(() => true, e => { if (e.status === 404) return false; throw e; });
+      if (ok) return this.meta.musicFileId;
+      this.meta.musicFileId = null;
+    }
+    const q = encodeURIComponent(`name='${SYNC_MUSIC_FILE}'`);
+    const list = await (await driveFetch(`${DRIVE_FILES}?spaces=appDataFolder&q=${q}&orderBy=modifiedTime%20desc&fields=files(id)`)).json();
+    this.meta.musicFileId = list.files?.[0]?.id || null;
+    this.saveMeta();
+    return this.meta.musicFileId;
   },
 
   /** Junta os dados da nuvem com os deste aparelho. Retorna true se algo local mudou. */
